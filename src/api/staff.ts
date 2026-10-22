@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
-import { appBaseUrl } from "@/config";
+import { trustedOrigins } from "@/config";
 import { DASHBOARD_ROLES, type StaffRole } from "@/auth/server";
 
 const GENERIC_AUTH_ERROR = { error: { code: "unauthorized", message: "Sign in required." } };
@@ -76,7 +76,7 @@ export function sameOriginGuard(request: Request): NextResponse | null {
     return null;
   }
   const origin = request.headers.get("origin");
-  if (origin && origin === appBaseUrl()) {
+  if (origin && trustedOrigins().includes(origin)) {
     return null;
   }
   return NextResponse.json(

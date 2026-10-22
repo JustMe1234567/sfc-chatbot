@@ -108,6 +108,15 @@ export async function POST(request: Request, context: RouteContext) {
     await store.updateConversationState(escalated.id, "awaiting_staff");
     const reply = newMessage(conversation.id, "bot", HANDOFF_REPLY);
     await store.appendMessage(reply);
+    // Alerting must never fail the visitor's escalation response; a failed
+    // alert stays visible on the notifications page for retry.
+    try {
+      const { db, mail } = await getChatbotService();
+      const { recordEscalationAlert } = await import("@/mail/notifications");
+      await recordEscalationAlert(db, mail, conversation.id);
+    } catch (error) {
+      console.error("escalation alert recording failed:", error);
+    }
     return NextResponse.json({ conversation: escalated, reply });
   }
 

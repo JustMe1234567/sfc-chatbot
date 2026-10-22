@@ -3,6 +3,7 @@ import { Kysely } from "kysely";
 import { NodeSqliteDialect } from "@better-auth/kysely-adapter/node-sqlite-dialect";
 import { betterAuth } from "better-auth";
 import { admin, createAccessControl, twoFactor } from "better-auth/plugins";
+import { trustedOrigins } from "../config";
 import type { MailTransport } from "../mail/outbox";
 
 export type StaffRole = "owner" | "staff" | "editor";
@@ -51,12 +52,6 @@ export interface AuthDeps {
  */
 export function createAuth({ db, mail, baseUrl }: AuthDeps) {
   const kysely = new Kysely({ dialect: new NodeSqliteDialect({ database: db }) });
-  // localhost and 127.0.0.1 are different origins to the browser; local
-  // dashboard checks must work on either form of the loopback address.
-  const devLoopbackOrigins =
-    process.env.NODE_ENV === "production"
-      ? []
-      : ["http://localhost:3000", "http://127.0.0.1:3000"];
 
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret && process.env.NODE_ENV === "production") {
@@ -68,7 +63,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
     baseURL: baseUrl,
     secret: secret ?? "dev-only-secret-7c1f4a2e9b8d4f6a0e3c5b7d9f1a2c4e6b8d0f2a4c6e8b0d2f4a6c8e0b2d4f6",
     database: { db: kysely, type: "sqlite" },
-    trustedOrigins: [baseUrl, ...devLoopbackOrigins],
+    trustedOrigins: trustedOrigins(),
     advanced: {
       // HttpOnly + SameSite are better-auth defaults; Secure cookies in
       // production (behind HTTPS) per the spec.

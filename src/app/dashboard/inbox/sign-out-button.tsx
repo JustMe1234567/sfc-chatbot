@@ -11,10 +11,7 @@ export default function SignOutButton() {
     router.push("/dashboard/login");
   }
   async function signOutEverywhere() {
-    await fetch("/api/staff/sessions/revoke-all", {
-      method: "POST",
-      headers: { origin: window.location.origin },
-    }).catch(() => {});
+    await fetch("/api/staff/sessions/revoke-all", { method: "POST" }).catch(() => {});
     router.push("/dashboard/login");
   }
   return (

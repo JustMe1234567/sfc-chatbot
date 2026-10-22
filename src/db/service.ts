@@ -2,7 +2,8 @@ import { openDatabase } from "./sqlite";
 import { createSqliteStore } from "../store/sqliteStore";
 import { seedAnswerRules } from "../store/seed";
 import { createAuth, type Auth } from "../auth/server";
-import { createOutboxTransport } from "../mail/outbox";
+import { createMailTransportFromEnv } from "../mail/transport";
+import type { MailTransport } from "../mail/outbox";
 import { appBaseUrl, appDbPath } from "../config";
 import type { Store } from "../domain/types";
 import type { DatabaseSync } from "node:sqlite";
@@ -11,6 +12,7 @@ export interface ChatbotService {
   store: Store;
   db: DatabaseSync;
   auth: Auth;
+  mail: MailTransport;
 }
 
 let servicePromise: Promise<ChatbotService> | null = null;
@@ -28,8 +30,9 @@ export function getChatbotService(): Promise<ChatbotService> {
       const db = openDatabase(appDbPath());
       const store = createSqliteStore(db);
       await seedAnswerRules(store);
-      const auth = createAuth({ db, mail: createOutboxTransport(db), baseUrl: appBaseUrl() });
-      return { store, db, auth };
+      const mail = createMailTransportFromEnv(db);
+      const auth = createAuth({ db, mail, baseUrl: appBaseUrl() });
+      return { store, db, auth, mail };
     })();
   }
   return servicePromise;
