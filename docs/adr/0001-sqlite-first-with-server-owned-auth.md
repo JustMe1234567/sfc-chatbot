@@ -1,0 +1,3 @@
+# SQLite first, with server-owned staff authentication
+
+The chatbot uses Next.js with a local SQLite database during development, then migrates its chat and staff data to Supabase Postgres before Vercel production deployment. Staff authentication is handled by a maintained library that supports both databases, with invite-only accounts and multifactor login; the browser only calls scoped public chat and authenticated staff routes, while service credentials stay on the server. This lets the team build and test locally without early external provisioning, preserves staff identities across the database change, and acknowledges that Vercel cannot persist a writable SQLite file.

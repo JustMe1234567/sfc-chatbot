@@ -8,7 +8,7 @@
 
 - [ ] Claiming is atomic: when two staff members try at once, only one becomes the owner and the other sees the current assignment.
 - [ ] The claiming staff member can reply, and the visitor sees the message promptly in the same chat.
-- [ ] Private realtime access prevents a visitor or unrelated staff session from subscribing to an unauthorized conversation.
+- [ ] Authorized polling delivers new messages promptly; a visitor or unrelated staff session cannot fetch another conversation's messages.
 - [ ] After reload or reconnect, both sides recover missed messages from the stored conversation.
 - [ ] Staff can close a resolved conversation; a later visitor question begins a new conversation rather than reopening the closed one.
 - [ ] Automated API flows cover claim contention, reply, reconnect, authorization, and closure; a browser check demonstrates the live exchange.

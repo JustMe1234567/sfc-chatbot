@@ -21,3 +21,9 @@ The queue of escalated conversations available to authorized staff until one per
 
 **Conversation**:
 The message history shared by a visitor, the bot, and any administrator who takes over.
+
+**Staff account**:
+The named identity of a college employee who can sign in to the private dashboard. Its permissions depend on the employee's assigned role.
+
+**Visitor session**:
+The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.

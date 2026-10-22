@@ -8,13 +8,13 @@
 
 
 - [ ] The running app is Next.js App Router, with its visitor API implemented by Route Handlers and the standalone widget served as a public asset; no standalone Express server is needed.
-- [ ] Supabase Postgres stores the seeded answer rules, conversations, visitor session hashes, and messages through a versioned migration; the running app does not use the in-memory store.
+- [ ] A persistent local SQLite database stores the seeded answer rules, conversations, visitor session hashes, and messages through a versioned migration; the running app does not use the in-memory store.
 - [ ] The versioned widget script loads once on intended WordPress pages without changing WordPress core; it works on desktop and mobile.
 - [ ] A visitor can use the chat with keyboard controls and without signing in or providing an email address.
 - [ ] A seeded, published answer rule returns only its approved response and optional college page link; no AI API is called.
 - [ ] The visitor's question and bot answer persist and reappear after both a page reload and a Next.js process restart using only that visitor's session credential.
-- [ ] Public input limits apply, and neither the page nor the widget exposes server-side service secrets.
-- [ ] Automated API and Supabase persistence flows plus an interactive browser check on the WordPress test page demonstrate the visitor journey on desktop and mobile.
+- [ ] Public input limits apply. The page and widget expose no database, authentication, or email service secrets. The loader opens a cross-origin chatbot iframe; its expiring, conversation-scoped visitor credential stays in iframe-origin session storage, not WordPress `localStorage`. The public API and that visitor credential are treated as visible to that visitor.
+- [ ] Automated API and SQLite persistence flows plus an interactive browser check on the WordPress test page demonstrate the visitor journey on desktop and mobile, including a Next.js process restart.
 
 ## Comments
 
@@ -27,3 +27,5 @@ Review notes for the human pass:
 - No-match questions get an honest "no approved answer" bot reply for now; ticket 02 replaces it with the escalation flow.
 
 **2026-10-23 — reopened for the agreed stack.** The HTML page is only a WordPress embed fixture, but the committed runtime is Express with in-memory storage. The user has specified Next.js and Supabase for the whole application. Keep the reusable matcher, widget, API behavior, and tests where practical; move the running app to Next.js Route Handlers and Supabase persistence before starting ticket 02. Recheck all criteria after the migration, including an actual browser interaction instead of static presence checks alone.
+
+**2026-10-23 — persistence and security change.** The user now wants SQLite during development and a later Supabase migration. Keep the Next.js requirement, use persistent local SQLite in this slice, and close the browser credential exposure and restart-persistence criteria before taking ticket 02. The earlier Supabase-first note above is superseded.

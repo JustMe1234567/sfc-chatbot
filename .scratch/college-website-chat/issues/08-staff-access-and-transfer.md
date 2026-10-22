@@ -6,7 +6,7 @@
 
 **Status:** ready-for-agent
 
-- [ ] The owner can invite a named staff member and disable an account; a disabled account loses dashboard, API, and realtime access.
+- [ ] The owner can invite a named staff member and disable an account; a disabled account immediately loses dashboard, API, and polling access, including existing sessions.
 - [ ] Authorized staff can release a claim or transfer it to another active staff member; the shared inbox and visitor chat reflect the new state.
 - [ ] Only the current owner or an authorized owner role can send a staff reply or change assignment.
 - [ ] The dashboard records who claimed, transferred, released, and replied in each conversation.
