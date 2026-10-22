@@ -55,6 +55,8 @@ export interface VisitorSession {
 export interface Store {
   createConversation(conversation: Conversation): Promise<void>;
   getConversation(id: string): Promise<Conversation | null>;
+  updateConversationState(id: string, state: ConversationState): Promise<void>;
+  listConversationsByState(state: ConversationState): Promise<Conversation[]>;
   createSession(session: VisitorSession): Promise<void>;
   findConversationIdByTokenHash(tokenHash: string): Promise<string | null>;
   appendMessage(message: Message): Promise<void>;

@@ -48,16 +48,37 @@ database (the spec's controlled-test-store seam). The restart test spawns
 - The chat UI inside the iframe is the React page at
   `src/app/widget/frame/page.tsx`, which calls the public API same-origin.
 
+## Staff dashboard and authentication
+
+Staff access is invite-only and second-factor protected:
+
+```bash
+npm run bootstrap:owner -- --email owner@example.edu --password 'a-long-password' --name 'Owner'
+npm run dev
+```
+
+Open <http://localhost:3000/dashboard>. The first sign-in forces TOTP
+enrollment (an authenticator app secret is displayed), then signs out; every
+later sign-in requires password plus the current code. Passwords, sessions,
+and staff records live in SQLite through Better Auth (`migrations/0002`);
+verification and reset emails land in the `mail_outbox` table in development.
+
+Environment settings: `CHATBOT_DB` (database file), `CHATBOT_BASE_URL`
+(public origin), `BETTER_AUTH_SECRET` (required outside local development).
+Secrets never reach client bundles: no `NEXT_PUBLIC_` variable carries them.
+
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
 | `src/app/` | Next.js App Router: pages, the widget frame, and API route handlers |
-| `src/api/` | Request-side helpers shared by route handlers (visitor auth) |
+| `src/api/` | Request-side helpers shared by route handlers (visitor + staff auth guards) |
+| `src/auth/` | Better Auth configuration and server-side staff provisioning |
 | `src/domain/` | Pure matching, limits, tokens, and entity types |
 | `src/store/` | SQLite store behind the `Store` port, and seed content |
 | `src/db/` | SQLite connection, versioned migration runner, service singleton |
 | `src/widget/` | Loader script bundled to `public/widget/v1.js` |
+| `src/mail/` | Development mail transport (mail_outbox table) |
 | `migrations/` | Versioned SQL schema migrations |
 | `public/demo/` | WordPress-style test page for the embed |
 | `wordpress/` | Optional mu-plugin that enqueues the loader site-wide |

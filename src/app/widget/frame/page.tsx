@@ -59,6 +59,7 @@ function isHttpLink(value: string): boolean {
 
 export default function WidgetFrame() {
   const [messages, setMessages] = useState<DisplayedMessage[]>([]);
+  const [handoff, setHandoff] = useState(false);
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
@@ -91,8 +92,12 @@ export default function WidgetFrame() {
           showError();
           return;
         }
-        const body = (await response.json()) as { messages: DisplayedMessage[] };
+        const body = (await response.json()) as {
+          conversation: { state: string };
+          messages: DisplayedMessage[];
+        };
         setMessages(body.messages);
+        setHandoff(body.conversation.state !== "bot_active");
       })
       .catch(showError);
   }, [showError]);
@@ -183,8 +188,14 @@ export default function WidgetFrame() {
         showError();
         return;
       }
-      const body = (await response.json()) as { reply: DisplayedMessage };
-      setMessages((current) => [...current, body.reply]);
+      const body = (await response.json()) as {
+        conversation: { state: string };
+        reply: DisplayedMessage | null;
+      };
+      setHandoff(body.conversation.state !== "bot_active");
+      if (body.reply) {
+        setMessages((current) => [...current, body.reply as DisplayedMessage]);
+      }
     } catch {
       showError();
     } finally {
@@ -207,6 +218,11 @@ export default function WidgetFrame() {
         </button>
       </header>
       <p className={styles.intro}>Ask us about admissions, courses, or fees.</p>
+      {handoff ? (
+        <p className={styles.handoff}>
+          College staff will reply in this chat. Automated answers are paused.
+        </p>
+      ) : null}
       <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">
         {messages.map((message) => (
           <li key={message.id} className={`${styles.message} ${styles[message.role]}`}>

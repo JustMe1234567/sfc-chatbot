@@ -1,6 +1,6 @@
 # ZCode handoff: college website chatbot
 
-Open this folder in ZCode and use the updated spec at `.scratch/college-website-chat/spec.md` as the source of truth. Codex completed `/to-tickets` with the user's approval and published tickets under `.scratch/college-website-chat/issues/`. Ticket 01 has been re-implemented in Next.js App Router with persistent local SQLite and is marked `ready-for-human`; review its recorded evidence, then build ticket 02 with invite-only named staff login, required multifactor authentication, and the first shared inbox. Supabase Postgres migration is ticket 11 and a gate before deploying on Vercel.
+Open this folder in ZCode and use the updated spec at `.scratch/college-website-chat/spec.md` as the source of truth. Codex completed `/to-tickets` with the user's approval and published tickets under `.scratch/college-website-chat/issues/`. Ticket 01 is `resolved` (re-implemented in Next.js App Router with persistent local SQLite; accepted 2026-10-23 with its recorded judgment calls). Build ticket 02 next with invite-only named staff login, required multifactor authentication, and the first shared inbox. Supabase Postgres migration is ticket 11 and a gate before deploying on Vercel.
 
 Read `AGENTS.md`, `GLOSSARY.md`, `docs/agents/issue-tracker.md`, and `docs/agents/triage-labels.md` before implementing. The latest spec makes a site-wide WordPress script the default integration; a custom loader plugin is optional. Do not infer the earlier plugin proposal from the conversation.
 

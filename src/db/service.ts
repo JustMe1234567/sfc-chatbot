@@ -1,12 +1,16 @@
-import path from "node:path";
 import { openDatabase } from "./sqlite";
 import { createSqliteStore } from "../store/sqliteStore";
 import { seedAnswerRules } from "../store/seed";
-import { repoRoot } from "../paths";
+import { createAuth, type Auth } from "../auth/server";
+import { createOutboxTransport } from "../mail/outbox";
+import { appBaseUrl, appDbPath } from "../config";
 import type { Store } from "../domain/types";
+import type { DatabaseSync } from "node:sqlite";
 
 export interface ChatbotService {
   store: Store;
+  db: DatabaseSync;
+  auth: Auth;
 }
 
 let servicePromise: Promise<ChatbotService> | null = null;
@@ -14,17 +18,18 @@ let servicePromise: Promise<ChatbotService> | null = null;
 /**
  * The running app's single service instance: SQLite at CHATBOT_DB (default
  * chatbot.db in the repo root), schema migrated and seed content ensured
- * before any request is served. Route handlers await this on every request so
- * tests can point a fresh module registry at a controlled database via the
- * environment.
+ * before any request is served, plus staff authentication over the same
+ * database. Route handlers await this on every request so tests can point a
+ * fresh module registry at a controlled database via the environment.
  */
 export function getChatbotService(): Promise<ChatbotService> {
   if (!servicePromise) {
-    const dbPath = process.env.CHATBOT_DB ?? path.join(repoRoot(), "chatbot.db");
     servicePromise = (async () => {
-      const store = createSqliteStore(openDatabase(dbPath));
+      const db = openDatabase(appDbPath());
+      const store = createSqliteStore(db);
       await seedAnswerRules(store);
-      return { store };
+      const auth = createAuth({ db, mail: createOutboxTransport(db), baseUrl: appBaseUrl() });
+      return { store, db, auth };
     })();
   }
   return servicePromise;

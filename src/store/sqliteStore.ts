@@ -82,6 +82,19 @@ export function createSqliteStore(db: DatabaseSync): Store {
       return row ? rowToConversation(row) : null;
     },
 
+    async updateConversationState(id, state) {
+      db.prepare("UPDATE conversations SET state = ? WHERE id = ?").run(state, id);
+    },
+
+    async listConversationsByState(state) {
+      const rows = db
+        .prepare(
+          "SELECT id, state, created_at FROM conversations WHERE state = ? ORDER BY created_at DESC",
+        )
+        .all(state) as unknown as ConversationRow[];
+      return rows.map(rowToConversation);
+    },
+
     async createSession(session) {
       db.prepare(
         "INSERT INTO visitor_sessions (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",

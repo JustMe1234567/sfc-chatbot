@@ -8,13 +8,14 @@ import {
   MESSAGE_RATE_LIMIT,
   validateVisitorText,
 } from "@/domain/limits";
-import type { Message } from "@/domain/types";
+import type { Conversation, Message } from "@/domain/types";
 
 const messageLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
 
-/** Bot reply while no escalation flow exists yet (ticket 02 replaces this). */
-const NO_ANSWER_REPLY = "Sorry, I don't have an approved answer for that question yet.";
+/** What the visitor is told when their question goes to staff (ticket 02). */
+const HANDOFF_REPLY =
+  "I can't answer that from my approved topics, so I've handed our conversation to the college staff team. A staff member will reply here — please stay in the chat if you can.";
 
 function authFailureResponse(request: Request): NextResponse {
   if (!bearerToken(request)) {
@@ -63,7 +64,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
   const { store } = await getChatbotService();
   const messages = await store.listMessages(conversation.id);
-  return NextResponse.json({ messages });
+  return NextResponse.json({ conversation, messages });
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -90,17 +91,27 @@ export async function POST(request: Request, context: RouteContext) {
   const { store } = await getChatbotService();
   await store.appendMessage(newMessage(conversation.id, "visitor", validation.text));
 
+  // Once staff help is requested, automated answers pause for the rest of the
+  // conversation; only one escalation is raised per conversation.
+  if (conversation.state !== "bot_active") {
+    return NextResponse.json({ conversation, reply: null });
+  }
+
   const rules = await store.listPublishedAnswerRules();
   const matches = matchAnswerRules(validation.text, rules);
   // Exactly one match answers; zero or several matches never guess. Ticket 06
   // turns several matches into topic choices.
   const rule = matches.length === 1 ? matches[0] : undefined;
-  const reply = newMessage(
-    conversation.id,
-    "bot",
-    rule ? rule.response : NO_ANSWER_REPLY,
-    rule?.link,
-  );
+
+  if (!rule) {
+    const escalated: Conversation = { ...conversation, state: "awaiting_staff" };
+    await store.updateConversationState(escalated.id, "awaiting_staff");
+    const reply = newMessage(conversation.id, "bot", HANDOFF_REPLY);
+    await store.appendMessage(reply);
+    return NextResponse.json({ conversation: escalated, reply });
+  }
+
+  const reply = newMessage(conversation.id, "bot", rule.response, rule.link);
   await store.appendMessage(reply);
-  return NextResponse.json({ reply });
+  return NextResponse.json({ conversation, reply });
 }

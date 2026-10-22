@@ -47,6 +47,15 @@
   font-size: 14px;
 }
 
+.handoff {
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #a8342a;
+  font-size: 13px;
+}
+
 .log {
   flex: 1;
   overflow-y: auto;

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-human
+**Status:** resolved
 
 
 - [x] The running app is Next.js App Router, with its visitor API implemented by Route Handlers and the standalone widget served as a public asset; no standalone Express server is needed.
@@ -47,3 +47,5 @@ Judgment calls left for the human pass:
 - The restart persistence test runs `next dev`, not a `next build` + `next start` production boot (a production-build variant would roughly double suite time for the same persistence proof). `next start` behavior can be covered by the ticket 11 preview checks.
 - The root route (`/`) is a minimal landing page linking the demo, `noindex` via robots metadata — unrequested but the App Router needs a root page and it keeps crawlers off the internal app.
 - `ORDER BY created_at, rowid` in the SQLite store needs a Postgres-native monotonic tie-break when ticket 11 lands.
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation and its recorded judgment calls as they stand (24 h visitor credential expiry, dev-keyed rate limiter, `next dev` restart test, root landing page). The Postgres ordering tie-break and the production `x-forwarded-for` handling remain parked on ticket 11. Status set to `resolved`; ticket 02 is unblocked.
