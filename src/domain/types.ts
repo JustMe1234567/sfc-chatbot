@@ -37,12 +37,14 @@ export interface AnswerRule {
 
 /**
  * Opaque visitor session credential. Only the SHA-256 hash of the token is
- * stored; the raw token exists solely in the visitor's browser.
+ * stored; the raw token exists solely in the chatbot-origin iframe's session
+ * storage and expires with `expiresAt`.
  */
 export interface VisitorSession {
   tokenHash: string;
   conversationId: string;
   createdAt: string;
+  expiresAt: string;
 }
 
 /**

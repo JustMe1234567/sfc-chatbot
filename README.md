@@ -5,6 +5,9 @@ questions and get answers only from staff-curated answer rules; unknown
 questions escalate to staff (later tickets). No AI API is called.
 
 The approved spec and delivery tickets live in `.scratch/college-website-chat/`.
+The stack decision (Next.js App Router, SQLite during development, Supabase
+Postgres migration before Vercel production) is recorded in
+`docs/adr/0001-sqlite-first-with-server-owned-auth.md`.
 
 ## Run locally
 
@@ -14,38 +17,52 @@ npm run dev
 ```
 
 Open <http://localhost:3000/demo/wordpress-test-page.html> and use the chat.
-The server seeds two published answer rules (admissions, fees) and one draft
-rule (scholarships) from `src/store/seed.ts`.
+The app seeds two published answer rules (admissions, fees) and one draft rule
+(scholarships) from `src/store/seed.ts` into SQLite at `CHATBOT_DB`
+(default `chatbot.db`, gitignored).
+
+To exercise the embed exactly as a college site would — a different origin —
+serve `tests/fixtures/cross-origin-page.html` from another port (it points at
+`http://127.0.0.1:3000/widget/v1.js`).
 
 ## Test and typecheck
 
 ```bash
-npm test          # API flow tests + WordPress embed smoke check
+npm test              # API flows, embed smoke, restart persistence, abuse limits
 npm run typecheck
-npm run build:widget   # rebuild public/widget/v1.js after editing the widget
+npm run build:widget  # rebuild public/widget/v1.js after editing the loader
 ```
 
-The automated test seam is the public HTTP API with a controlled in-memory
-store (`tests/api-answer-flow.test.ts`), per the spec's testing decisions.
+Tests run the Next.js route handlers directly against a temporary SQLite
+database (the spec's controlled-test-store seam). The restart test spawns
+`next dev` twice and proves the conversation survives the process restart.
+
+## How the widget is embedded
+
+- `public/widget/v1.js` (built from `src/widget/loader.ts`) is the only thing
+  WordPress loads. It renders a launcher button and a cross-origin iframe at
+  `/widget/frame`; it makes no API calls and never touches page storage.
+- The visitor session credential lives in chatbot-origin `sessionStorage`
+  inside the iframe — never in WordPress `localStorage` — and expires
+  server-side after 24 hours.
+- The chat UI inside the iframe is the React page at
+  `src/app/widget/frame/page.tsx`, which calls the public API same-origin.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
+| `src/app/` | Next.js App Router: pages, the widget frame, and API route handlers |
+| `src/api/` | Request-side helpers shared by route handlers (visitor auth) |
 | `src/domain/` | Pure matching, limits, tokens, and entity types |
-| `src/server/` | Express app and entrypoint (`npm run dev`) |
-| `src/store/` | Store port, in-memory implementation, seed content |
-| `src/widget/` | Visitor widget source, bundled to `public/widget/v1.js` |
+| `src/store/` | SQLite store behind the `Store` port, and seed content |
+| `src/db/` | SQLite connection, versioned migration runner, service singleton |
+| `src/widget/` | Loader script bundled to `public/widget/v1.js` |
+| `migrations/` | Versioned SQL schema migrations |
 | `public/demo/` | WordPress-style test page for the embed |
-| `wordpress/` | Optional mu-plugin that enqueues the widget site-wide |
+| `wordpress/` | Optional mu-plugin that enqueues the loader site-wide |
 
-Storage currently runs in memory (conversations survive page reloads while the
-server runs); a Postgres-backed `Store` implementation lands with the
-dashboard tickets. The production launch gate (college approval of external
-services) is documented in the spec.
-
-## WordPress integration
-
-One script tag, site-wide, via `wp_enqueue_script` — see `wordpress/README.md`.
-The widget derives its API base URL from its own `src`, so no service
-credentials appear in the page.
+SQLite is for development and stateful self-hosted preview only; Vercel's
+filesystem is ephemeral. Production deployment waits for the Supabase Postgres
+migration (ticket 11), which is also a college-review launch gate documented in
+the spec.

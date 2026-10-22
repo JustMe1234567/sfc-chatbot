@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { repoRoot } from "../src/paths";
 
 const root = repoRoot();
-const entry = path.join(root, "src/widget/widget.ts");
+const entry = path.join(root, "src/widget/loader.ts");
 const outDir = path.join(root, "public/widget");
 const outFile = path.join(outDir, "v1.js");
 

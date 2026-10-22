@@ -4,28 +4,46 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 
-- [ ] The running app is Next.js App Router, with its visitor API implemented by Route Handlers and the standalone widget served as a public asset; no standalone Express server is needed.
-- [ ] A persistent local SQLite database stores the seeded answer rules, conversations, visitor session hashes, and messages through a versioned migration; the running app does not use the in-memory store.
-- [ ] The versioned widget script loads once on intended WordPress pages without changing WordPress core; it works on desktop and mobile.
-- [ ] A visitor can use the chat with keyboard controls and without signing in or providing an email address.
-- [ ] A seeded, published answer rule returns only its approved response and optional college page link; no AI API is called.
-- [ ] The visitor's question and bot answer persist and reappear after both a page reload and a Next.js process restart using only that visitor's session credential.
-- [ ] Public input limits apply. The page and widget expose no database, authentication, or email service secrets. The loader opens a cross-origin chatbot iframe; its expiring, conversation-scoped visitor credential stays in iframe-origin session storage, not WordPress `localStorage`. The public API and that visitor credential are treated as visible to that visitor.
-- [ ] Automated API and SQLite persistence flows plus an interactive browser check on the WordPress test page demonstrate the visitor journey on desktop and mobile, including a Next.js process restart.
+- [x] The running app is Next.js App Router, with its visitor API implemented by Route Handlers and the standalone widget served as a public asset; no standalone Express server is needed.
+- [x] A persistent local SQLite database stores the seeded answer rules, conversations, visitor session hashes, and messages through a versioned migration; the running app does not use the in-memory store.
+- [x] The versioned widget script loads once on intended WordPress pages without changing WordPress core; it works on desktop and mobile.
+- [x] A visitor can use the chat with keyboard controls and without signing in or providing an email address.
+- [x] A seeded, published answer rule returns only its approved response and optional college page link; no AI API is called.
+- [x] The visitor's question and bot answer persist and reappear after both a page reload and a Next.js process restart using only that visitor's session credential.
+- [x] Public input limits apply. The page and widget expose no database, authentication, or email service secrets. The loader opens a cross-origin chatbot iframe; its expiring, conversation-scoped visitor credential stays in iframe-origin session storage, not WordPress `localStorage`. The public API and that visitor credential are treated as visible to that visitor.
+- [x] Automated API and SQLite persistence flows plus an interactive browser check on the WordPress test page demonstrate the visitor journey on desktop and mobile, including a Next.js process restart.
 
 ## Comments
 
-**2026-10-22 — implemented.** Express 5 + TypeScript app (`src/`), in-memory `Store` port (Postgres implementation deferred to the dashboard tickets), deterministic matcher (normalized, word-boundary, drafts never answer, several matches never guess), opaque SHA-256-hashed visitor session tokens, per-conversation message/history limits plus per-IP creation limit, widget bundled to a self-contained `public/widget/v1.js`, WordPress test page under `public/demo/`, optional enqueue plugin under `wordpress/`. Tests: 19 (API flow + embed smoke), typecheck clean. Run with `npm run dev`; see `README.md`.
-
-Review notes for the human pass:
-
-- Desktop/mobile and keyboard criteria are verified by static presence checks in the smoke test (responsive media query, ARIA roles, Escape handling). Interactive browser verification is the spec's browser-check slice and is not yet scheduled to a ticket.
-- The spec makes a site-wide script the default and a WordPress plugin optional; the committed `wordpress/sfc-chatbot.php` is a 36-line mu-plugin that only enqueues the script. Drop it if the college prefers theme-level enqueue — nothing else depends on it beyond one smoke assertion.
-- No-match questions get an honest "no approved answer" bot reply for now; ticket 02 replaces it with the escalation flow.
+**2026-10-22 — implemented (Express + in-memory, superseded).** Express 5 + TypeScript app with the public API test seam. Superseded by the reopen below; the matcher, API behavior, widget assets, and tests were carried into the Next.js/SQLite re-implementation.
 
 **2026-10-23 — reopened for the agreed stack.** The HTML page is only a WordPress embed fixture, but the committed runtime is Express with in-memory storage. The user has specified Next.js and Supabase for the whole application. Keep the reusable matcher, widget, API behavior, and tests where practical; move the running app to Next.js Route Handlers and Supabase persistence before starting ticket 02. Recheck all criteria after the migration, including an actual browser interaction instead of static presence checks alone.
 
 **2026-10-23 — persistence and security change.** The user now wants SQLite during development and a later Supabase migration. Keep the Next.js requirement, use persistent local SQLite in this slice, and close the browser credential exposure and restart-persistence criteria before taking ticket 02. The earlier Supabase-first note above is superseded.
+
+**2026-10-23 — re-implemented on Next.js + SQLite.**
+
+What is in place:
+
+- Next.js 16 App Router (`src/app/`); visitor API is Route Handlers (`/api/v1/conversations`, `/api/v1/conversations/[id]/messages`); no Express anywhere.
+- SQLite via Node's built-in `node:sqlite` at `CHATBOT_DB` (default `chatbot.db`), schema applied by a versioned migration runner (`migrations/0001_initial_schema.sql`), behind the same `Store` port with portable SQL. In-memory store deleted; tests use temporary SQLite databases.
+- Widget is now a loader (`public/widget/v1.js`) that renders only a launcher and a cross-origin iframe at `/widget/frame` (React chat page). The loader makes no API calls and touches no page storage. The visitor credential (opaque token, SHA-256-hashed server-side, 24 h server-enforced expiry) lives in iframe-origin `sessionStorage`.
+- 23 automated tests green, typecheck clean: API flows, cross-visitor isolation, input limits, message/history/creation rate limits, session expiry, embed smoke (loader free of storage/API usage), and a restart test that spawns `next dev` twice and reads the conversation after the restart.
+
+Interactive browser check (in-app browser, cross-origin fixture at `tests/fixtures/cross-origin-page.html` served from a second origin):
+
+- Desktop 1280×800: opened chat from the launcher, asked the admissions question, received the seeded approved answer with the college link.
+- WordPress-origin `localStorage` and `sessionStorage` verified empty after chatting — credential confined to the chatbot origin.
+- Page reload → history restored; Next.js process killed and restarted → history still restored after reload.
+- Mobile 390×844: asked the fees question in the same conversation; layout verified near-full-screen after fixing an iframe sizing bug the check caught (replaced-element `width:auto` collapses to the 300 px default). Two other fixes from this check: `allowedDevOrigins` for the loopback host in `next.config.ts`, and the loader bundle rebuilt.
+
+Judgment calls left for the human pass:
+
+- "Short-lived" visitor credential is implemented as a 24-hour server-enforced expiry (plus `sessionStorage`, which dies with the tab). Tighten if the college prefers.
+- The per-IP creation limiter keys on `x-forwarded-for` (spoofable when clients talk to the app directly). In dev all local visitors share one 100/min bucket. The production fronting platform overwrites this header; revisit at the ticket 11 deploy.
+- The restart persistence test runs `next dev`, not a `next build` + `next start` production boot (a production-build variant would roughly double suite time for the same persistence proof). `next start` behavior can be covered by the ticket 11 preview checks.
+- The root route (`/`) is a minimal landing page linking the demo, `noindex` via robots metadata — unrequested but the App Router needs a root page and it keeps crawlers off the internal app.
+- `ORDER BY created_at, rowid` in the SQLite store needs a Postgres-native monotonic tie-break when ticket 11 lands.
