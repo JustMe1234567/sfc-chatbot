@@ -84,7 +84,7 @@
   font-size: 14px;
 }
 
-.signOut {
+.secondaryButton {
   border: 1px solid #cbd2dc;
   background: #fff;
   border-radius: 8px;
@@ -152,6 +152,55 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.replyArea {
+  max-width: 52rem;
+  margin: 0 auto 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.replyForm {
+  display: flex;
+  gap: 8px;
+}
+
+.replyForm textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid #cbd2dc;
+  border-radius: 8px;
+}
+
+.replyForm button {
+  border: 0;
+  border-radius: 8px;
+  background: #1d3a6b;
+  color: #fff;
+  font: 600 14px system-ui, sans-serif;
+  padding: 0 16px;
+  cursor: pointer;
+}
+
+.replyForm button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .transcriptHeader {

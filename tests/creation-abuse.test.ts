@@ -3,10 +3,13 @@ import { TEST_ORIGIN, useTempDatabase } from "./helpers";
 
 beforeAll(() => {
   useTempDatabase();
+  // Widen the limiter window for this file: the burst test then measures the
+  // limit itself, not the machine's speed under parallel load.
+  process.env.RATE_WINDOW_MS = String(10 * 60_000);
 });
 
 describe("unauthenticated conversation creation", () => {
-  it("throttles creation bursts", async () => {
+  it("throttles creation bursts", { timeout: 120_000 }, async () => {
     const { POST } = await import("../src/app/api/v1/conversations/route");
     const statuses: number[] = [];
     for (let i = 0; i < 101; i++) {
@@ -15,10 +18,7 @@ describe("unauthenticated conversation creation", () => {
       );
       statuses.push(response.status);
     }
-    // The first window's worth of creations always succeeds; the throttle
-    // engages within the burst. (If the run is slow enough to straddle the
-    // 60 s window, counting legitimately restarts, so later 201s are fine.)
-    expect(statuses.slice(0, 100).every((status) => status === 201)).toBe(true);
-    expect(statuses).toContain(429);
+    expect(statuses.filter((status) => status === 201)).toHaveLength(100);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(1);
   });
 });

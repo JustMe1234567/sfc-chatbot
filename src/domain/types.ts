@@ -4,6 +4,9 @@ export interface Conversation {
   id: string;
   state: ConversationState;
   createdAt: string;
+  /** User id of the staff member who claimed the conversation, if any. */
+  claimedBy: string | null;
+  claimedAt: string | null;
 }
 
 export type MessageRole = "visitor" | "bot" | "staff";
@@ -57,6 +60,11 @@ export interface Store {
   getConversation(id: string): Promise<Conversation | null>;
   updateConversationState(id: string, state: ConversationState): Promise<void>;
   listConversationsByState(state: ConversationState): Promise<Conversation[]>;
+  /**
+   * Atomic human takeover: claims the conversation only when it is still
+   * awaiting staff and unclaimed, and reports whether the caller won.
+   */
+  claimConversation(id: string, staffId: string): Promise<Conversation | null>;
   createSession(session: VisitorSession): Promise<void>;
   findConversationIdByTokenHash(tokenHash: string): Promise<string | null>;
   appendMessage(message: Message): Promise<void>;

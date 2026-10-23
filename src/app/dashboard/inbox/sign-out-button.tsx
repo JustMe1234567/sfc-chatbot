@@ -16,10 +16,10 @@ export default function SignOutButton() {
   }
   return (
     <>
-      <button type="button" className={styles.signOut} onClick={signOut}>
+      <button type="button" className={styles.secondaryButton} onClick={signOut}>
         Sign out
       </button>
-      <button type="button" className={styles.signOut} onClick={signOutEverywhere}>
+      <button type="button" className={styles.secondaryButton} onClick={signOutEverywhere}>
         Sign out everywhere
       </button>
     </>

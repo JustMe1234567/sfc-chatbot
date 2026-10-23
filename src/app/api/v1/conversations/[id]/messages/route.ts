@@ -81,6 +81,19 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+  if (conversation.state === "closed") {
+    // The staff side closed this conversation; the visitor's next question
+    // starts a fresh one with a new credential.
+    return NextResponse.json(
+      {
+        error: {
+          code: "conversation_closed",
+          message: "This conversation was closed. Ask a new question to start again.",
+        },
+      },
+      { status: 409 },
+    );
+  }
   if (!messageLimiter.check(conversation.id)) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },

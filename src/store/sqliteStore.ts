@@ -10,6 +10,8 @@ interface ConversationRow {
   id: string;
   state: Conversation["state"];
   created_at: string;
+  claimed_by: string | null;
+  claimed_at: string | null;
 }
 
 interface MessageRow {
@@ -40,7 +42,13 @@ interface SessionRow {
 }
 
 function rowToConversation(row: ConversationRow): Conversation {
-  return { id: row.id, state: row.state, createdAt: row.created_at };
+  return {
+    id: row.id,
+    state: row.state,
+    createdAt: row.created_at,
+    claimedBy: row.claimed_by,
+    claimedAt: row.claimed_at,
+  };
 }
 
 function rowToMessage(row: MessageRow): Message {
@@ -77,7 +85,9 @@ export function createSqliteStore(db: DatabaseSync): Store {
 
     async getConversation(id) {
       const row = db
-        .prepare("SELECT id, state, created_at FROM conversations WHERE id = ?")
+        .prepare(
+          "SELECT id, state, created_at, claimed_by, claimed_at FROM conversations WHERE id = ?",
+        )
         .get(id) as ConversationRow | undefined;
       return row ? rowToConversation(row) : null;
     },
@@ -89,10 +99,30 @@ export function createSqliteStore(db: DatabaseSync): Store {
     async listConversationsByState(state) {
       const rows = db
         .prepare(
-          "SELECT id, state, created_at FROM conversations WHERE state = ? ORDER BY created_at DESC",
+          "SELECT id, state, created_at, claimed_by, claimed_at FROM conversations WHERE state = ? ORDER BY created_at DESC",
         )
         .all(state) as unknown as ConversationRow[];
       return rows.map(rowToConversation);
+    },
+
+    // The conditional UPDATE is the whole claim protocol: whichever request
+    // flips the row owns it, and concurrent callers see zero rows changed.
+    async claimConversation(id, staffId) {
+      const result = db
+        .prepare(
+          `UPDATE conversations SET state = 'claimed', claimed_by = ?, claimed_at = ?
+           WHERE id = ? AND state = 'awaiting_staff' AND claimed_by IS NULL`,
+        )
+        .run(staffId, new Date().toISOString(), id);
+      if (result.changes === 0) {
+        return null;
+      }
+      const row = db
+        .prepare(
+          "SELECT id, state, created_at, claimed_by, claimed_at FROM conversations WHERE id = ?",
+        )
+        .get(id) as unknown as ConversationRow;
+      return rowToConversation(row);
     },
 
     async createSession(session) {

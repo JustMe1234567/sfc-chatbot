@@ -27,14 +27,22 @@ export const CREATE_RATE_LIMIT = 100;
 export const HISTORY_RATE_LIMIT = 60;
 export const RATE_WINDOW_MS = 60_000;
 
+function windowMs(): number {
+  // RATE_WINDOW_MS lets tests widen the window so burst tests are
+  // deterministic regardless of machine load. Production keeps the default.
+  const override = Number(process.env.RATE_WINDOW_MS);
+  return Number.isFinite(override) && override > 0 ? override : RATE_WINDOW_MS;
+}
+
 export function createRateLimiter(limit: number) {
+  const windowMsOverride = windowMs();
   const windowStart = new Map<string, number>();
   const counts = new Map<string, number>();
 
   return {
     check(key: string, now = Date.now()): boolean {
       const start = windowStart.get(key);
-      if (start === undefined || now - start >= RATE_WINDOW_MS) {
+      if (start === undefined || now - start >= windowMsOverride) {
         windowStart.set(key, now);
         counts.set(key, 1);
         return true;

@@ -28,6 +28,8 @@ export async function POST(request: Request) {
   const conversation: Conversation = {
     id: crypto.randomUUID(),
     state: "bot_active",
+    claimedBy: null,
+    claimedAt: null,
     createdAt: new Date().toISOString(),
   };
   const token = createSessionToken();
