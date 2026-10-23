@@ -1,11 +1,34 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
   AnswerRule,
+  AuditEntry,
   Conversation,
   Message,
   ReturnToken,
   Store,
 } from "../domain/types";
+
+interface AuditRow {
+  id: string;
+  conversation_id: string | null;
+  rule_id: string | null;
+  actor_id: string;
+  action: AuditEntry["action"];
+  detail: string | null;
+  created_at: string;
+}
+
+function rowToAudit(row: AuditRow): AuditEntry {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    ruleId: row.rule_id,
+    actorId: row.actor_id,
+    action: row.action,
+    detail: row.detail,
+    createdAt: row.created_at,
+  };
+}
 
 interface ConversationRow {
   id: string;
@@ -159,6 +182,43 @@ export function createSqliteStore(db: DatabaseSync): Store {
       return rowToConversation(row);
     },
 
+    // Release and transfer share the claim protocol's shape: the conditional
+    // UPDATE only fires on a currently-claimed conversation, so a racing
+    // release/transfer/claim can never clobber another's decision.
+    async releaseConversation(id) {
+      const result = db
+        .prepare(
+          `UPDATE conversations
+           SET state = 'awaiting_staff', claimed_by = NULL, claimed_at = NULL
+           WHERE id = ? AND state = 'claimed'`,
+        )
+        .run(id);
+      if (result.changes === 0) {
+        return null;
+      }
+      const row = db
+        .prepare(`SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE id = ?`)
+        .get(id) as unknown as ConversationRow;
+      return rowToConversation(row);
+    },
+
+    async transferConversation(id, toStaffId) {
+      const result = db
+        .prepare(
+          `UPDATE conversations
+           SET claimed_by = ?, claimed_at = ?
+           WHERE id = ? AND state = 'claimed'`,
+        )
+        .run(toStaffId, new Date().toISOString(), id);
+      if (result.changes === 0) {
+        return null;
+      }
+      const row = db
+        .prepare(`SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE id = ?`)
+        .get(id) as unknown as ConversationRow;
+      return rowToConversation(row);
+    },
+
     async createSession(session) {
       db.prepare(
         "INSERT INTO visitor_sessions (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
@@ -293,6 +353,40 @@ export function createSqliteStore(db: DatabaseSync): Store {
         .prepare(`SELECT ${RULE_COLUMNS} FROM answer_rules WHERE status = 'published'`)
         .all() as unknown as RuleRow[];
       return rows.map(rowToRule);
+    },
+
+    async recordAudit(entry) {
+      db.prepare(
+        "INSERT INTO audit_log (id, conversation_id, rule_id, actor_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        entry.id,
+        entry.conversationId,
+        entry.ruleId,
+        entry.actorId,
+        entry.action,
+        entry.detail,
+        entry.createdAt,
+      );
+    },
+
+    // rowid breaks same-timestamp ties so the trail reads in true order; the
+    // Postgres store for ticket 11 needs its own monotonic tie-break.
+    async listConversationAudit(conversationId) {
+      const rows = db
+        .prepare(
+          "SELECT id, conversation_id, rule_id, actor_id, action, detail, created_at FROM audit_log WHERE conversation_id = ? ORDER BY created_at, rowid",
+        )
+        .all(conversationId) as unknown as AuditRow[];
+      return rows.map(rowToAudit);
+    },
+
+    async listRuleAudit(ruleId) {
+      const rows = db
+        .prepare(
+          "SELECT id, conversation_id, rule_id, actor_id, action, detail, created_at FROM audit_log WHERE rule_id = ? ORDER BY created_at, rowid",
+        )
+        .all(ruleId) as unknown as AuditRow[];
+      return rows.map(rowToAudit);
     },
   };
 }

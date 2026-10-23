@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sameOriginGuard } from "@/api/staff";
+import { audit } from "@/api/audit";
 import { claimConflictResponse, loadStaffConversation, staffName } from "@/api/staffConversations";
 import { getChatbotService } from "@/db/service";
 
@@ -42,5 +43,6 @@ export async function POST(request: Request, context: RouteContext) {
       current?.claimedBy ? staffName(service.db, current.claimedBy) : null,
     );
   }
+  await audit(service.store, loaded.staff.userId, "conversation_claimed", { conversationId: id });
   return NextResponse.json({ conversation: claimed });
 }

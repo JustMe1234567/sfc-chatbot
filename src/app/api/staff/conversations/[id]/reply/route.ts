@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sameOriginGuard } from "@/api/staff";
+import { audit } from "@/api/audit";
 import { claimConflictResponse, loadStaffConversation } from "@/api/staffConversations";
 import { validateVisitorText } from "@/domain/limits";
 import { getChatbotService } from "@/db/service";
@@ -10,10 +11,11 @@ interface RouteContext {
 }
 
 /**
- * Staff reply inside the visitor's chat. Only the current claimer may speak;
- * release/transfer and owner override arrive in ticket 08. Unlike the public
- * visitor route there is no rate limit: callers are authenticated staff, and
- * ticket 08's audit trail covers abuse accountability.
+ * Staff reply inside the visitor's chat. The current claimer may speak, and
+ * the owner role may override the assignment (ticket 08) — never the
+ * conversation state. Unlike the public visitor route there is no rate
+ * limit: callers are authenticated staff, and the audit trail covers abuse
+ * accountability.
  */
 export async function POST(request: Request, context: RouteContext) {
   const blocked = sameOriginGuard(request);
@@ -27,10 +29,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
   const { conversation, staff, claimerName } = loaded;
 
-  if (conversation.state !== "claimed" || conversation.claimedBy !== staff.userId) {
-    if (conversation.state === "claimed") {
-      return claimConflictResponse(claimerName);
-    }
+  if (conversation.state !== "claimed") {
     return NextResponse.json(
       {
         error: {
@@ -40,6 +39,11 @@ export async function POST(request: Request, context: RouteContext) {
       },
       { status: 409 },
     );
+  }
+  // The claimer speaks; the owner role may override the assignment (ticket
+  // 08) but never the conversation state itself.
+  if (conversation.claimedBy !== staff.userId && staff.role !== "owner") {
+    return claimConflictResponse(claimerName);
   }
   const body = (await request.json().catch(() => null)) as { text?: unknown } | null;
   const validation = validateVisitorText(body?.text);
@@ -59,7 +63,7 @@ export async function POST(request: Request, context: RouteContext) {
   };
   const service = await getChatbotService();
   await service.store.appendMessage(message);
-
+  await audit(service.store, staff.userId, "conversation_replied", { conversationId: id });
   // A visitor who already left gets their one secure return link (ticket 07).
   // Notification failures never fail the reply itself; the notifications page
   // shows the failure for retry, like escalation alerts.

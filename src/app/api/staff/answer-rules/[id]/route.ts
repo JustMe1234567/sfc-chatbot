@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { validateAnswerRuleInput } from "@/domain/answerRules";
+import { audit } from "@/api/audit";
 import { getChatbotService } from "@/db/service";
 import { loadAnswerRule, rulesWithPublisherNames } from "@/api/staffAnswerRules";
 import type { AnswerRule } from "@/domain/types";
@@ -19,7 +20,7 @@ export async function PUT(request: Request, context: RouteContext) {
   if ("response" in loaded) {
     return loaded.response;
   }
-  const { rule: existing } = loaded;
+  const { rule: existing, staff } = loaded;
 
   const body = await request.json().catch(() => null);
   const validation = validateAnswerRuleInput(body);
@@ -43,5 +44,6 @@ export async function PUT(request: Request, context: RouteContext) {
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);
+  await audit(store, staff.userId, "rule_revised", { ruleId: rule.id });
   return NextResponse.json(rulesWithPublisherNames(db, [rule])[0]);
 }

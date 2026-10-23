@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { audit } from "@/api/audit";
 import { getChatbotService } from "@/db/service";
 import { loadAnswerRule, rulesWithPublisherNames } from "@/api/staffAnswerRules";
 import type { AnswerRule } from "@/domain/types";
@@ -27,5 +28,6 @@ export async function POST(request: Request, context: RouteContext) {
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);
+  await audit(store, loaded.staff.userId, "rule_unpublished", { ruleId: rule.id });
   return NextResponse.json(rulesWithPublisherNames(db, [rule])[0]);
 }

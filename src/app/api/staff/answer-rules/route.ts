@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
 import { validateAnswerRuleInput } from "@/domain/answerRules";
+import { audit } from "@/api/audit";
 import { getChatbotService } from "@/db/service";
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
 import type { AnswerRule } from "@/domain/types";
@@ -50,5 +51,6 @@ export async function POST(request: Request) {
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);
+  await audit(store, guard.staff.userId, "rule_created", { ruleId: rule.id });
   return NextResponse.json(rulesWithPublisherNames(db, [rule])[0], { status: 201 });
 }

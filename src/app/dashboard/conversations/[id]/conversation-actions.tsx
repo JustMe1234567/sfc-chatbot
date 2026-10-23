@@ -48,6 +48,83 @@ export function ClaimButton({ conversationId }: { conversationId: string }) {
   );
 }
 
+export function ReleaseAndTransfer({
+  conversationId,
+  targets,
+}: {
+  conversationId: string;
+  targets: { id: string; name: string }[];
+}) {
+  const router = useRouter();
+  const [target, setTarget] = useState(targets[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function post(action: "release" | "transfer", body?: unknown) {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/staff/conversations/${conversationId}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    setBusy(false);
+    if (response.ok) {
+      router.refresh();
+      return true;
+    }
+    const failure = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    setError(failure?.error?.message ?? "That did not work.");
+    return false;
+  }
+
+  return (
+    <div className={styles.publishBar}>
+      <button
+        type="button"
+        className={styles.secondaryButton}
+        disabled={busy}
+        onClick={() => void post("release")}
+      >
+        Release to inbox
+      </button>
+      {targets.length > 0 ? (
+        <>
+          <label className={styles.srOnly} htmlFor="transfer-target">
+            Transfer to
+          </label>
+          <select
+            id="transfer-target"
+            value={target}
+            onChange={(event) => setTarget(event.target.value)}
+          >
+            {targets.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            disabled={busy || target.length === 0}
+            onClick={() => void post("transfer", { to: target })}
+          >
+            Transfer
+          </button>
+        </>
+      ) : null}
+      {error ? (
+        <span className={styles.error} role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function ReplyAndClose({
   conversationId,
 }: {

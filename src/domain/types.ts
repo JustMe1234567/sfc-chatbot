@@ -67,6 +67,29 @@ export interface VisitorSession {
   expiresAt: string;
 }
 
+/** The accountability record of one security-sensitive staff action. */
+export interface AuditEntry {
+  id: string;
+  conversationId: string | null;
+  ruleId: string | null;
+  /** Staff account that performed the action. */
+  actorId: string;
+  action:
+    | "conversation_claimed"
+    | "conversation_released"
+    | "conversation_transferred"
+    | "conversation_replied"
+    | "rule_created"
+    | "rule_revised"
+    | "rule_published"
+    | "rule_unpublished"
+    | "staff_invited"
+    | "staff_disabled";
+  /** Human-readable context, e.g. the transfer target's display name. */
+  detail: string | null;
+  createdAt: string;
+}
+
 /** A single-use, expiring return credential mailed to the visitor (ticket 07). */
 export interface ReturnToken {
   /** SHA-256 hash of the raw token; the raw value exists only in the email. */
@@ -95,6 +118,17 @@ export interface Store {
    * awaiting staff and unclaimed, and reports whether the caller won.
    */
   claimConversation(id: string, staffId: string): Promise<Conversation | null>;
+  /**
+   * Returns a claimed conversation to the shared inbox. The conditional
+   * UPDATE means only a currently-claimed conversation can be released;
+   * returns null otherwise.
+   */
+  releaseConversation(id: string): Promise<Conversation | null>;
+  /**
+   * Moves a claimed conversation to another staff member atomically;
+   * returns null unless the conversation is currently claimed.
+   */
+  transferConversation(id: string, toStaffId: string): Promise<Conversation | null>;
   createSession(session: VisitorSession): Promise<void>;
   findConversationIdByTokenHash(tokenHash: string): Promise<string | null>;
   createReturnToken(token: ReturnToken): Promise<void>;
@@ -108,6 +142,10 @@ export interface Store {
     tokenHash: string,
     session: Omit<VisitorSession, "conversationId">,
   ): Promise<string | null>;
+  /** Records one security-sensitive staff action for accountability. */
+  recordAudit(entry: AuditEntry): Promise<void>;
+  listConversationAudit(conversationId: string): Promise<AuditEntry[]>;
+  listRuleAudit(ruleId: string): Promise<AuditEntry[]>;
   appendMessage(message: Message): Promise<void>;
   listMessages(conversationId: string): Promise<Message[]>;
   upsertAnswerRule(rule: AnswerRule): Promise<void>;
