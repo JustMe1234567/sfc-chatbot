@@ -18,6 +18,13 @@ interface DisplayedMessage {
   link?: string;
 }
 
+/** A published answer rule's topic button, served by /api/v1/topics. */
+interface TopicButton {
+  id: string;
+  topic: string;
+  question: string;
+}
+
 const STORAGE_KEY = "sfc_chatbot_v1_session";
 
 function readSession(): StoredSession | null {
@@ -62,6 +69,7 @@ export default function WidgetFrame() {
   const [handoff, setHandoff] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [question, setQuestion] = useState("");
+  const [topics, setTopics] = useState<TopicButton[]>([]);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const sessionRef = useRef<StoredSession | null>(null);
@@ -105,6 +113,22 @@ export default function WidgetFrame() {
       })
       .catch(showError);
   }, [showError, applyHistory]);
+
+  // Published topic buttons, re-fetched on every widget open so staff
+  // publishing changes what visitors see without a redeploy. Failure is
+  // silent: the chat remains usable by typing a question.
+  useEffect(() => {
+    fetch("/api/v1/topics")
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as { topics: TopicButton[] }) : null,
+      )
+      .then((body) => {
+        if (body) {
+          setTopics(body.topics);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Authorized polling: new staff messages appear promptly, and a reload or
   // reconnect recovers everything from the stored conversation.
@@ -207,9 +231,7 @@ export default function WidgetFrame() {
     });
   }
 
-  async function submit(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    const text = question.trim();
+  async function send(text: string): Promise<void> {
     if (text.length === 0 || text.length > MAX_MESSAGE_LENGTH || sending) {
       return;
     }
@@ -280,6 +302,11 @@ export default function WidgetFrame() {
     }
   }
 
+  async function submit(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    await send(question.trim());
+  }
+
   return (
     <main className={styles.panel}>
       <header className={styles.header}>
@@ -293,7 +320,24 @@ export default function WidgetFrame() {
           &times;
         </button>
       </header>
-      <p className={styles.intro}>Ask us about admissions, courses, or fees.</p>
+      <p className={styles.intro}>
+        {topics.length > 0 ? "Pick a topic, or type your question." : "Ask us your question."}
+      </p>
+      {topics.length > 0 && messages.length === 0 ? (
+        <div className={styles.topics}>
+          {topics.map((topic) => (
+            <button
+              key={topic.id}
+              type="button"
+              className={styles.topicButton}
+              disabled={sending}
+              onClick={() => void send(topic.question)}
+            >
+              {topic.topic}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {handoff ? (
         <p className={styles.handoff}>
           College staff will reply in this chat. Automated answers are paused.

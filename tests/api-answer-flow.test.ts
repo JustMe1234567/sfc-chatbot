@@ -7,10 +7,12 @@ import {
   loadHistoryAs,
   startConversation,
   useTempDatabase,
+  warmChatbotService,
 } from "./helpers";
 
-beforeAll(() => {
+beforeAll(async () => {
   useTempDatabase();
+  await warmChatbotService();
 });
 
 describe("visitor asks a question through the public API", () => {

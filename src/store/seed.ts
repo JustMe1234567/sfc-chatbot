@@ -21,6 +21,8 @@ const SEEDED_RULES: AnswerRule[] = [
     keywords: [["admissions", "requirements"], ["apply"]],
     status: "published",
     updatedAt: "2026-10-01T09:00:00.000Z",
+    publishedBy: null,
+    reviewedAt: "2026-10-01T09:00:00.000Z",
   },
   {
     id: "fees-overview",
@@ -32,6 +34,8 @@ const SEEDED_RULES: AnswerRule[] = [
     keywords: [["fees"], ["tuition"]],
     status: "published",
     updatedAt: "2026-10-01T09:00:00.000Z",
+    publishedBy: null,
+    reviewedAt: "2026-10-01T09:00:00.000Z",
   },
   {
     id: "scholarships-overview",
@@ -41,11 +45,17 @@ const SEEDED_RULES: AnswerRule[] = [
     phrases: ["Scholarships", "Financial aid", "Bursaries"],
     status: "draft",
     updatedAt: "2026-10-01T09:00:00.000Z",
+    publishedBy: null,
+    reviewedAt: null,
   },
 ];
 
 export async function seedAnswerRules(store: Store): Promise<void> {
+  // Insert-if-absent: the dashboard owns rules from the first boot on, so a
+  // restart must never overwrite staff edits or unpublishing decisions.
   for (const rule of SEEDED_RULES) {
-    await store.upsertAnswerRule({ ...rule });
+    if (!(await store.getAnswerRule(rule.id))) {
+      await store.upsertAnswerRule({ ...rule });
+    }
   }
 }

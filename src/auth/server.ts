@@ -10,6 +10,8 @@ export type StaffRole = "owner" | "staff" | "editor";
 
 export const STAFF_ROLES: readonly StaffRole[] = ["owner", "staff"];
 export const DASHBOARD_ROLES: readonly StaffRole[] = ["owner", "staff", "editor"];
+/** Roles holding answer-rules permissions in the access control above. */
+export const ANSWER_RULE_ROLES: readonly StaffRole[] = ["owner", "editor"];
 
 /** Dashboard permission vocabulary: resources and the actions on them. */
 const access = createAccessControl({

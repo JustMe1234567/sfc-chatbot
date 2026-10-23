@@ -47,6 +47,37 @@
   font-size: 14px;
 }
 
+.topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px 0;
+}
+
+.topicButton {
+  border: 1px solid #cbd2dc;
+  background: #f3f5f9;
+  color: #1f2933;
+  border-radius: 999px;
+  font: 500 13px/1.2 system-ui, sans-serif;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.topicButton:hover {
+  border-color: #1d3a6b;
+  color: #1d3a6b;
+}
+
+.topicButton:focus-visible {
+  outline: 2px solid #1d3a6b;
+}
+
+.topicButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .handoff {
   margin: 8px 16px 0;
   padding: 8px 12px;

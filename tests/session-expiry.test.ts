@@ -1,11 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, useTempDatabase } from "./helpers";
+import { ask, loadHistory, startConversation, useTempDatabase, warmChatbotService } from "./helpers";
 import { openDatabase } from "../src/db/sqlite";
 
 let dbPath: string;
 
-beforeAll(() => {
+beforeAll(async () => {
   dbPath = useTempDatabase();
+  await warmChatbotService();
 });
 
 describe("visitor session expiry", () => {

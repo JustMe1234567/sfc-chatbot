@@ -12,6 +12,15 @@ export function bearerToken(request: Request): string | null {
 }
 
 /**
+ * Per-client key for public-endpoint rate limiting. No trusted proxy in
+ * local development; production fronting proxies set x-forwarded-for.
+ * Unknown callers share one bucket.
+ */
+export function publicClientKey(request: Request): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+}
+
+/**
  * The conversation a bearer credential is entitled to, or null. A token that
  * belongs to a different conversation gets null (not 403) so conversation
  * existence is not leaked across visitors; callers respond 404.

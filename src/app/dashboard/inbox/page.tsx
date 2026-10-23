@@ -26,6 +26,9 @@ export default async function InboxPage() {
       <header className={styles.shellHeader}>
         <h1>Shared inbox</h1>
         <div className={styles.whoami}>
+          {guard.staff.role === "owner" ? (
+            <Link href="/dashboard/answers">Answers</Link>
+          ) : null}
           <Link href="/dashboard/notifications">Email alerts</Link>
           <span>
             {guard.staff.name} · {guard.staff.role}

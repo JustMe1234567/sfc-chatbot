@@ -32,6 +32,8 @@ interface RuleRow {
   keywords: string | null;
   status: AnswerRule["status"];
   updated_at: string;
+  published_by: string | null;
+  reviewed_at: string | null;
 }
 
 interface SessionRow {
@@ -72,8 +74,13 @@ function rowToRule(row: RuleRow): AnswerRule {
     ...(row.keywords ? { keywords: JSON.parse(row.keywords) as string[][] } : {}),
     status: row.status,
     updatedAt: row.updated_at,
+    publishedBy: row.published_by,
+    reviewedAt: row.reviewed_at,
   };
 }
+
+const RULE_COLUMNS =
+  "id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at";
 
 export function createSqliteStore(db: DatabaseSync): Store {
   return {
@@ -173,8 +180,8 @@ export function createSqliteStore(db: DatabaseSync): Store {
 
     async upsertAnswerRule(rule) {
       db.prepare(
-        `INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            topic = excluded.topic,
            response = excluded.response,
@@ -182,7 +189,9 @@ export function createSqliteStore(db: DatabaseSync): Store {
            phrases = excluded.phrases,
            keywords = excluded.keywords,
            status = excluded.status,
-           updated_at = excluded.updated_at`,
+           updated_at = excluded.updated_at,
+           published_by = excluded.published_by,
+           reviewed_at = excluded.reviewed_at`,
       ).run(
         rule.id,
         rule.topic,
@@ -192,14 +201,32 @@ export function createSqliteStore(db: DatabaseSync): Store {
         rule.keywords ? JSON.stringify(rule.keywords) : null,
         rule.status,
         rule.updatedAt,
+        rule.publishedBy,
+        rule.reviewedAt,
       );
+    },
+
+    async getAnswerRule(id) {
+      const row = db
+        .prepare(`SELECT ${RULE_COLUMNS} FROM answer_rules WHERE id = ?`)
+        .get(id) as RuleRow | undefined;
+      return row ? rowToRule(row) : null;
+    },
+
+    async listAnswerRules() {
+      const rows = db
+        .prepare(
+          // rowid breaks same-timestamp ties deterministically in SQLite; the
+          // Postgres store for ticket 11 needs its own monotonic tie-break.
+          `SELECT ${RULE_COLUMNS} FROM answer_rules ORDER BY updated_at DESC, rowid DESC`,
+        )
+        .all() as unknown as RuleRow[];
+      return rows.map(rowToRule);
     },
 
     async listPublishedAnswerRules() {
       const rows = db
-        .prepare(
-          "SELECT id, topic, response, link, phrases, keywords, status, updated_at FROM answer_rules WHERE status = 'published'",
-        )
+        .prepare(`SELECT ${RULE_COLUMNS} FROM answer_rules WHERE status = 'published'`)
         .all() as unknown as RuleRow[];
       return rows.map(rowToRule);
     },

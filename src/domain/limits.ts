@@ -25,6 +25,8 @@ export function validateVisitorText(input: unknown): TextValidation {
 export const MESSAGE_RATE_LIMIT = 20;
 export const CREATE_RATE_LIMIT = 100;
 export const HISTORY_RATE_LIMIT = 60;
+/** Public credential-free reads (topic buttons), tuned like history reads. */
+export const TOPICS_RATE_LIMIT = 60;
 export const RATE_WINDOW_MS = 60_000;
 
 function windowMs(): number {

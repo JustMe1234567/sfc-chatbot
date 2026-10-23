@@ -16,6 +16,17 @@ export function useTempDatabase(): string {
   return dbPath;
 }
 
+/**
+ * Builds the app service (migrations, seed, auth) inside beforeAll's 10s
+ * hook budget instead of the first test's 5s: under a full parallel suite
+ * run, cold init can outgrow a single test's timeout even though the suite
+ * itself is fine. Staff files get this for free by provisioning accounts.
+ */
+export async function warmChatbotService(): Promise<void> {
+  const { getChatbotService } = await import("../src/db/service");
+  await getChatbotService();
+}
+
 export interface ConversationStart {
   id: string;
   token: string;

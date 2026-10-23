@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, useTempDatabase } from "./helpers";
+import { ask, loadHistory, startConversation, useTempDatabase, warmChatbotService } from "./helpers";
 
-beforeAll(() => {
+beforeAll(async () => {
   useTempDatabase();
+  await warmChatbotService();
 });
 
 describe("unknown question reaches the shared inbox", () => {

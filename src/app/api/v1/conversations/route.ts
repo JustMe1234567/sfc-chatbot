@@ -1,20 +1,15 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
+import { publicClientKey } from "@/api/visitor";
 import { createRateLimiter, CREATE_RATE_LIMIT } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
 import type { Conversation } from "@/domain/types";
 
 const createLimiter = createRateLimiter(CREATE_RATE_LIMIT);
 
-function clientKey(request: Request): string {
-  // No trusted proxy in local development; production fronting proxies set
-  // x-forwarded-for. Unknown callers share one bucket.
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-}
-
 export async function POST(request: Request) {
   const { store } = await getChatbotService();
-  if (!createLimiter.check(clientKey(request))) {
+  if (!createLimiter.check(publicClientKey(request))) {
     return NextResponse.json(
       {
         error: {

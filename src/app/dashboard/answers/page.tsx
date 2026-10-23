@@ -1,0 +1,80 @@
+import { headers } from "next/headers";
+import Link from "next/link";
+import { requireStaff } from "@/api/staff";
+import { ANSWER_RULE_ROLES } from "@/auth/server";
+import { getChatbotService } from "@/db/service";
+import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
+import styles from "../dashboard.module.css";
+
+function formatDate(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleString("en-GB") : "";
+}
+
+/** The answer library: drafts and published rules with their review trail. */
+export default async function AnswersPage() {
+  const staffHeaders = await headers();
+  const guard = await requireStaff(staffHeaders, { roles: ANSWER_RULE_ROLES });
+  if ("response" in guard) {
+    return (
+      <main className={styles.shell}>
+        <p className={styles.empty}>This page requires an authorized editor session.</p>
+      </main>
+    );
+  }
+
+  const { store, db } = await getChatbotService();
+  const rules = rulesWithPublisherNames(db, await store.listAnswerRules());
+
+  return (
+    <main className={styles.shell}>
+      <header className={styles.shellHeader}>
+        <h1>Answers</h1>
+        <div className={styles.whoami}>
+          {guard.staff.role === "owner" ? (
+            <Link href="/dashboard/inbox">Back to inbox</Link>
+          ) : null}
+          <Link href="/dashboard/answers/new">New answer</Link>
+          <span>
+            {guard.staff.name} · {guard.staff.role}
+          </span>
+        </div>
+      </header>
+
+      {rules.length === 0 ? (
+        <p className={styles.empty}>No answer rules yet. Create the first one.</p>
+      ) : (
+        <div className={styles.inbox}>
+          {rules.map((rule) => (
+            <Link
+              key={rule.id}
+              href={`/dashboard/answers/${rule.id}`}
+              className={styles.conversationCard}
+            >
+              <div className={styles.meta}>
+                {rule.topic}
+                {rule.status === "published" ? (
+                  <span className={styles.publishedBadge}>published</span>
+                ) : (
+                  <span className={styles.draftBadge}>draft</span>
+                )}
+              </div>
+              <div className={styles.preview}>{rule.response.slice(0, 140)}</div>
+              <div className={styles.meta}>
+                {rule.status === "published" && rule.reviewedAt
+                  ? `Published by ${rule.publishedByName ?? "an earlier publisher"} · reviewed ${formatDate(rule.reviewedAt)}`
+                  : `Draft · last edited ${formatDate(rule.updatedAt)}`}
+              </div>
+              <div className={styles.meta}>
+                {rule.phrases.length} phrase{rule.phrases.length === 1 ? "" : "s"}
+                {rule.keywords?.length
+                  ? ` · ${rule.keywords.length} keyword condition${rule.keywords.length === 1 ? "" : "s"}`
+                  : ""}
+                {rule.link ? " · college page link" : ""}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}

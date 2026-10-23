@@ -36,6 +36,10 @@ export interface AnswerRule {
   keywords?: string[][];
   status: AnswerRuleStatus;
   updatedAt: string;
+  /** Staff account that last published the rule; null while never published. */
+  publishedBy: string | null;
+  /** When the live content was last approved by publishing; null while draft-only. */
+  reviewedAt: string | null;
 }
 
 /**
@@ -70,5 +74,8 @@ export interface Store {
   appendMessage(message: Message): Promise<void>;
   listMessages(conversationId: string): Promise<Message[]>;
   upsertAnswerRule(rule: AnswerRule): Promise<void>;
+  getAnswerRule(id: string): Promise<AnswerRule | null>;
+  /** Every rule, drafts included: the dashboard's answer-management view. */
+  listAnswerRules(): Promise<AnswerRule[]>;
   listPublishedAnswerRules(): Promise<AnswerRule[]>;
 }

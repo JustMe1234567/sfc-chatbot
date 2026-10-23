@@ -1,11 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { TEST_ORIGIN, useTempDatabase } from "./helpers";
+import { TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 
-beforeAll(() => {
+beforeAll(async () => {
   useTempDatabase();
   // Widen the limiter window for this file: the burst test then measures the
   // limit itself, not the machine's speed under parallel load.
   process.env.RATE_WINDOW_MS = String(10 * 60_000);
+  await warmChatbotService();
 });
 
 describe("unauthenticated conversation creation", () => {
