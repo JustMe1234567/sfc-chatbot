@@ -25,6 +25,8 @@ export async function POST(request: Request) {
     state: "bot_active",
     claimedBy: null,
     claimedAt: null,
+    visitorEmail: null,
+    visitorLastSeenAt: null,
     createdAt: new Date().toISOString(),
   };
   const token = createSessionToken();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
-import { bearerToken, visitorConversation } from "@/api/visitor";
+import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
 import { matchAnswerRules, matchesEscalationPhrase } from "@/domain/matcher";
 import { getEscalationPhrases } from "@/settings";
 import {
@@ -17,19 +17,6 @@ const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
 /** What the visitor is told when their question goes to staff (ticket 02). */
 const HANDOFF_REPLY =
   "I can't answer that from my approved topics, so I've handed our conversation to the college staff team. A staff member will reply here — please stay in the chat if you can.";
-
-function authFailureResponse(request: Request): NextResponse {
-  if (!bearerToken(request)) {
-    return NextResponse.json(
-      { error: { code: "unauthorized", message: "A visitor session is required." } },
-      { status: 401 },
-    );
-  }
-  return NextResponse.json(
-    { error: { code: "conversation_not_found", message: "Conversation not found." } },
-    { status: 404 },
-  );
-}
 
 function newMessage(
   conversationId: string,
@@ -55,7 +42,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
-    return authFailureResponse(request);
+    return visitorAuthFailure(request);
   }
   if (!historyLimiter.check(conversation.id)) {
     return NextResponse.json(
@@ -64,6 +51,9 @@ export async function GET(request: Request, context: RouteContext) {
     );
   }
   const { store } = await getChatbotService();
+  // Every authorized read refreshes presence: the widget's polling keeps the
+  // visitor marked as on the page, so staff replies don't email them (07).
+  await store.touchVisitorPresence(conversation.id);
   const messages = await store.listMessages(conversation.id);
   return NextResponse.json({ conversation, messages });
 }
@@ -72,7 +62,7 @@ export async function POST(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
-    return authFailureResponse(request);
+    return visitorAuthFailure(request);
   }
   const body = (await request.json().catch(() => null)) as {
     text?: unknown;
@@ -115,6 +105,7 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
     await store.appendMessage(newMessage(conversation.id, "visitor", rule.topic));
+    await store.touchVisitorPresence(conversation.id);
     if (conversation.state !== "bot_active") {
       // Staff help is already requested; bot replies stay paused.
       return NextResponse.json({ conversation, reply: null });
@@ -153,6 +144,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   const { store, db, mail } = await getChatbotService();
   await store.appendMessage(newMessage(conversation.id, "visitor", validation.text));
+  await store.touchVisitorPresence(conversation.id);
 
   // Once staff help is requested, automated answers pause for the rest of the
   // conversation; only one escalation is raised per conversation.

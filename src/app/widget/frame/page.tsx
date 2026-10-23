@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_LENGTH } from "@/domain/limits";
 import type { MessageChoice, MessageRole } from "@/domain/types";
+import {
+  dropSession as dropStoredSession,
+  readSession,
+  writeSession,
+  type StoredSession,
+} from "@/lib/visitorSession";
 import styles from "./frame.module.css";
-
-interface StoredSession {
-  id: string;
-  token: string;
-  expiresAt: string;
-}
 
 interface DisplayedMessage {
   id: string;
@@ -26,41 +26,6 @@ interface TopicButton {
   question: string;
 }
 
-const STORAGE_KEY = "sfc_chatbot_v1_session";
-
-function readSession(): StoredSession | null {
-  try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const session = JSON.parse(raw) as Partial<StoredSession>;
-    if (
-      typeof session.id === "string" &&
-      typeof session.token === "string" &&
-      typeof session.expiresAt === "string"
-    ) {
-      if (new Date(session.expiresAt).getTime() <= Date.now()) {
-        window.sessionStorage.removeItem(STORAGE_KEY);
-        return null;
-      }
-      return { id: session.id, token: session.token, expiresAt: session.expiresAt };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSession(session: StoredSession): void {
-  try {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-  } catch {
-    // Storage can be unavailable (blocked cookies); the chat still works for
-    // this page view, but history will not survive a reload.
-  }
-}
-
 function isHttpLink(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
@@ -73,6 +38,9 @@ export default function WidgetFrame() {
   const [topics, setTopics] = useState<TopicButton[]>([]);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
+  const [emailPrompt, setEmailPrompt] = useState<"asking" | "saved" | "declined">("asking");
+  const [emailAddress, setEmailAddress] = useState("");
+  const [emailError, setEmailError] = useState("");
   const sessionRef = useRef<StoredSession | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -206,11 +174,7 @@ export default function WidgetFrame() {
 
   function dropSession(): void {
     // The stored credential stopped working; the next question starts fresh.
-    try {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Nothing to clear.
-    }
+    dropStoredSession();
     sessionRef.current = null;
   }
 
@@ -272,6 +236,7 @@ export default function WidgetFrame() {
           setHandoff(false);
           setClaimed(false);
           setError("");
+          setEmailPrompt("asking");
           const fresh = await ensureSession();
           if (!fresh) {
             return;
@@ -303,6 +268,44 @@ export default function WidgetFrame() {
     } finally {
       setSending(false);
       inputRef.current?.focus();
+    }
+  }
+
+  async function submitEmail(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    const session = sessionRef.current ?? readSession();
+    const trimmed = emailAddress.trim();
+    if (!session) {
+      setEmailError("Your chat session expired. Start a new chat to reach staff.");
+      return;
+    }
+    if (trimmed.length === 0) {
+      setEmailError("Enter an email address, or choose \u2018No thanks\u2019.");
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/v1/conversations/${encodeURIComponent(session.id)}/email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({ email: trimmed }),
+        },
+      );
+      if (response.ok) {
+        setEmailPrompt("saved");
+        setEmailError("");
+        return;
+      }
+      const failure = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setEmailError(failure?.error?.message ?? "Could not save the email. Try again.");
+    } catch {
+      setEmailError("Could not save the email. Try again.");
     }
   }
 
@@ -350,6 +353,54 @@ export default function WidgetFrame() {
       {claimed ? (
         <p className={styles.handoff}>
           A college staff member has joined the conversation and will reply here.
+        </p>
+      ) : null}
+      {(handoff || claimed) && emailPrompt === "asking" ? (
+        <div className={styles.emailBox}>
+          <p className={styles.emailText}>
+            Leaving? Add your email and staff can send you a secure one-time
+            link back to this conversation if they reply after you go.
+          </p>
+          <form className={styles.emailForm} onSubmit={submitEmail}>
+            <label className={styles.srOnly} htmlFor="sfcw-email">
+              Your email (optional)
+            </label>
+            <input
+              id="sfcw-email"
+              type="email"
+              className={styles.emailInput}
+              placeholder="you@example.org"
+              value={emailAddress}
+              onChange={(event) => setEmailAddress(event.target.value)}
+            />
+            <button type="submit" className={styles.emailSave}>
+              Email me a link later
+            </button>
+          </form>
+          <button
+            type="button"
+            className={styles.emailDecline}
+            onClick={() => setEmailPrompt("declined")}
+          >
+            No thanks — I&apos;ll stay in the chat
+          </button>
+          {emailError ? (
+            <p className={styles.emailError} role="alert">
+              {emailError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {(handoff || claimed) && emailPrompt === "saved" ? (
+        <p className={styles.emailNote}>
+          Thanks — if staff reply after you leave, you&apos;ll get an email with a
+          one-time link back to this chat.
+        </p>
+      ) : null}
+      {(handoff || claimed) && emailPrompt === "declined" ? (
+        <p className={styles.emailNote}>
+          No email saved: staff can reply only while this chat stays open on
+          your device. If you leave the page, they cannot follow up with you.
         </p>
       ) : null}
       <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">

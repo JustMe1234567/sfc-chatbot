@@ -22,18 +22,62 @@ export function validateVisitorText(input: unknown): TextValidation {
   return { ok: true, text };
 }
 
+/** An env-overridable millisecond duration, for deterministic tests. */
+export function envMs(name: string, fallbackMs: number): number {
+  const override = Number(process.env[name]);
+  return Number.isFinite(override) && override > 0 ? override : fallbackMs;
+}
+
 export const MESSAGE_RATE_LIMIT = 20;
 export const CREATE_RATE_LIMIT = 100;
 export const HISTORY_RATE_LIMIT = 60;
 /** Public credential-free reads (topic buttons), tuned like history reads. */
 export const TOPICS_RATE_LIMIT = 60;
+/** Unauthenticated return-link redemptions per client per window. */
+export const RETURN_RATE_LIMIT = 20;
 export const RATE_WINDOW_MS = 60_000;
+
+export const MAX_EMAIL_LENGTH = 254;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export type EmailValidation =
+  | { ok: true; email: string }
+  | { ok: false; code: "invalid_email"; message: string };
+
+export function validateVisitorEmail(input: unknown): EmailValidation {
+  if (typeof input !== "string") {
+    return { ok: false, code: "invalid_email", message: "Provide an email address." };
+  }
+  const email = input.trim();
+  if (email.length === 0 || email.length > MAX_EMAIL_LENGTH || !EMAIL_PATTERN.test(email)) {
+    return { ok: false, code: "invalid_email", message: "Provide a valid email address." };
+  }
+  return { ok: true, email };
+}
+
+/** How long after the last visitor request the visitor counts as departed. */
+export const VISITOR_PRESENCE_WINDOW_MS = 60_000;
+
+export function visitorPresenceWindowMs(): number {
+  // VISITOR_PRESENCE_WINDOW_MS lets tests shrink the window so departure is
+  // deterministic regardless of machine speed. Production keeps the default.
+  return envMs("VISITOR_PRESENCE_WINDOW_MS", VISITOR_PRESENCE_WINDOW_MS);
+}
+
+/** Whether the visitor is gone: presence older than the window, or never seen. */
+export function visitorDeparted(conversation: {
+  visitorLastSeenAt: string | null;
+}): boolean {
+  if (!conversation.visitorLastSeenAt) {
+    return true;
+  }
+  return Date.now() - new Date(conversation.visitorLastSeenAt).getTime() > visitorPresenceWindowMs();
+}
 
 function windowMs(): number {
   // RATE_WINDOW_MS lets tests widen the window so burst tests are
   // deterministic regardless of machine load. Production keeps the default.
-  const override = Number(process.env.RATE_WINDOW_MS);
-  return Number.isFinite(override) && override > 0 ? override : RATE_WINDOW_MS;
+  return envMs("RATE_WINDOW_MS", RATE_WINDOW_MS);
 }
 
 export function createRateLimiter(limit: number) {

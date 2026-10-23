@@ -51,13 +51,17 @@ function createFailThenSucceedTransport(db: DatabaseSync): MailTransport {
  * approved sender is configured via environment settings; production refuses
  * to start without the approved sender configured, so alerts can never be
  * silently written to a local table instead of emailed.
- * CHATBOT_MAIL_TRANSPORT exists so automated tests can exercise failed
- * deliveries end to end.
+ * CHATBOT_MAIL_TRANSPORT exists so automated tests and local production-build
+ * browser checks can pick a transport explicitly: "fail-then-succeed"
+ * exercises failed deliveries end to end, "outbox" records mail locally.
  */
 export function createMailTransportFromEnv(db: DatabaseSync): MailTransport {
   const mode = process.env.CHATBOT_MAIL_TRANSPORT;
   if (mode === "fail-then-succeed") {
     return createFailThenSucceedTransport(db);
+  }
+  if (mode === "outbox") {
+    return createOutboxTransport(db);
   }
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;

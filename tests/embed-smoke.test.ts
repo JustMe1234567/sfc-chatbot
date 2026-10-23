@@ -31,12 +31,19 @@ describe("WordPress embed smoke check", () => {
   });
 
   it("keeps the visitor credential in iframe-origin session storage", async () => {
+    // Storage access moved behind src/widget/visitorSession.ts (shared with
+    // the /return landing page); the exposure review covers both files.
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
-    expect(frame).toContain("sessionStorage");
+    const visitorSession = await readFile(
+      path.join(repoRoot(), "src/lib/visitorSession.ts"),
+      "utf8",
+    );
+    expect(visitorSession).toContain("sessionStorage");
     expect(frame).not.toContain("localStorage");
+    expect(visitorSession).not.toContain("localStorage");
     // Keyboard and screen-reader hooks the browser check exercises live.
     expect(frame).toContain('role="log"');
     expect(frame).toContain("aria-live");

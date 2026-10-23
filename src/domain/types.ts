@@ -7,6 +7,10 @@ export interface Conversation {
   /** User id of the staff member who claimed the conversation, if any. */
   claimedBy: string | null;
   claimedAt: string | null;
+  /** Optional follow-up address the visitor left at handoff (ticket 07). */
+  visitorEmail: string | null;
+  /** Last authenticated visitor request; stale means the visitor departed. */
+  visitorLastSeenAt: string | null;
 }
 
 export type MessageRole = "visitor" | "bot" | "staff";
@@ -63,6 +67,15 @@ export interface VisitorSession {
   expiresAt: string;
 }
 
+/** A single-use, expiring return credential mailed to the visitor (ticket 07). */
+export interface ReturnToken {
+  /** SHA-256 hash of the raw token; the raw value exists only in the email. */
+  tokenHash: string;
+  conversationId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 /**
  * Persistence port for the application. The in-memory implementation backs
  * tests and local development; a Postgres-backed implementation can be added
@@ -73,6 +86,10 @@ export interface Store {
   getConversation(id: string): Promise<Conversation | null>;
   updateConversationState(id: string, state: ConversationState): Promise<void>;
   listConversationsByState(state: ConversationState): Promise<Conversation[]>;
+  /** Records the optional follow-up address the visitor left at handoff. */
+  setConversationEmail(id: string, email: string): Promise<void>;
+  /** Marks the visitor as present right now (polling and posting count). */
+  touchVisitorPresence(id: string): Promise<void>;
   /**
    * Atomic human takeover: claims the conversation only when it is still
    * awaiting staff and unclaimed, and reports whether the caller won.
@@ -80,6 +97,17 @@ export interface Store {
   claimConversation(id: string, staffId: string): Promise<Conversation | null>;
   createSession(session: VisitorSession): Promise<void>;
   findConversationIdByTokenHash(tokenHash: string): Promise<string | null>;
+  createReturnToken(token: ReturnToken): Promise<void>;
+  /**
+   * Redeems a return token exactly once while unexpired, minting the
+   * replacement visitor session for that token's conversation in the same
+   * transaction; unknown, used, or expired tokens yield null without side
+   * effects.
+   */
+  redeemReturnToken(
+    tokenHash: string,
+    session: Omit<VisitorSession, "conversationId">,
+  ): Promise<string | null>;
   appendMessage(message: Message): Promise<void>;
   listMessages(conversationId: string): Promise<Message[]>;
   upsertAnswerRule(rule: AnswerRule): Promise<void>;

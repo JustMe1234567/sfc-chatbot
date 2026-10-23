@@ -3,6 +3,7 @@ import type {
   AnswerRule,
   Conversation,
   Message,
+  ReturnToken,
   Store,
 } from "../domain/types";
 
@@ -12,6 +13,8 @@ interface ConversationRow {
   created_at: string;
   claimed_by: string | null;
   claimed_at: string | null;
+  visitor_email: string | null;
+  visitor_last_seen_at: string | null;
 }
 
 interface MessageRow {
@@ -51,8 +54,13 @@ function rowToConversation(row: ConversationRow): Conversation {
     createdAt: row.created_at,
     claimedBy: row.claimed_by,
     claimedAt: row.claimed_at,
+    visitorEmail: row.visitor_email,
+    visitorLastSeenAt: row.visitor_last_seen_at,
   };
 }
+
+const CONVERSATION_COLUMNS =
+  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at";
 
 function rowToMessage(row: MessageRow): Message {
   let choices: Message["choices"];
@@ -98,15 +106,13 @@ export function createSqliteStore(db: DatabaseSync): Store {
   return {
     async createConversation(conversation) {
       db.prepare(
-        "INSERT INTO conversations (id, state, created_at) VALUES (?, ?, ?)",
-      ).run(conversation.id, conversation.state, conversation.createdAt);
+        "INSERT INTO conversations (id, state, created_at, visitor_last_seen_at) VALUES (?, ?, ?, ?)",
+      ).run(conversation.id, conversation.state, conversation.createdAt, conversation.createdAt);
     },
 
     async getConversation(id) {
       const row = db
-        .prepare(
-          "SELECT id, state, created_at, claimed_by, claimed_at FROM conversations WHERE id = ?",
-        )
+        .prepare(`SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE id = ?`)
         .get(id) as ConversationRow | undefined;
       return row ? rowToConversation(row) : null;
     },
@@ -115,10 +121,21 @@ export function createSqliteStore(db: DatabaseSync): Store {
       db.prepare("UPDATE conversations SET state = ? WHERE id = ?").run(state, id);
     },
 
+    async setConversationEmail(id, email) {
+      db.prepare("UPDATE conversations SET visitor_email = ? WHERE id = ?").run(email, id);
+    },
+
+    async touchVisitorPresence(id) {
+      db.prepare("UPDATE conversations SET visitor_last_seen_at = ? WHERE id = ?").run(
+        new Date().toISOString(),
+        id,
+      );
+    },
+
     async listConversationsByState(state) {
       const rows = db
         .prepare(
-          "SELECT id, state, created_at, claimed_by, claimed_at FROM conversations WHERE state = ? ORDER BY created_at DESC",
+          `SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE state = ? ORDER BY created_at DESC`,
         )
         .all(state) as unknown as ConversationRow[];
       return rows.map(rowToConversation);
@@ -137,9 +154,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
         return null;
       }
       const row = db
-        .prepare(
-          "SELECT id, state, created_at, claimed_by, claimed_at FROM conversations WHERE id = ?",
-        )
+        .prepare(`SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE id = ?`)
         .get(id) as unknown as ConversationRow;
       return rowToConversation(row);
     },
@@ -164,6 +179,42 @@ export function createSqliteStore(db: DatabaseSync): Store {
         )
         .get(tokenHash, new Date().toISOString()) as SessionRow | undefined;
       return row ? row.conversation_id : null;
+    },
+
+    async createReturnToken(token) {
+      db.prepare(
+        "INSERT INTO return_tokens (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+      ).run(token.tokenHash, token.conversationId, token.createdAt, token.expiresAt);
+    },
+
+    // One transaction redeems the token AND mints the replacement visitor
+    // session: a crash can never burn the link without restoring access.
+    // The conditional UPDATE is atomic, so a replayed or racing link sees
+    // zero rows changed and loses.
+    async redeemReturnToken(tokenHash, session) {
+      const now = new Date().toISOString();
+      db.exec("BEGIN");
+      try {
+        const row = db
+          .prepare(
+            `UPDATE return_tokens SET used_at = ?
+             WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+             RETURNING conversation_id`,
+          )
+          .get(now, tokenHash, now) as { conversation_id: string } | undefined;
+        if (!row) {
+          db.exec("ROLLBACK");
+          return null;
+        }
+        db.prepare(
+          "INSERT INTO visitor_sessions (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        ).run(session.tokenHash, row.conversation_id, session.createdAt, session.expiresAt);
+        db.exec("COMMIT");
+        return row.conversation_id;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     },
 
     async appendMessage(message) {

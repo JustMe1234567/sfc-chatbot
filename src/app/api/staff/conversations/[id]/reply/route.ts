@@ -57,7 +57,20 @@ export async function POST(request: Request, context: RouteContext) {
     text: validation.text,
     createdAt: new Date().toISOString(),
   };
-  const { store } = await getChatbotService();
-  await store.appendMessage(message);
+  const service = await getChatbotService();
+  await service.store.appendMessage(message);
+
+  // A visitor who already left gets their one secure return link (ticket 07).
+  // Notification failures never fail the reply itself; the notifications page
+  // shows the failure for retry, like escalation alerts.
+  try {
+    const { maybeSendVisitorReturn } = await import("@/mail/visitorReturn");
+    const fresh = await service.store.getConversation(id);
+    if (fresh) {
+      await maybeSendVisitorReturn(service, fresh);
+    }
+  } catch (error) {
+    console.error("visitor return notification failed:", error);
+  }
   return NextResponse.json({ message });
 }

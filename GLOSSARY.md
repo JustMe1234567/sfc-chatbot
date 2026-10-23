@@ -27,3 +27,9 @@ The named identity of a college employee who can sign in to the private dashboar
 
 **Visitor session**:
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.
+
+**Presence**:
+Whether a visitor is still on the page, judged from how recently their credential made an authorized request. A staff reply to a departed visitor emails the return link; a reply to a present visitor does not.
+
+**Return link**:
+A short-lived, single-use link mailed to a visitor so they can resume their own conversation after leaving. Only its hash is stored; redeeming it grants a fresh visitor session.

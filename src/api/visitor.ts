@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { getChatbotService } from "../db/service";
 import { hashSessionToken } from "../domain/tokens";
 import type { Conversation } from "../domain/types";
@@ -9,6 +10,24 @@ export function bearerToken(request: Request): string | null {
   }
   const token = header.slice("Bearer ".length).trim();
   return token.length > 0 ? token : null;
+}
+
+/**
+ * The shared failure for a visitor-authenticated request: 401 without a
+ * credential, 404 otherwise so conversation existence is never leaked
+ * across visitors.
+ */
+export function visitorAuthFailure(request: Request): NextResponse {
+  if (!bearerToken(request)) {
+    return NextResponse.json(
+      { error: { code: "unauthorized", message: "A visitor session is required." } },
+      { status: 401 },
+    );
+  }
+  return NextResponse.json(
+    { error: { code: "conversation_not_found", message: "Conversation not found." } },
+    { status: 404 },
+  );
 }
 
 /**

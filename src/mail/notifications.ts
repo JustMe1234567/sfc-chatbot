@@ -74,6 +74,37 @@ function alertBody(conversationId: string, receivedAt: string): string {
   ].join("\n");
 }
 
+function visitorReturnBody(link: string): string {
+  return [
+    "A staff member has replied to your conversation in the college website chat.",
+    "",
+    `Open this link to continue the same chat: ${link}`,
+    "",
+    "The link expires 24 hours after this email was sent and works once.",
+    "If you did not use the college chat, you can ignore this email.",
+  ].join("\n");
+}
+
+/** Subject and body for a notification; visitor-return mail needs a link. */
+function composeMail(record: NotificationRecord, visitorLink: string | null): {
+  subject: string;
+  body: string;
+} {
+  if (record.type === "visitor_return") {
+    if (!visitorLink) {
+      throw new Error("visitor return notification has no link provider");
+    }
+    return {
+      subject: "A staff reply is waiting in the college chat",
+      body: visitorReturnBody(visitorLink),
+    };
+  }
+  return {
+    subject: "Visitor question needs staff (college chat)",
+    body: alertBody(record.conversation_id, record.created_at),
+  };
+}
+
 /**
  * The single escalation alert for a conversation. The unique
  * (type, conversation_id) index makes duplicate calls no-ops, so retries and
@@ -112,16 +143,59 @@ export async function recordEscalationAlert(
   return deliverNotification(db, mail, inserted.id);
 }
 
+/** Whether the visitor return notification for a conversation exists yet. */
+export function hasVisitorReturnNotification(
+  db: DatabaseSync,
+  conversationId: string,
+): boolean {
+  const row = db
+    .prepare(
+      "SELECT 1 FROM notifications WHERE type = 'visitor_return' AND conversation_id = ?",
+    )
+    .get(conversationId);
+  return row !== undefined;
+}
+
 /**
- * Delivers the alert to every configured recipient who has not already
- * confirmed delivery on this notification. Each success is recorded before
- * the next send starts, so a mid-list failure never duplicates earlier
- * deliveries when staff retry.
+ * Claims the single visitor-return notification slot for a conversation via
+ * the unique (type, conversation_id) index, returning the new row's id or
+ * null when one already exists. The caller delivers it (see
+ * mail/visitorReturn.ts): the link is minted only after the slot is won.
  */
-async function deliverNotification(
+export function insertVisitorReturnRow(
+  db: DatabaseSync,
+  conversationId: string,
+  visitorEmail: string,
+): string | null {
+  const inserted = db
+    .prepare(
+      `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
+       VALUES (?, 'visitor_return', ?, ?, 'pending', 0, ?)
+       ON CONFLICT(type, conversation_id) DO NOTHING
+       RETURNING id`,
+    )
+    .get(
+      crypto.randomUUID(),
+      conversationId,
+      JSON.stringify([visitorEmail]),
+      new Date().toISOString(),
+    ) as { id: string } | undefined;
+  return inserted?.id ?? null;
+}
+
+/**
+ * Delivers the notification to every configured recipient who has not
+ * already confirmed delivery. Each success is recorded before the next send
+ * starts, so a mid-list failure never duplicates earlier deliveries when
+ * staff retry. A visitor-return delivery asks `makeVisitorLink` for a fresh
+ * single-use link: nothing link-shaped is ever persisted, and a retry can
+ * never re-send a stale link.
+ */
+export async function deliverNotification(
   db: DatabaseSync,
   mail: MailTransport,
   notificationId: string,
+  makeVisitorLink?: (conversationId: string) => Promise<string>,
 ): Promise<NotificationRow> {
   const record = fetchNotification(db, notificationId);
   if (!record) {
@@ -129,16 +203,25 @@ async function deliverNotification(
   }
   const recipients = JSON.parse(record.recipients) as string[];
   const deliveredTo = new Set(JSON.parse(record.delivered_to) as string[]);
-  const outstanding = recipients.filter((recipient) => !deliveredTo.has(recipient));
 
+  let visitorLink: string | null = null;
+  if (record.type === "visitor_return") {
+    if (!makeVisitorLink) {
+      db.prepare(
+        "UPDATE notifications SET status = 'failed', attempts = attempts + 1, last_error = ? WHERE id = ?",
+      ).run("Return link could not be created for this notification.", notificationId);
+      const failed = fetchNotification(db, notificationId) as NotificationRecord;
+      return rowToNotification(failed);
+    }
+    visitorLink = await makeVisitorLink(record.conversation_id);
+  }
+
+  const outstanding = recipients.filter((recipient) => !deliveredTo.has(recipient));
   let failure: string | null = null;
   for (const recipient of outstanding) {
     try {
-      await mail.send({
-        to: recipient,
-        subject: "Visitor question needs staff (college chat)",
-        body: alertBody(record.conversation_id, record.created_at),
-      });
+      const composed = composeMail(record, visitorLink);
+      await mail.send({ to: recipient, subject: composed.subject, body: composed.body });
       deliveredTo.add(recipient);
       db.prepare("UPDATE notifications SET delivered_to = ? WHERE id = ?").run(
         JSON.stringify([...deliveredTo]),
@@ -178,11 +261,14 @@ export function listNotifications(db: DatabaseSync): NotificationRow[] {
  * Staff retry of a failed alert. Retrying a sent notification is refused so
  * a successful alert can never be duplicated; retrying reuses the same row.
  * Alerts recorded before recipients were configured pick up the current list.
+ * A visitor-return retry mints a fresh link via `makeVisitorLink`, so the
+ * re-sent email never carries a stale token.
  */
 export async function retryNotificationById(
   db: DatabaseSync,
   mail: MailTransport,
   notificationId: string,
+  makeVisitorLink?: (conversationId: string) => Promise<string>,
 ): Promise<{ status: "sent" | "failed" } | "already_sent" | "not_found"> {
   const record = fetchNotification(db, notificationId);
   if (!record) {
@@ -201,6 +287,6 @@ export async function retryNotificationById(
       );
     }
   }
-  const result = await deliverNotification(db, mail, notificationId);
+  const result = await deliverNotification(db, mail, notificationId, makeVisitorLink);
   return result.status === "sent" ? { status: "sent" } : { status: "failed" };
 }
