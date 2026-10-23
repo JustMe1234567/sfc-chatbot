@@ -11,12 +11,21 @@ export interface Conversation {
 
 export type MessageRole = "visitor" | "bot" | "staff";
 
+/** A topic choice offered on a bot message when several rules matched. */
+export interface MessageChoice {
+  /** The published answer rule a selection resolves to. */
+  id: string;
+  topic: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
   role: MessageRole;
   text: string;
   link?: string;
+  /** Offered topics; a selection is answered from the chosen rule. */
+  choices?: MessageChoice[];
   createdAt: string;
 }
 

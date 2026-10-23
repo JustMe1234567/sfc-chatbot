@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { normalizeText } from "./domain/matcher";
 
 export interface SettingRow {
   key: string;
@@ -23,8 +24,9 @@ export function setSetting(db: DatabaseSync, key: string, value: string): void {
 const ALERT_RECIPIENTS_KEY = "alert_recipients";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function getAlertRecipients(db: DatabaseSync): string[] {
-  const raw = getSetting(db, ALERT_RECIPIENTS_KEY);
+/** A string-list setting; a corrupt value reads as empty rather than throwing. */
+function getStringListSetting(db: DatabaseSync, key: string): string[] {
+  const raw = getSetting(db, key);
   if (!raw) {
     return [];
   }
@@ -34,6 +36,10 @@ export function getAlertRecipients(db: DatabaseSync): string[] {
   } catch {
     return [];
   }
+}
+
+export function getAlertRecipients(db: DatabaseSync): string[] {
+  return getStringListSetting(db, ALERT_RECIPIENTS_KEY);
 }
 
 export function setAlertRecipients(db: DatabaseSync, recipients: string[]): void {
@@ -47,4 +53,43 @@ export function isValidRecipientList(recipients: unknown): recipients is string[
     recipients.length <= 10 &&
     recipients.every((item) => typeof item === "string" && EMAIL_PATTERN.test(item))
   );
+}
+
+const ESCALATION_PHRASES_KEY = "escalation_phrases";
+
+/** Launch defaults until editors configure the college's own wording. */
+export const DEFAULT_ESCALATION_PHRASES: readonly string[] = [
+  "talk to a person",
+  "speak to a human",
+];
+
+export function getEscalationPhrases(db: DatabaseSync): string[] {
+  return getStringListSetting(db, ESCALATION_PHRASES_KEY);
+}
+
+export function setEscalationPhrases(db: DatabaseSync, phrases: string[]): void {
+  setSetting(db, ESCALATION_PHRASES_KEY, JSON.stringify(phrases));
+}
+
+/** Zero phrases is valid (feature off); any phrase must stay a real phrase. */
+export function isValidEscalationPhraseList(phrases: unknown): phrases is string[] {
+  return (
+    Array.isArray(phrases) &&
+    phrases.length <= 50 &&
+    phrases.every(
+      (item) =>
+        typeof item === "string" &&
+        item.trim().length > 0 &&
+        item.trim().length <= 200 &&
+        normalizeText(item) !== "",
+    )
+  );
+}
+
+/** Insert-if-absent, mirroring the answer-rule seed: editors own the value
+ *  from the first boot, so restarts never overwrite their wording. */
+export function seedEscalationPhrases(db: DatabaseSync): void {
+  if (getSetting(db, ESCALATION_PHRASES_KEY) === null) {
+    setEscalationPhrases(db, [...DEFAULT_ESCALATION_PHRASES]);
+  }
 }

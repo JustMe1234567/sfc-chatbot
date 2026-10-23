@@ -22,6 +22,22 @@ function containsEveryKeyword(normalizedQuestion: string, condition: string[]): 
 }
 
 /**
+ * Whether a question contains any configured escalation phrase as a whole
+ * phrase after normalization. Explicit handoff wording must win over every
+ * answer rule, so the visitor reaches staff even when a rule also matches.
+ */
+export function matchesEscalationPhrase(question: string, phrases: string[]): boolean {
+  const normalized = normalizeText(question);
+  if (normalized === "") {
+    return false;
+  }
+  return phrases.some((phrase) => {
+    const normalizedPhrase = normalizeText(phrase);
+    return normalizedPhrase !== "" && containsWholePhrase(normalized, normalizedPhrase);
+  });
+}
+
+/**
  * Returns every published rule the question matches. A rule matches when the
  * question contains one of its phrases as a whole phrase, or contains every
  * keyword of one of its keyword conditions. The caller decides what to do

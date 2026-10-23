@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { bearerToken, visitorConversation } from "@/api/visitor";
-import { matchAnswerRules } from "@/domain/matcher";
+import { matchAnswerRules, matchesEscalationPhrase } from "@/domain/matcher";
+import { getEscalationPhrases } from "@/settings";
 import {
   createRateLimiter,
   HISTORY_RATE_LIMIT,
@@ -73,7 +74,56 @@ export async function POST(request: Request, context: RouteContext) {
   if (!conversation) {
     return authFailureResponse(request);
   }
-  const body = (await request.json().catch(() => null)) as { text?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    text?: unknown;
+    choice?: unknown;
+  } | null;
+
+  // The visitor picked one of the bot's offered topics (ticket 06): the
+  // selection answers from that exact published rule, so wording overlap can
+  // never re-ambiguate the visitor's own choice. The transcript records the
+  // picked topic as the visitor's words; no free text rides along.
+  if (body?.choice !== undefined) {
+    const invalidChoice = (): NextResponse =>
+      NextResponse.json(
+        { error: { code: "invalid_choice", message: "Pick one of the offered topics." } },
+        { status: 400 },
+      );
+    if (typeof body.choice !== "string" || body.choice.length === 0) {
+      return invalidChoice();
+    }
+    const { store } = await getChatbotService();
+    const rule = await store.getAnswerRule(body.choice);
+    if (!rule || rule.status !== "published") {
+      return invalidChoice();
+    }
+    if (conversation.state === "closed") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "conversation_closed",
+            message: "This conversation was closed. Ask a new question to start again.",
+          },
+        },
+        { status: 409 },
+      );
+    }
+    if (!messageLimiter.check(conversation.id)) {
+      return NextResponse.json(
+        { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
+        { status: 429 },
+      );
+    }
+    await store.appendMessage(newMessage(conversation.id, "visitor", rule.topic));
+    if (conversation.state !== "bot_active") {
+      // Staff help is already requested; bot replies stay paused.
+      return NextResponse.json({ conversation, reply: null });
+    }
+    const reply = newMessage(conversation.id, "bot", rule.response, rule.link);
+    await store.appendMessage(reply);
+    return NextResponse.json({ conversation, reply });
+  }
+
   const validation = validateVisitorText(body?.text);
   if (!validation.ok) {
     return NextResponse.json(
@@ -101,7 +151,7 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const { store } = await getChatbotService();
+  const { store, db, mail } = await getChatbotService();
   await store.appendMessage(newMessage(conversation.id, "visitor", validation.text));
 
   // Once staff help is requested, automated answers pause for the rest of the
@@ -110,30 +160,50 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ conversation, reply: null });
   }
 
-  const rules = await store.listPublishedAnswerRules();
-  const matches = matchAnswerRules(validation.text, rules);
-  // Exactly one match answers; zero or several matches never guess. Ticket 06
-  // turns several matches into topic choices.
-  const rule = matches.length === 1 ? matches[0] : undefined;
-
-  if (!rule) {
-    const escalated: Conversation = { ...conversation, state: "awaiting_staff" };
-    await store.updateConversationState(escalated.id, "awaiting_staff");
-    const reply = newMessage(conversation.id, "bot", HANDOFF_REPLY);
+  // An unknown question and an explicit handoff phrase produce the same
+  // escalation; alerting must never fail the visitor's response, and a failed
+  // alert stays visible on the notifications page for retry.
+  async function escalate(target: Conversation): Promise<Response> {
+    const escalated: Conversation = { ...target, state: "awaiting_staff" };
+    await store.updateConversationState(target.id, "awaiting_staff");
+    const reply = newMessage(target.id, "bot", HANDOFF_REPLY);
     await store.appendMessage(reply);
-    // Alerting must never fail the visitor's escalation response; a failed
-    // alert stays visible on the notifications page for retry.
     try {
-      const { db, mail } = await getChatbotService();
       const { recordEscalationAlert } = await import("@/mail/notifications");
-      await recordEscalationAlert(db, mail, conversation.id);
+      await recordEscalationAlert(db, mail, target.id);
     } catch (error) {
       console.error("escalation alert recording failed:", error);
     }
     return NextResponse.json({ conversation: escalated, reply });
   }
 
-  const reply = newMessage(conversation.id, "bot", rule.response, rule.link);
+  // Explicit handoff wording wins over every answer rule (ticket 06).
+  if (matchesEscalationPhrase(validation.text, getEscalationPhrases(db))) {
+    return escalate(conversation);
+  }
+
+  const rules = await store.listPublishedAnswerRules();
+  const matches = matchAnswerRules(validation.text, rules);
+
+  if (matches.length === 0) {
+    return escalate(conversation);
+  }
+  if (matches.length === 1) {
+    const rule = matches[0]!;
+    const reply = newMessage(conversation.id, "bot", rule.response, rule.link);
+    await store.appendMessage(reply);
+    return NextResponse.json({ conversation, reply });
+  }
+
+  // Several plausible matches never guess: the bot offers the matching topics
+  // as choices, and the visitor's selection answers from the chosen rule.
+  const topicNames = matches.map((rule) => rule.topic).join(", ");
+  const reply = newMessage(
+    conversation.id,
+    "bot",
+    `That sounds like it could fit more than one of my topics: ${topicNames}. Pick the one closest to your question.`,
+  );
+  reply.choices = matches.map((rule) => ({ id: rule.id, topic: rule.topic }));
   await store.appendMessage(reply);
   return NextResponse.json({ conversation, reply });
 }

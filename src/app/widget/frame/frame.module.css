@@ -54,6 +54,14 @@
   padding: 8px 16px 0;
 }
 
+/* Same chips, but inside a chat bubble: no horizontal padding. */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0 0;
+}
+
 .topicButton {
   border: 1px solid #cbd2dc;
   background: #f3f5f9;

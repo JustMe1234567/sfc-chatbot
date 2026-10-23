@@ -1,6 +1,7 @@
 import { openDatabase } from "./sqlite";
 import { createSqliteStore } from "../store/sqliteStore";
 import { seedAnswerRules } from "../store/seed";
+import { seedEscalationPhrases } from "../settings";
 import { createAuth, type Auth } from "../auth/server";
 import { createMailTransportFromEnv } from "../mail/transport";
 import type { MailTransport } from "../mail/outbox";
@@ -30,6 +31,7 @@ export function getChatbotService(): Promise<ChatbotService> {
       const db = openDatabase(appDbPath());
       const store = createSqliteStore(db);
       await seedAnswerRules(store);
+      seedEscalationPhrases(db);
       const mail = createMailTransportFromEnv(db);
       const auth = createAuth({ db, mail, baseUrl: appBaseUrl() });
       return { store, db, auth, mail };

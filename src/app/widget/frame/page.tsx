@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_LENGTH } from "@/domain/limits";
-import type { MessageRole } from "@/domain/types";
+import type { MessageChoice, MessageRole } from "@/domain/types";
 import styles from "./frame.module.css";
 
 interface StoredSession {
@@ -16,6 +16,7 @@ interface DisplayedMessage {
   role: MessageRole;
   text: string;
   link?: string;
+  choices?: MessageChoice[];
 }
 
 /** A published answer rule's topic button, served by /api/v1/topics. */
@@ -216,6 +217,7 @@ export default function WidgetFrame() {
   async function postMessage(
     session: StoredSession | null,
     text: string,
+    choice?: string,
   ): Promise<Response> {
     if (!session) {
       showError();
@@ -227,11 +229,13 @@ export default function WidgetFrame() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify({ text }),
+      // A selection is just the rule id: the transcript records the picked
+      // topic, exactly as the API does server-side.
+      body: JSON.stringify(choice ? { choice } : { text }),
     });
   }
 
-  async function send(text: string): Promise<void> {
+  async function send(text: string, choice?: string): Promise<void> {
     if (text.length === 0 || text.length > MAX_MESSAGE_LENGTH || sending) {
       return;
     }
@@ -247,11 +251,11 @@ export default function WidgetFrame() {
     setQuestion("");
     setSending(true);
     try {
-      let response = await postMessage(session, text);
+      let response = await postMessage(session, text, choice);
       if (response.status === 401 || response.status === 404) {
         // The stored credential stopped working: start over once.
         dropSession();
-        response = await postMessage(await ensureSession(), text);
+        response = await postMessage(await ensureSession(), text, choice);
         if (!response || !response.ok) {
           showError();
           return;
@@ -272,7 +276,7 @@ export default function WidgetFrame() {
           if (!fresh) {
             return;
           }
-          response = await postMessage(fresh, text);
+          response = await postMessage(fresh, text, choice);
           if (!response.ok) {
             showError();
             return;
@@ -349,7 +353,7 @@ export default function WidgetFrame() {
         </p>
       ) : null}
       <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <li key={message.id} className={`${styles.message} ${styles[message.role]}`}>
             {message.text}
             {message.link && isHttpLink(message.link) && (
@@ -357,6 +361,21 @@ export default function WidgetFrame() {
                 Visit the college page
               </a>
             )}
+            {index === messages.length - 1 && message.choices ? (
+              <div className={styles.choices}>
+                {message.choices.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className={styles.topicButton}
+                    disabled={sending}
+                    onClick={() => void send(choice.topic, choice.id)}
+                  >
+                    {choice.topic}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </li>
         ))}
       </ol>

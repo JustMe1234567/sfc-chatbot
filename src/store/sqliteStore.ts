@@ -20,6 +20,7 @@ interface MessageRow {
   role: Message["role"];
   text: string;
   link: string | null;
+  choices: string | null;
   created_at: string;
 }
 
@@ -54,12 +55,23 @@ function rowToConversation(row: ConversationRow): Conversation {
 }
 
 function rowToMessage(row: MessageRow): Message {
+  let choices: Message["choices"];
+  if (row.choices) {
+    try {
+      choices = JSON.parse(row.choices) as Message["choices"];
+    } catch {
+      // A corrupt offer must not take the whole transcript down; the text
+      // still reads and a fresh question re-offers topics.
+      choices = undefined;
+    }
+  }
   return {
     id: row.id,
     conversationId: row.conversation_id,
     role: row.role,
     text: row.text,
     ...(row.link ? { link: row.link } : {}),
+    ...(choices ? { choices } : {}),
     createdAt: row.created_at,
   };
 }
@@ -156,13 +168,14 @@ export function createSqliteStore(db: DatabaseSync): Store {
 
     async appendMessage(message) {
       db.prepare(
-        "INSERT INTO messages (id, conversation_id, role, text, link, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO messages (id, conversation_id, role, text, link, choices, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       ).run(
         message.id,
         message.conversationId,
         message.role,
         message.text,
         message.link ?? null,
+        message.choices ? JSON.stringify(message.choices) : null,
         message.createdAt,
       );
     },
@@ -172,7 +185,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
         .prepare(
           // rowid breaks same-timestamp ties deterministically in SQLite; the
           // Postgres store for ticket 11 needs its own monotonic tie-break.
-          "SELECT id, conversation_id, role, text, link, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at, rowid",
+          "SELECT id, conversation_id, role, text, link, choices, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at, rowid",
         )
         .all(conversationId) as unknown as MessageRow[];
       return rows.map(rowToMessage);

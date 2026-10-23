@@ -3,7 +3,9 @@ import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
 import { getChatbotService } from "@/db/service";
+import { getEscalationPhrases } from "@/settings";
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
+import EscalationPhrasesForm from "./escalation-phrases-form";
 import styles from "../dashboard.module.css";
 
 function formatDate(iso: string | null): string {
@@ -24,6 +26,7 @@ export default async function AnswersPage() {
 
   const { store, db } = await getChatbotService();
   const rules = rulesWithPublisherNames(db, await store.listAnswerRules());
+  const phrases = getEscalationPhrases(db);
 
   return (
     <main className={styles.shell}>
@@ -75,6 +78,10 @@ export default async function AnswersPage() {
           ))}
         </div>
       )}
+
+      <div className={styles.inbox}>
+        <EscalationPhrasesForm initialPhrases={phrases} />
+      </div>
     </main>
   );
 }
