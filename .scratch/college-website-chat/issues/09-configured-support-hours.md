@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Unknown question reaches the shared inbox.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] An owner can set and change support hours and their time zone in the dashboard.
 - [x] The widget shows the configured hours and appropriate handoff wording inside and outside those hours.
@@ -22,3 +22,5 @@ Judgment calls:
 - Schedule rendering joins contiguous days ("Monday to Friday") including wrap-around runs ("Friday to Sunday") and falls back to a comma list for scattered days.
 - Reads apply the same validation predicate as writes: a corrupt or hand-edited settings row reads as unconfigured (general message) instead of reaching the visitor path with a bogus or throwing time zone.
 - A closing time of midnight (endMinute 1440) is legal via the API; the edit form displays it as 23:59 (no valid `type="time"` spelling for 24:00), so re-saving narrows the window by one minute.
+
+**2026-10-24 — accepted as complete (batch).** Accepted together with tickets 08–10 in one batch ahead of the end-of-project review; the implementation, automated suites, production checks, and recorded judgment calls stand as implemented.

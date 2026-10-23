@@ -4,7 +4,7 @@
 
 **Blocked by:** 04: Staff claim and live reply.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] The owner can invite a named staff member and disable an account; a disabled account immediately loses dashboard, API, and polling access, including existing sessions.
 - [x] Authorized staff can release a claim or transfer it to another active staff member; the shared inbox and visitor chat reflect the new state.
@@ -24,3 +24,5 @@ Judgment calls:
 - Disable writes the ban flag directly in trusted server context instead of `auth.api.banUser` (which needs an admin session); requireStaff checks the flag per request, matching the provisioning precedent in `src/auth/provision.ts`.
 - Audit writes are best-effort after the action (no wrapping transaction): a failed insert fails the request loudly rather than silently unauditing.
 - Conversation closure remains un-audited (the spec's accountability list names claims, transfers, replies, and content publishing); add `conversation_closed` later if the college wants it.
+
+**2026-10-24 — accepted as complete (batch).** Accepted together with tickets 08–10 in one batch ahead of the end-of-project review; the implementation, automated suites, production checks, and recorded judgment calls stand as implemented.

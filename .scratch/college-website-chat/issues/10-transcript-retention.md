@@ -4,7 +4,7 @@
 
 **Blocked by:** 07: Visitor email and secure return.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] An owner can configure the retention period and see the current value in the dashboard.
 - [x] An automated cleanup removes closed conversations, messages, and visitor email addresses after the configured period.
@@ -25,3 +25,5 @@ Judgment calls:
 - Conversations closed before migration get `closed_at = migration time`, starting a fresh period on upgrade rather than deleting old transcripts on arrival.
 - The notification row for a deleted conversation goes with it: with the conversation gone there is nothing to retry, and its unique slot no longer matters.
 
+
+**2026-10-24 — accepted as complete (batch).** Accepted together with tickets 08–10 in one batch ahead of the end-of-project review; the implementation, automated suites, production checks, and recorded judgment calls stand as implemented.
