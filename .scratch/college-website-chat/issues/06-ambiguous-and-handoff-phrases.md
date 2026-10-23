@@ -4,7 +4,7 @@
 
 **Blocked by:** 05: Publish answer rules and topic buttons.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Staff can configure escalation phrases in the dashboard, and changes take effect without a widget redeploy.
 - [x] Matching normalizes case, spacing, and punctuation and uses phrase or word boundaries so partial words do not trigger rules.
@@ -23,3 +23,5 @@ Judgment calls:
 - Choice buttons are interactive only on the latest message; older offers remain visible as text in the transcript.
 - Phrases are seeded insert-if-absent with "talk to a person" / "speak to a human"; an empty list is valid (feature off; unknown questions still escalate).
 - Identically-normalizing duplicate phrases ("Talk to a person" / "talk to a person!") are accepted as-is — harmless to matching, editor-unfriendly; dedupe can ride along with ticket 08's settings work if wanted.
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation, its browser checks, and the recorded judgment calls as they stand. Status set to `resolved`.

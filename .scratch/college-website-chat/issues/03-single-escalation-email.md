@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Unknown question reaches the shared inbox.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 
 - [x] An owner can configure the staff alert destination and an approved email sender is used from the server.
@@ -33,3 +33,5 @@ Notes for the human pass:
 - The Resend HTTP API stands in for "the approved sender" until the college picks one; swapping providers is one function in `src/mail/transport.ts`.
 - `tests/creation-abuse.test.ts` (ticket 01 suite) was relaxed from exact throttled counts to "first 100 succeed + throttle engages" because under full-suite parallel load the run can straddle the 60 s rate-limit window, which legitimately resets counting.
 - Access-control vocabulary and `better-auth` were left as-is; no new auth surface this ticket.
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation, its browser checks, and the recorded judgment calls as they stand. Status set to `resolved`.

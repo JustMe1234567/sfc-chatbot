@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Unknown question reaches the shared inbox.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Authorized content editors can create, revise, preview, publish, and unpublish an answer rule.
 - [x] Published rules can include a topic button, approved response, phrase aliases or keyword conditions, and an optional college page link.
@@ -25,3 +25,5 @@ Judgment calls:
 - Unpublish and revise record no actor yet; the accountability audit trail (spec: records content publishing) belongs with ticket 08's staff-management audit work.
 - Seeding is now insert-if-absent so a restart cannot overwrite dashboard edits of seeded rules.
 - Tests warm the app service in `beforeAll` (helpers.warmChatbotService): cold service init under a full parallel suite run could exceed a first test's 5s timeout (pre-existing, reproduced on the unmodified tree).
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation, its browser checks, and the recorded judgment calls as they stand. Status set to `resolved`.

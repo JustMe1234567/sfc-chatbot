@@ -4,7 +4,7 @@
 
 **Blocked by:** 03: One reliable escalation email; 04: Staff claim and live reply.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Email is requested only at escalation and is optional; declining it keeps live chat available with a clear explanation of the follow-up limit.
 - [x] When staff reply to a visitor who has left and provided email, one visitor notification contains a short-lived, revocable return link and no full transcript.
@@ -23,3 +23,5 @@ Judgment calls:
 - The widget's email prompt reappears after a reload while awaiting staff (decided state is client-side); re-submitting overwrites the stored address. The decline path is client-only and shows the story-15 warning.
 - Return links stay valid after staff close the conversation: the returning visitor reads history and their next question starts a fresh conversation.
 - New `CHATBOT_MAIL_TRANSPORT=outbox` test-transport mode supports local production-build browser checks without weakening the production sender guard.
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation, its browser checks, and the recorded judgment calls as they stand. Status set to `resolved`.

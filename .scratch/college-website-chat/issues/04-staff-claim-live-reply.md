@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Unknown question reaches the shared inbox.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 
 - [x] Claiming is atomic: when two staff members try at once, only one becomes the owner and the other sees the current assignment.
@@ -33,3 +33,5 @@ Notes for the human pass:
 - The claim-contention test runs two claims in one process; SQLite serializes them, and the conditional UPDATE (not the test harness) is what enforces single ownership. Cross-process contention relies on SQLite's write lock on that same statement.
 - `BETTER_AUTH_SECRET` rotation invalidates enrolled TOTP secrets (better-auth encrypts them with it) — surfaced during local production-run setup; worth a line in the eventual ops runbook.
 - RATE_WINDOW_MS is a test-only env override; production always uses the 60 s default.
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation, its browser checks, and the recorded judgment calls as they stand. Status set to `resolved`.

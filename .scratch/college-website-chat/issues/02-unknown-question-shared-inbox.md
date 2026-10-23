@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Approved answer in the WordPress widget.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 
 - [x] An unmatched question creates one escalation and places the conversation in the unclaimed shared inbox.
@@ -36,3 +36,5 @@ Notes for the human pass:
 - `sameOriginGuard` (CSRF for cookie-authenticated mutations) is live on `revoke-all` and will wrap the ticket 04 claim/reply mutations.
 - The owner ban/unban flow is exercised through Better Auth's admin API; the dashboard UI for invites/disablement is ticket 08.
 - Access-control role vocabulary for answer rules/staff/settings is declared but unused until tickets 05/08.
+
+**2026-10-23 — accepted as complete.** The human pass accepted the implementation, its browser checks, and the recorded judgment calls as they stand. Status set to `resolved`.
