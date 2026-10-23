@@ -11,6 +11,8 @@ export interface Conversation {
   visitorEmail: string | null;
   /** Last authenticated visitor request; stale means the visitor departed. */
   visitorLastSeenAt: string | null;
+  /** When staff closed the conversation; the retention clock starts here. */
+  closedAt: string | null;
 }
 
 export type MessageRole = "visitor" | "bot" | "staff";
@@ -112,6 +114,17 @@ export interface ReturnToken {
 }
 
 /**
+ * The operator-visible record of one cleanup pass that removed something
+ * (ticket 10): counts only — never message text or contact details.
+ */
+export interface RetentionRun {
+  id: string;
+  ranAt: string;
+  retentionDays: number;
+  removedConversations: number;
+}
+
+/**
  * Persistence port for the application. The in-memory implementation backs
  * tests and local development; a Postgres-backed implementation can be added
  * without touching the HTTP layer.
@@ -141,6 +154,27 @@ export interface Store {
    * returns null unless the conversation is currently claimed.
    */
   transferConversation(id: string, toStaffId: string): Promise<Conversation | null>;
+  /**
+   * Closes a claimed conversation, stamping the moment its retention period
+   * starts to run.
+   */
+  closeConversation(id: string): Promise<void>;
+  /**
+   * Closed conversations whose retention period ended before the cutoff
+   * instant: the retention sweep's candidates.
+   */
+  listConversationsClosedBefore(cutoffIso: string): Promise<Conversation[]>;
+  /**
+   * Removes one closed conversation with everything that makes it reachable
+   * or attributable to a visitor: messages, visitor sessions, return tokens,
+   * and notification records. Audit entries survive with their conversation
+   * link cleared. Returns false unless a closed conversation was removed.
+   */
+  purgeClosedConversation(id: string): Promise<boolean>;
+  /** Records one cleanup pass for the operator (counts only). */
+  recordRetentionRun(run: RetentionRun): Promise<void>;
+  /** The most recent recorded cleanup pass, if any. */
+  getLatestRetentionRun(): Promise<RetentionRun | null>;
   createSession(session: VisitorSession): Promise<void>;
   findConversationIdByTokenHash(tokenHash: string): Promise<string | null>;
   createReturnToken(token: ReturnToken): Promise<void>;

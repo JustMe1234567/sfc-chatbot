@@ -36,3 +36,9 @@ A short-lived, single-use link mailed to a visitor so they can resume their own 
 
 **Support hours**:
 The staff desk's open days and times, expressed in the college's own time zone. Handoff wording reflects them; while unconfigured, visitors get a general follow-up message that promises no response time.
+
+**Retention period**:
+The owner-configured number of days a closed conversation's transcript and visitor contact details are kept. Once the period passes, cleanup removes the conversation, its messages, and every way back into it; while unconfigured, closed transcripts are kept indefinitely.
+
+**Retention run**:
+The operator-visible record of one cleanup pass that removed expired conversations. It carries counts only — never message text or contact details.

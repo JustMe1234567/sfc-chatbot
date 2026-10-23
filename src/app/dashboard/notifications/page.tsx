@@ -3,11 +3,13 @@ import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { listNotifications } from "@/mail/notifications";
-import { getAlertRecipients, getSupportHours } from "@/settings";
+import { getAlertRecipients, getSupportHours, getTranscriptRetentionDays } from "@/settings";
 import { scheduleSummary } from "@/domain/hours";
+import { latestRetentionRun } from "@/domain/retention";
 import { getChatbotService } from "@/db/service";
 import AlertSettingsForm from "./alert-settings-form";
 import SupportHoursForm from "./support-hours-form";
+import RetentionForm from "./retention-form";
 import RetryButton from "./retry-button";
 import styles from "../dashboard.module.css";
 
@@ -22,10 +24,12 @@ export default async function NotificationsPage() {
     );
   }
 
-  const { db } = await getChatbotService();
+  const { db, store } = await getChatbotService();
   const notifications = await listNotifications(db);
   const recipients = getAlertRecipients(db);
   const supportHours = getSupportHours(db);
+  const retentionDays = getTranscriptRetentionDays(db);
+  const lastRun = await latestRetentionRun(store);
 
   return (
     <main className={styles.shell}>
@@ -48,6 +52,17 @@ export default async function NotificationsPage() {
       ) : (
         <p className={styles.hint}>
           Alerts currently go to: {recipients.length > 0 ? recipients.join(", ") : "not configured"}
+        </p>
+      )}
+
+      {guard.staff.role === "owner" ? (
+        <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
+      ) : (
+        <p className={styles.hint}>
+          Transcript retention:{" "}
+          {retentionDays !== null
+            ? `${retentionDays} days after closure`
+            : "not configured (closed transcripts are kept)"}
         </p>
       )}
 

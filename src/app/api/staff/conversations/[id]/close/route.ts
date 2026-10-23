@@ -48,7 +48,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { store } = await getChatbotService();
-  await store.updateConversationState(id, "closed");
+  await store.closeConversation(id);
   const notice: Message = {
     id: crypto.randomUUID(),
     conversationId: id,

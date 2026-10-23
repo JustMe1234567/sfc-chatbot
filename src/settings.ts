@@ -95,6 +95,45 @@ export function seedEscalationPhrases(db: DatabaseSync): void {
   }
 }
 
+const TRANSCRIPT_RETENTION_KEY = "transcript_retention_days";
+
+export const MIN_RETENTION_DAYS = 1;
+export const MAX_RETENTION_DAYS = 3650;
+
+/**
+ * The configured transcript retention period in days, or null while the
+ * college has not set one (closed transcripts are then kept indefinitely).
+ * A corrupt or hand-edited row reads as unconfigured, mirroring support
+ * hours: retention must never delete on the strength of a bad value.
+ */
+export function getTranscriptRetentionDays(db: DatabaseSync): number | null {
+  const raw = getSetting(db, TRANSCRIPT_RETENTION_KEY);
+  if (raw === null) {
+    return null;
+  }
+  const parsed = Number(raw);
+  return isValidRetentionDays(parsed) ? parsed : null;
+}
+
+/** Sets the period; null clears it back to keeping closed transcripts. */
+export function setTranscriptRetentionDays(db: DatabaseSync, days: number | null): void {
+  if (days === null) {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(TRANSCRIPT_RETENTION_KEY);
+    return;
+  }
+  setSetting(db, TRANSCRIPT_RETENTION_KEY, String(days));
+}
+
+/** Whole days within a sane lifetime: at least a day, at most a decade. */
+export function isValidRetentionDays(input: unknown): input is number {
+  return (
+    typeof input === "number" &&
+    Number.isInteger(input) &&
+    input >= MIN_RETENTION_DAYS &&
+    input <= MAX_RETENTION_DAYS
+  );
+}
+
 const SUPPORT_HOURS_KEY = "support_hours";
 
 export function getSupportHours(db: DatabaseSync): SupportHours | null {

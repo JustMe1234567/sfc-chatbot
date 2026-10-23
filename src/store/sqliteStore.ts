@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   Conversation,
   Message,
+  RetentionRun,
   ReturnToken,
   Store,
 } from "../domain/types";
@@ -38,6 +39,7 @@ interface ConversationRow {
   claimed_at: string | null;
   visitor_email: string | null;
   visitor_last_seen_at: string | null;
+  closed_at: string | null;
 }
 
 interface MessageRow {
@@ -79,11 +81,12 @@ function rowToConversation(row: ConversationRow): Conversation {
     claimedAt: row.claimed_at,
     visitorEmail: row.visitor_email,
     visitorLastSeenAt: row.visitor_last_seen_at,
+    closedAt: row.closed_at,
   };
 }
 
 const CONVERSATION_COLUMNS =
-  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at";
+  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at";
 
 function rowToMessage(row: MessageRow): Message {
   let choices: Message["choices"];
@@ -217,6 +220,81 @@ export function createSqliteStore(db: DatabaseSync): Store {
         .prepare(`SELECT ${CONVERSATION_COLUMNS} FROM conversations WHERE id = ?`)
         .get(id) as unknown as ConversationRow;
       return rowToConversation(row);
+    },
+
+    // Closure is the only writer of closed_at. The state guard makes a second
+    // close a no-op rather than a silent restart of the retention clock, so
+    // the stamp always measures from the real closure.
+    async closeConversation(id) {
+      db.prepare(
+        "UPDATE conversations SET state = 'closed', closed_at = ? WHERE id = ? AND state <> 'closed'",
+      ).run(new Date().toISOString(), id);
+    },
+
+    async listConversationsClosedBefore(cutoffIso) {
+      const rows = db
+        .prepare(
+          `SELECT ${CONVERSATION_COLUMNS} FROM conversations
+           WHERE state = 'closed' AND closed_at IS NOT NULL AND closed_at < ?
+           ORDER BY closed_at`,
+        )
+        .all(cutoffIso) as unknown as ConversationRow[];
+      return rows.map(rowToConversation);
+    },
+
+    // One transaction removes the transcript together with every path back to
+    // it. The audit rows are detached, not deleted: accountability must
+    // outlive the transcript, and the explicit UPDATE (rather than a cascade)
+    // keeps the foreign key strict for every other deletion path. The
+    // conditional final DELETE re-verifies the closed state so a conversation
+    // that reopened between listing and purging survives untouched.
+    async purgeClosedConversation(id) {
+      db.exec("BEGIN");
+      try {
+        db.prepare("UPDATE audit_log SET conversation_id = NULL WHERE conversation_id = ?").run(id);
+        db.prepare("DELETE FROM notifications WHERE conversation_id = ?").run(id);
+        db.prepare("DELETE FROM return_tokens WHERE conversation_id = ?").run(id);
+        db.prepare("DELETE FROM visitor_sessions WHERE conversation_id = ?").run(id);
+        db.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
+        const removed = db
+          .prepare("DELETE FROM conversations WHERE id = ? AND state = 'closed'")
+          .run(id);
+        if (removed.changes === 0) {
+          db.exec("ROLLBACK");
+          return false;
+        }
+        db.exec("COMMIT");
+        return true;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    },
+
+    async recordRetentionRun(run) {
+      db.prepare(
+        "INSERT INTO retention_runs (id, ran_at, retention_days, removed_conversations) VALUES (?, ?, ?, ?)",
+      ).run(run.id, run.ranAt, run.retentionDays, run.removedConversations);
+    },
+
+    // rowid breaks same-timestamp ties; the Postgres store for ticket 11
+    // needs its own monotonic tie-break.
+    async getLatestRetentionRun() {
+      const row = db
+        .prepare(
+          "SELECT id, ran_at, retention_days, removed_conversations FROM retention_runs ORDER BY ran_at DESC, rowid DESC LIMIT 1",
+        )
+        .get() as
+        | { id: string; ran_at: string; retention_days: number; removed_conversations: number }
+        | undefined;
+      return row
+        ? {
+            id: row.id,
+            ranAt: row.ran_at,
+            retentionDays: row.retention_days,
+            removedConversations: row.removed_conversations,
+          }
+        : null;
     },
 
     async createSession(session) {

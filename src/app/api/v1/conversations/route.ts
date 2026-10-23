@@ -27,6 +27,7 @@ export async function POST(request: Request) {
     claimedAt: null,
     visitorEmail: null,
     visitorLastSeenAt: null,
+    closedAt: null,
     createdAt: new Date().toISOString(),
   };
   const token = createSessionToken();
