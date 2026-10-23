@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeText } from "./domain/matcher";
+import type { SupportHours } from "./domain/types";
 
 export interface SettingRow {
   key: string;
@@ -92,4 +93,69 @@ export function seedEscalationPhrases(db: DatabaseSync): void {
   if (getSetting(db, ESCALATION_PHRASES_KEY) === null) {
     setEscalationPhrases(db, [...DEFAULT_ESCALATION_PHRASES]);
   }
+}
+
+const SUPPORT_HOURS_KEY = "support_hours";
+
+export function getSupportHours(db: DatabaseSync): SupportHours | null {
+  const raw = getSetting(db, SUPPORT_HOURS_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    // The same predicate as writes: a corrupt or hand-edited row reads as
+    // unconfigured (general message) instead of reaching the visitor path
+    // with values that could throw or show a bogus schedule.
+    return isValidSupportHours(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setSupportHours(db: DatabaseSync, hours: SupportHours | null): void {
+  // A null clear removes the key so reads and the dashboard treat the desk
+  // as unconfigured rather than remembering a stale schedule.
+  if (hours === null) {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(SUPPORT_HOURS_KEY);
+    return;
+  }
+  setSetting(db, SUPPORT_HOURS_KEY, JSON.stringify(hours));
+}
+
+/** Shape + range validation; the zone must be a real IANA time zone. */
+export function isValidSupportHours(input: unknown): input is SupportHours {
+  if (typeof input !== "object" || input === null) {
+    return false;
+  }
+  const candidate = input as Partial<SupportHours>;
+  if (typeof candidate.timeZone !== "string" || !Array.isArray(candidate.days)) {
+    return false;
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate.timeZone });
+  } catch {
+    return false;
+  }
+  const { startMinute, endMinute } = candidate;
+  if (
+    typeof startMinute !== "number" ||
+    typeof endMinute !== "number" ||
+    !Number.isInteger(startMinute) ||
+    !Number.isInteger(endMinute) ||
+    startMinute < 0 ||
+    startMinute > 23 * 60 + 59 ||
+    endMinute < 1 ||
+    endMinute > 24 * 60 ||
+    endMinute <= startMinute
+  ) {
+    return false;
+  }
+  const days = candidate.days;
+  if (days.length === 0 || days.length > 7) {
+    return false;
+  }
+  return days.every(
+    (day) => Number.isInteger(day) && day >= 0 && day <= 6 && days.indexOf(day) === days.lastIndexOf(day),
+  );
 }

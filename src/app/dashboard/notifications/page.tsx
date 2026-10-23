@@ -3,9 +3,11 @@ import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { listNotifications } from "@/mail/notifications";
-import { getAlertRecipients } from "@/settings";
+import { getAlertRecipients, getSupportHours } from "@/settings";
+import { scheduleSummary } from "@/domain/hours";
 import { getChatbotService } from "@/db/service";
 import AlertSettingsForm from "./alert-settings-form";
+import SupportHoursForm from "./support-hours-form";
 import RetryButton from "./retry-button";
 import styles from "../dashboard.module.css";
 
@@ -23,6 +25,7 @@ export default async function NotificationsPage() {
   const { db } = await getChatbotService();
   const notifications = await listNotifications(db);
   const recipients = getAlertRecipients(db);
+  const supportHours = getSupportHours(db);
 
   return (
     <main className={styles.shell}>
@@ -30,6 +33,15 @@ export default async function NotificationsPage() {
         <h1>Email alerts</h1>
         <Link href="/dashboard/inbox">Back to inbox</Link>
       </header>
+
+      {guard.staff.role === "owner" ? (
+        <SupportHoursForm initialHours={supportHours} />
+      ) : (
+        <p className={styles.hint}>
+          Support hours:{" "}
+          {supportHours ? scheduleSummary(supportHours) : "not configured (visitors get a general message)"}
+        </p>
+      )}
 
       {guard.staff.role === "owner" ? (
         <AlertSettingsForm initialRecipients={recipients} />

@@ -67,6 +67,18 @@ export interface VisitorSession {
   expiresAt: string;
 }
 
+/** When the staff desk is open, in the college's own time zone. */
+export interface SupportHours {
+  /** IANA time zone the hours are expressed in. */
+  timeZone: string;
+  /** Open days of week, 0 = Sunday .. 6 = Saturday. */
+  days: number[];
+  /** Opening minute of day, local, inclusive (0 = midnight). */
+  startMinute: number;
+  /** Closing minute of day, local, exclusive (24 * 60 = midnight). */
+  endMinute: number;
+}
+
 /** The accountability record of one security-sensitive staff action. */
 export interface AuditEntry {
   id: string;

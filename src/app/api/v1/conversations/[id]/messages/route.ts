@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
 import { matchAnswerRules, matchesEscalationPhrase } from "@/domain/matcher";
-import { getEscalationPhrases } from "@/settings";
+import { getEscalationPhrases, getSupportHours } from "@/settings";
+import { handoffReply } from "@/domain/hours";
 import {
   createRateLimiter,
   HISTORY_RATE_LIMIT,
@@ -13,10 +14,6 @@ import type { Conversation, Message } from "@/domain/types";
 
 const messageLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
-
-/** What the visitor is told when their question goes to staff (ticket 02). */
-const HANDOFF_REPLY =
-  "I can't answer that from my approved topics, so I've handed our conversation to the college staff team. A staff member will reply here — please stay in the chat if you can.";
 
 function newMessage(
   conversationId: string,
@@ -158,7 +155,7 @@ export async function POST(request: Request, context: RouteContext) {
   async function escalate(target: Conversation): Promise<Response> {
     const escalated: Conversation = { ...target, state: "awaiting_staff" };
     await store.updateConversationState(target.id, "awaiting_staff");
-    const reply = newMessage(target.id, "bot", HANDOFF_REPLY);
+    const reply = newMessage(target.id, "bot", handoffReply(getSupportHours(db)));
     await store.appendMessage(reply);
     try {
       const { recordEscalationAlert } = await import("@/mail/notifications");

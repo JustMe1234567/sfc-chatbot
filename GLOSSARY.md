@@ -33,3 +33,6 @@ Whether a visitor is still on the page, judged from how recently their credentia
 
 **Return link**:
 A short-lived, single-use link mailed to a visitor so they can resume their own conversation after leaving. Only its hash is stored; redeeming it grants a fresh visitor session.
+
+**Support hours**:
+The staff desk's open days and times, expressed in the college's own time zone. Handoff wording reflects them; while unconfigured, visitors get a general follow-up message that promises no response time.

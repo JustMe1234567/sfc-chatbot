@@ -1,0 +1,153 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { clockLabel } from "@/domain/hours";
+import type { SupportHours } from "@/domain/types";
+import styles from "../dashboard.module.css";
+
+const DAY_LABELS: [number, string][] = [
+  [0, "Sun"],
+  [1, "Mon"],
+  [2, "Tue"],
+  [3, "Wed"],
+  [4, "Thu"],
+  [5, "Fri"],
+  [6, "Sat"],
+];
+
+function timeToMinutes(value: string): number | null {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/**
+ * Owner configuration of the staff desk's open hours (ticket 09). The
+ * handoff wording visitors receive is composed from this setting at reply
+ * time; clearing it returns the promise-free general message.
+ */
+export default function SupportHoursForm({ initialHours }: { initialHours: SupportHours | null }) {
+  const router = useRouter();
+  const [timeZone, setTimeZone] = useState(initialHours?.timeZone ?? "");
+  const [days, setDays] = useState<number[]>(initialHours?.days ?? [1, 2, 3, 4, 5]);
+  // A closing time of midnight (24:00) has no valid <input type="time">
+  // spelling; the form shows 23:59 instead, and re-saving narrows the window
+  // by that one minute.
+  const [start, setStart] = useState(clockLabel(initialHours?.startMinute ?? 9 * 60));
+  const [end, setEnd] = useState(
+    clockLabel(Math.min(initialHours?.endMinute ?? 17 * 60, 23 * 60 + 59)),
+  );
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save(hours: SupportHours | null) {
+    setBusy(true);
+    setMessage("");
+    const response = await fetch("/api/staff/settings/support-hours", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hours }),
+    });
+    setBusy(false);
+    if (response.ok) {
+      setMessage(hours ? "Support hours saved." : "Support hours cleared; visitors get the general message.");
+      router.refresh();
+    } else {
+      const failure = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setMessage(failure?.error?.message ?? "Could not save the hours.");
+    }
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy || timeZone.trim().length === 0 || days.length === 0) {
+      return;
+    }
+    const startMinute = timeToMinutes(start);
+    const endMinute = timeToMinutes(end);
+    if (startMinute === null || endMinute === null || endMinute <= startMinute) {
+      setMessage("The closing time must be after the opening time.");
+      return;
+    }
+    await save({
+      timeZone: timeZone.trim(),
+      days: [...days].sort((a, b) => a - b),
+      startMinute,
+      endMinute,
+    });
+  }
+
+  return (
+    <form className={styles.ruleCard} onSubmit={submit}>
+      <h2>Support hours</h2>
+      <p className={styles.hint}>
+        Visitors are told when staff are on duty at handoff. Leave empty for a
+        general follow-up message that promises no response time.
+      </p>
+      <label htmlFor="hours-zone">Time zone (IANA, e.g. Europe/London)</label>
+      <input
+        id="hours-zone"
+        type="text"
+        value={timeZone}
+        placeholder="Europe/London"
+        onChange={(event) => setTimeZone(event.target.value)}
+      />
+      <fieldset className={styles.publishBar}>
+        <legend className={styles.hint}>Open days</legend>
+        {DAY_LABELS.map(([value, label]) => (
+          <label key={value} className={styles.hint}>
+            <input
+              type="checkbox"
+              checked={days.includes(value)}
+              onChange={(event) =>
+                setDays((current) =>
+                  event.target.checked
+                    ? [...current, value]
+                    : current.filter((day) => day !== value),
+                )
+              }
+            />{" "}
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      <label htmlFor="hours-start">Opening time</label>
+      <input
+        id="hours-start"
+        type="time"
+        value={start}
+        onChange={(event) => setStart(event.target.value)}
+      />
+      <label htmlFor="hours-end">Closing time</label>
+      <input
+        id="hours-end"
+        type="time"
+        value={end}
+        onChange={(event) => setEnd(event.target.value)}
+      />
+      <div className={styles.publishBar}>
+        <button type="submit" disabled={busy || timeZone.trim().length === 0 || days.length === 0}>
+          Save hours
+        </button>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          disabled={busy}
+          onClick={() => void save(null)}
+        >
+          Clear
+        </button>
+      </div>
+      {message ? (
+        <p className={styles.hint} role="status">
+          {message}
+        </p>
+      ) : null}
+    </form>
+  );
+}
