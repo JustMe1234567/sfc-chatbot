@@ -407,7 +407,11 @@ export default function WidgetFrame() {
   return (
     <main className={styles.panel}>
       <header className={styles.header}>
-        <span className={styles.title}>Chat with us</span>
+        <span className={styles.brand}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" className={styles.crest} />
+          <span className={styles.title}>Chat with us</span>
+        </span>
         <button
           type="button"
           className={styles.close}

@@ -131,7 +131,7 @@ describe("the visitor's selected choice answers", () => {
     const body = (await selection.json()) as ReplyBody;
     expect(body.conversation.state).toBe("bot_active");
     expect(body.reply?.text).toContain("$3,500");
-    expect(body.reply?.link).toBe("https://www.example-college.edu/fees");
+    expect(body.reply?.link).toBe("https://www.springfieldcollege.edu/fees");
 
     const history = await loadHistory(conversation);
     const historyBody = (await history.json()) as {

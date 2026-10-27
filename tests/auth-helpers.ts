@@ -108,7 +108,7 @@ export async function enrollTotp(
     throw new Error(`enroll sign-in failed: ${signIn.status} ${await signIn.text()}`);
   }
   const enable = await authRequest(jar, "/api/auth/two-factor/enable", {
-    body: { password, method: "totp", issuer: "Example College chat" },
+    body: { password, method: "totp", issuer: "Springfield College chat" },
   });
   const enabled = (await enable.json()) as { totpURI?: string };
   if (!enable.ok || !enabled.totpURI) {

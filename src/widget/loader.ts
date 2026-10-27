@@ -11,8 +11,13 @@
 const BOOT_MARKER = "sfc-chatbot-widget-v1";
 
 const STYLES = `
-.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;border:0;border-radius:999px;background:#1d3a6b;color:#fff;font:600 15px/1 system-ui,sans-serif;padding:14px 20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
-.sfcw-launcher:hover{background:#16305d}
+.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;border:0;border-radius:999px;background:#1d4e89;color:#fff;font:600 15px/1 system-ui,sans-serif;padding:9px 18px 9px 11px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;gap:8px}
+.sfcw-launcher:hover{background:#163c6b}
+.sfcw-launcher:focus-visible{outline:2px solid #e3a739;outline-offset:2px}
+/* The display above would override the hidden attribute's UA style. */
+.sfcw-launcher[hidden]{display:none}
+/* White plate: the crest's blue shield would vanish on the same-hue button. */
+.sfcw-launcher img{width:24px;height:24px;display:block;background:#fff;border-radius:6px;padding:1px}
 .sfcw-frame{position:fixed;right:16px;bottom:76px;z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px))}
 .sfcw-frame[hidden]{display:none}
 @media (max-width:480px){.sfcw-frame{right:8px;left:8px;bottom:72px;width:calc(100vw - 16px);height:calc(100vh - 88px)}}
@@ -37,8 +42,16 @@ function boot(): void {
   const launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = `sfcw-launcher ${BOOT_MARKER}`;
-  launcher.textContent = "Chat";
-  launcher.setAttribute("aria-label", "Chat with the college");
+  // The compact crest travels with the chatbot origin (ticket 16); the label
+  // text next to it carries the accessible name.
+  const crest = document.createElement("img");
+  crest.src = `${base}/brand/cropped-SFC-Final-Logo-Single.png`;
+  crest.alt = "";
+  const label = document.createElement("span");
+  label.textContent = "Chat";
+  launcher.appendChild(crest);
+  launcher.appendChild(label);
+  launcher.setAttribute("aria-label", "Chat with Springfield College");
   launcher.setAttribute("aria-expanded", "false");
   document.body.appendChild(launcher);
 
@@ -47,18 +60,22 @@ function boot(): void {
   const frame = document.createElement("iframe");
   frame.className = "sfcw-frame";
   frame.src = `${base}/widget/frame`;
-  frame.title = "Chat with the college";
+  frame.title = "Chat with Springfield College";
   frame.hidden = true;
   document.body.appendChild(frame);
 
   function close(): void {
     frame.hidden = true;
+    launcher.hidden = false;
     launcher.setAttribute("aria-expanded", "false");
     launcher.focus();
   }
 
   launcher.addEventListener("click", () => {
     frame.hidden = false;
+    // The open frame carries the crest in its own header; hiding the launcher
+    // avoids repeating the brand mark while the chat is on screen.
+    launcher.hidden = true;
     launcher.setAttribute("aria-expanded", "true");
     frame.contentWindow?.focus();
   });

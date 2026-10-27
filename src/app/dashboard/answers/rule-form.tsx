@@ -135,7 +135,7 @@ export default function RuleForm({
           type="text"
           value={values.link}
           onChange={(event) => set("link", event.target.value)}
-          placeholder="https://www.example-college.edu/..."
+          placeholder="https://www.springfieldcollege.edu/..."
         />
 
         <button type="submit" disabled={busy || !contentComplete}>

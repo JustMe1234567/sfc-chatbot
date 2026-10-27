@@ -61,7 +61,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
   }
 
   return betterAuth({
-    appName: "Example College chat",
+    appName: "Springfield College chat",
     baseURL: baseUrl,
     secret: secret ?? "dev-only-secret-7c1f4a2e9b8d4f6a0e3c5b7d9f1a2c4e6b8d0f2a4c6e8b0d2f4a6c8e0b2d4f6",
     database: { db: kysely, type: "sqlite" },
@@ -81,7 +81,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
       sendResetPassword: async ({ user, url }) => {
         await mail.send({
           to: user.email,
-          subject: "Reset your Example College chat password",
+          subject: "Reset your Springfield College chat password",
           body: `A password reset was requested for your staff account. Open ${url} to choose a new password. The link expires shortly and can be used once. If you did not request this, ignore this email.`,
         });
       },
@@ -98,7 +98,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
       sendVerificationEmail: async ({ user, url }) => {
         await mail.send({
           to: user.email,
-          subject: "Verify your Example College chat account",
+          subject: "Verify your Springfield College chat account",
           body: `Welcome, ${user.name}. Verify your staff account by opening ${url}.`,
         });
       },
@@ -121,7 +121,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
         defaultRole: "staff",
       }),
       twoFactor({
-        issuer: "Example College chat",
+        issuer: "Springfield College chat",
         skipVerificationOnEnable: false,
       }),
     ],

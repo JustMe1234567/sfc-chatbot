@@ -12,7 +12,7 @@ const SEEDED_RULES: AnswerRule[] = [
     topic: "Admissions",
     response:
       "You can apply online through our admissions portal. Undergraduate applications ask for your high school transcript and one reference letter. See the admissions page for the full checklist.",
-    link: "https://www.example-college.edu/admissions",
+    link: "https://www.springfieldcollege.edu/admissions",
     phrases: [
       "What are the admission requirements",
       "How do I apply",
@@ -29,7 +29,7 @@ const SEEDED_RULES: AnswerRule[] = [
     topic: "Fees",
     response:
       "Tuition for most programs is $3,500 per semester. See the fees page for the current schedule.",
-    link: "https://www.example-college.edu/fees",
+    link: "https://www.springfieldcollege.edu/fees",
     phrases: ["How much are the tuition fees", "Tuition fees", "Fees"],
     keywords: [["fees"], ["tuition"]],
     status: "published",

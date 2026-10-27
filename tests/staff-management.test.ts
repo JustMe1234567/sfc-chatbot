@@ -145,7 +145,7 @@ describe("the owner invites named staff", () => {
     });
     expect(signIn.ok).toBe(true);
     const enable = await authRequest(carolJar, "/api/auth/two-factor/enable", {
-      body: { password: body.initialPassword, method: "totp", issuer: "Example College chat" },
+      body: { password: body.initialPassword, method: "totp", issuer: "Springfield College chat" },
     });
     expect(enable.ok).toBe(true);
 

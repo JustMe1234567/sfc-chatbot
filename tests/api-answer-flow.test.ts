@@ -28,7 +28,7 @@ describe("visitor asks a question through the public API", () => {
     expect(body.reply.text).toBe(
       "You can apply online through our admissions portal. Undergraduate applications ask for your high school transcript and one reference letter. See the admissions page for the full checklist.",
     );
-    expect(body.reply.link).toBe("https://www.example-college.edu/admissions");
+    expect(body.reply.link).toBe("https://www.springfieldcollege.edu/admissions");
   });
 
   it("persists the visitor question and bot answer so they reappear after a reload", async () => {

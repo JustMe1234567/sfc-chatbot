@@ -27,7 +27,7 @@ export default function EnrollPage() {
     const result = await authClient.twoFactor.enable({
       password,
       method: "totp",
-      issuer: "Example College chat",
+      issuer: "Springfield College chat",
     });
     setBusy(false);
     const uri = result.data && "totpURI" in result.data ? result.data.totpURI : null;

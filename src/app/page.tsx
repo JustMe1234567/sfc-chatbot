@@ -1,7 +1,7 @@
 export default function Home() {
   return (
     <main style={{ maxWidth: "42rem", margin: "2rem auto", padding: "0 1rem" }}>
-      <h1>Example College chatbot</h1>
+      <h1>Springfield College chatbot</h1>
       <p>
         The chat widget is embedded on the college WordPress site. A local demo
         page reproduces that embed:{" "}

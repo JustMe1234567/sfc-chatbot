@@ -21,7 +21,7 @@ function sfc_chatbot_widget_url(): string
     // differ.
     return apply_filters(
         'sfc_chatbot_widget_url',
-        'https://chatbot.example-college.edu/widget/v1.js'
+        'https://chatbot.springfieldcollege.edu/widget/v1.js'
     );
 }
 
