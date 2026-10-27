@@ -41,7 +41,19 @@ The named identity of a college employee who can sign in to the private dashboar
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.
 
 **Presence**:
-Whether a visitor is still on the page, judged from how recently their credential made an authorized request. A staff reply to a departed visitor emails the return link; a reply to a present visitor does not.
+Whether a visitor is still on the page, judged from how recently their credential made an authorized request. A staff reply to a departed visitor emails the return link; a reply to a present visitor does not. Distinct from **analytics presence**, which needs no credential.
+
+**Analytics presence**:
+The anonymous, credential-free signal the widget sends while the embedded page is visible, used only for counting (ticket 17). A browser counts as a **live visitor** while its latest beat is within the last two minutes, whatever the state of its chat. See ADR 0002 for the privacy bounds.
+
+**Anonymous browser identifier**:
+A random UUID the widget generates in its own storage on the chatbot origin — shared by that browser's tabs, never derived from anything a person typed or identified themselves with — rotating at least as often as the analytics retention period. Only its SHA-256 hash reaches the database.
+
+**Reporting day**:
+The calendar day an analytics event belongs to, drawn in the site's configured reporting time zone (default Asia/Singapore). Chat and escalation rollups, daily visitor counts, and period boundaries all use it.
+
+**Analytics retention period**:
+The owner-configured number of days analytics rows (anonymous presence and daily rollups) are kept before expiry removes them; separate from the retention period that governs transcripts, and always on — a college that keeps transcripts forever still expires visitor identifiers.
 
 **Return link**:
 A short-lived, single-use link mailed to a visitor so they can resume their own conversation after leaving. Only its hash is stored; redeeming it grants a fresh visitor session.

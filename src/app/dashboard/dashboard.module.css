@@ -905,3 +905,127 @@ a:focus-visible {
     display: inline-block;
   }
 }
+
+/* Analytics (ticket 17): period switch, counter cards, and the daily table. */
+
+.periodTabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.periodTab,
+.periodTabActive {
+  border: 1px solid #c4cdda;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font: 550 14px system-ui, sans-serif;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.periodTab:hover {
+  border-color: var(--sfc-blue);
+}
+
+.periodTabActive {
+  background: var(--sfc-blue);
+  border-color: var(--sfc-blue);
+  color: #fff;
+}
+
+.periodTab:focus-visible,
+.periodTabActive:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 16px;
+}
+
+.statLabel {
+  font: 600 13px system-ui, sans-serif;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statValue {
+  font: 700 32px/1.1 system-ui, sans-serif;
+  color: var(--sfc-blue-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+.statNote {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.analyticsTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.analyticsTable th,
+.analyticsTable td {
+  text-align: right;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.analyticsTable thead th {
+  border-top: 0;
+  background: var(--sfc-blue-soft);
+  color: var(--sfc-blue-deep);
+  font: 600 13px system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.analyticsTable tbody th {
+  text-align: left;
+  font-weight: 550;
+}
+
+.hintBlock {
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .statGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .statGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsTable th,
+  .analyticsTable td {
+    padding: 8px 10px;
+  }
+}

@@ -193,9 +193,10 @@ export interface Store {
    * closes the old conversation unless already closed (staff closure's
    * timestamp is preserved), revokes its visitor sessions and unused return
    * links, and gets-or-creates the single successor conversation with the
-   * given credential. The resolved successor id comes back — a concurrent
-   * or retried clear joins the existing successor rather than the proposed
-   * one; unknown conversations yield null.
+   * given credential. Returns the resolved successor id and whether this
+   * call created it (a concurrent or retried clear joins the existing
+   * successor instead of minting a new one — ticket 17 counts only the
+   * creation as a chat started); unknown conversations yield null.
    */
   replaceConversation(
     oldId: string,
@@ -203,7 +204,7 @@ export interface Store {
     session: Omit<VisitorSession, "conversationId">,
     at: string,
     closingNotice: string,
-  ): Promise<string | null>;
+  ): Promise<{ successorId: string; created: boolean } | null>;
   /**
    * Closed conversations whose retention period ended before the cutoff
    * instant: the retention sweep's candidates.
@@ -244,4 +245,38 @@ export interface Store {
   /** Every rule, drafts included: the dashboard's answer-management view. */
   listAnswerRules(): Promise<AnswerRule[]>;
   listPublishedAnswerRules(): Promise<AnswerRule[]>;
+  /**
+   * Records an anonymous browser's presence beat (ticket 17): one row per
+   * browser per reporting day, the newer of the two instants kept. The hash
+   * is a SHA-256 of a client-generated random UUID — no IP, email, or chat
+   * identity is ever involved.
+   */
+  recordAnalyticsPresence(visitorHash: string, at: string, day: string): Promise<void>;
+  /** Advances the day's chat and escalation rollups (ticket 17). */
+  recordChatCount(day: string): Promise<void>;
+  recordEscalationCount(day: string): Promise<void>;
+  /**
+   * The analytics aggregates for one report (ticket 17): the live snapshot
+   * at the given cutoff instant, distinct browsers in the day range, and the
+   * per-day visitor and rollup counts. Aggregate queries only.
+   */
+  analyticsOverview(range: {
+    liveCutoff: string;
+    startDay: string;
+    endDay: string;
+  }): Promise<{
+    liveVisitors: number;
+    totalVisitors: number;
+    dailyVisitors: { day: string; visitors: number }[];
+    dailyCounts: { day: string; chats: number; escalations: number }[];
+  }>;
+  /**
+   * Removes analytics rows from before the retention cutoff day (ticket 17),
+   * returning how many rows of each kind went. Runs independently of
+   * transcript retention.
+   */
+  expireAnalyticsBefore(beforeDay: string): Promise<{
+    removedPresence: number;
+    removedDaily: number;
+  }>;
 }

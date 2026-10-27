@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
 import { createRateLimiter, MESSAGE_RATE_LIMIT } from "@/domain/limits";
 import { CLOSING_NOTICE } from "@/domain/conversations";
+import { recordChatStarted } from "@/domain/analytics";
 import { createSessionToken, hashSessionToken, sessionExpiryFrom } from "@/domain/tokens";
 import { getChatbotService } from "@/db/service";
 
@@ -37,16 +38,22 @@ export async function POST(request: Request, context: RouteContext) {
   const successorId = crypto.randomUUID();
   const token = createSessionToken();
   const expiresAt = sessionExpiryFrom(at);
-  const { store } = await getChatbotService();
-  const resolvedId = await store.replaceConversation(
+  const { store, db } = await getChatbotService();
+  const result = await store.replaceConversation(
     conversation.id,
     successorId,
     { tokenHash: hashSessionToken(token), createdAt: at.toISOString(), expiresAt },
     at.toISOString(),
     CLOSING_NOTICE,
   );
-  if (!resolvedId) {
+  if (!result) {
     return visitorAuthFailure(request);
   }
-  return NextResponse.json({ id: resolvedId, token, expiresAt });
+  // The fresh conversation is a chat created too (ticket 17) — but only when
+  // this request minted it: a retried clear that joins an existing successor
+  // must not count a second chat.
+  if (result.created) {
+    await recordChatStarted(db, store, at);
+  }
+  return NextResponse.json({ id: result.successorId, token, expiresAt });
 }

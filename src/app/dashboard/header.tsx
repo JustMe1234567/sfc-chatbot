@@ -3,10 +3,11 @@ import Image from "next/image";
 import SignOutButton from "./inbox/sign-out-button";
 import styles from "./dashboard.module.css";
 
-export type HeaderArea = "inbox" | "answers" | "staff" | "alerts";
+export type HeaderArea = "inbox" | "answers" | "staff" | "alerts" | "analytics";
 
 const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] = [
   { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] },
+  { area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] },
   { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] },
   { area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] },
   { area: "alerts", href: "/dashboard/notifications", label: "Email alerts", roles: ["owner", "staff"] },

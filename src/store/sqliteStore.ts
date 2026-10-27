@@ -301,6 +301,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
           return null;
         }
         let resolvedId = successorId;
+        let created = false;
         if (old.replaced_by) {
           // A concurrent or earlier clear already created the successor:
           // join it instead of the proposed id.
@@ -327,6 +328,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
           db.prepare(
             "INSERT INTO conversations (id, state, created_at, visitor_last_seen_at, last_activity_at) VALUES (?, 'bot_active', ?, ?, ?)",
           ).run(successorId, at, at, at);
+          created = true;
           const linked = db
             .prepare(
               "UPDATE conversations SET replaced_by = ? WHERE id = ? AND replaced_by IS NULL",
@@ -342,7 +344,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
           "INSERT INTO visitor_sessions (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
         ).run(session.tokenHash, resolvedId, session.createdAt, session.expiresAt);
         db.exec("COMMIT");
-        return resolvedId;
+        return { successorId: resolvedId, created };
       } catch (error) {
         db.exec("ROLLBACK");
         throw error;
@@ -583,6 +585,74 @@ export function createSqliteStore(db: DatabaseSync): Store {
         )
         .all(ruleId) as unknown as AuditRow[];
       return rows.map(rowToAudit);
+    },
+
+    // The newer instant wins regardless of beat arrival order: ISO strings
+    // compare chronologically, so a late-arriving older beat can never pull
+    // liveness backwards.
+    async recordAnalyticsPresence(visitorHash, at, day) {
+      db.prepare(
+        `INSERT INTO analytics_seen (visitor_hash, day, first_seen_at, last_seen_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(visitor_hash, day) DO UPDATE SET
+           last_seen_at = MAX(last_seen_at, excluded.last_seen_at)`,
+      ).run(visitorHash, day, at, at);
+    },
+
+    async recordChatCount(day) {
+      db.prepare(
+        `INSERT INTO analytics_daily (day, chats, escalations) VALUES (?, 1, 0)
+         ON CONFLICT(day) DO UPDATE SET chats = chats + 1`,
+      ).run(day);
+    },
+
+    async recordEscalationCount(day) {
+      db.prepare(
+        `INSERT INTO analytics_daily (day, chats, escalations) VALUES (?, 0, 1)
+         ON CONFLICT(day) DO UPDATE SET escalations = escalations + 1`,
+      ).run(day);
+    },
+
+    async analyticsOverview({ liveCutoff, startDay, endDay }) {
+      const live = db
+        // DISTINCT: one browser beating either side of local midnight has a
+        // row per day, and both can sit inside the two-minute window.
+        .prepare(
+          "SELECT COUNT(DISTINCT visitor_hash) AS live FROM analytics_seen WHERE last_seen_at > ?",
+        )
+        .get(liveCutoff) as { live: number };
+      const total = db
+        .prepare(
+          "SELECT COUNT(DISTINCT visitor_hash) AS visitors FROM analytics_seen WHERE day >= ? AND day <= ?",
+        )
+        .get(startDay, endDay) as { visitors: number };
+      const dailyVisitors = db
+        .prepare(
+          "SELECT day, COUNT(DISTINCT visitor_hash) AS visitors FROM analytics_seen WHERE day >= ? AND day <= ? GROUP BY day ORDER BY day",
+        )
+        .all(startDay, endDay) as unknown as { day: string; visitors: number }[];
+      const dailyCounts = db
+        .prepare(
+          "SELECT day, chats, escalations FROM analytics_daily WHERE day >= ? AND day <= ? ORDER BY day",
+        )
+        .all(startDay, endDay) as unknown as { day: string; chats: number; escalations: number }[];
+      return {
+        liveVisitors: live.live,
+        totalVisitors: total.visitors,
+        dailyVisitors,
+        dailyCounts,
+      };
+    },
+
+    async expireAnalyticsBefore(beforeDay) {
+      // Number(): the driver may hand back bigint counts.
+      const removedPresence = Number(
+        db.prepare("DELETE FROM analytics_seen WHERE day < ?").run(beforeDay).changes,
+      );
+      const removedDaily = Number(
+        db.prepare("DELETE FROM analytics_daily WHERE day < ?").run(beforeDay).changes,
+      );
+      return { removedPresence, removedDaily };
     },
   };
 }

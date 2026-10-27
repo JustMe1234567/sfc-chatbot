@@ -35,6 +35,12 @@ export const HISTORY_RATE_LIMIT = 60;
 export const TOPICS_RATE_LIMIT = 60;
 /** Unauthenticated return-link redemptions per client per window. */
 export const RETURN_RATE_LIMIT = 20;
+/**
+ * Anonymous presence beats (ticket 17): one browser beats about every 45
+ * seconds, so a generous ceiling absorbs a shared campus address full of
+ * open tabs while still stopping floods.
+ */
+export const PRESENCE_RATE_LIMIT = 240;
 export const RATE_WINDOW_MS = 60_000;
 
 export const MAX_EMAIL_LENGTH = 254;

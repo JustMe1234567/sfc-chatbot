@@ -3,12 +3,13 @@ import { getChatbotService } from "@/db/service";
 import { publicClientKey } from "@/api/visitor";
 import { createRateLimiter, CREATE_RATE_LIMIT } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
+import { recordChatStarted } from "@/domain/analytics";
 import type { Conversation } from "@/domain/types";
 
 const createLimiter = createRateLimiter(CREATE_RATE_LIMIT);
 
 export async function POST(request: Request) {
-  const { store } = await getChatbotService();
+  const { store, db } = await getChatbotService();
   if (!createLimiter.check(publicClientKey(request))) {
     return NextResponse.json(
       {
@@ -45,5 +46,8 @@ export async function POST(request: Request) {
     createdAt,
     expiresAt,
   });
+  // A conversation created is a chat started (ticket 17): the rollup keeps
+  // counting after the transcript itself is eventually purged.
+  await recordChatStarted(db, store, new Date(conversationCreatedAt));
   return NextResponse.json({ id: conversation.id, token, expiresAt }, { status: 201 });
 }

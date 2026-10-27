@@ -42,8 +42,16 @@ describe("WordPress embed smoke check", () => {
       "utf8",
     );
     expect(visitorSession).toContain("sessionStorage");
-    expect(frame).not.toContain("localStorage");
     expect(visitorSession).not.toContain("localStorage");
+    // The frame page's only persistent storage is the analytics browser id
+    // (ticket 17): an anonymous random UUID in the widget's own presence
+    // module, never the conversation credential, which stays session-scoped.
+    const presence = await readFile(path.join(repoRoot(), "src/widget/presence.ts"), "utf8");
+    expect(frame).toMatch(/localStorage/);
+    expect(frame).toMatch(/startPresenceHeartbeat/);
+    expect(frame).not.toMatch(/localStorage\.(get|set)/);
+    expect(presence).toContain('getItem(BROWSER_ID_STORAGE_KEY)');
+    expect(presence).not.toMatch(/sessionStorage|token|credential/i);
     // Keyboard and screen-reader hooks the browser check exercises live.
     expect(frame).toContain('role="log"');
     expect(frame).toContain("aria-live");

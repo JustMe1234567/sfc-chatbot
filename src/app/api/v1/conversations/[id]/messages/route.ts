@@ -4,6 +4,7 @@ import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
 import { matchAnswerRules, matchesEscalationPhrase } from "@/domain/matcher";
 import { getEscalationPhrases, getSupportHours } from "@/settings";
 import { handoffReply } from "@/domain/hours";
+import { recordEscalation } from "@/domain/analytics";
 import { isConversationActive, recordVisitorActivity } from "@/domain/activity";
 import {
   createRateLimiter,
@@ -180,6 +181,9 @@ export async function POST(request: Request, context: RouteContext) {
   async function escalate(target: Conversation): Promise<Response> {
     const escalated: Conversation = { ...target, state: "awaiting_staff" };
     await store.updateConversationState(target.id, "awaiting_staff");
+    // First transition out of bot-active is the escalation the analytics
+    // report counts (ticket 17); releases from a claim never pass here.
+    await recordEscalation(db, store, new Date());
     const reply = newMessage(target.id, "bot", handoffReply(getSupportHours(db)));
     await store.appendMessage(reply);
     try {

@@ -3,6 +3,7 @@ import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { summarizeConversationDesk, summarizeConversationHistory } from "@/domain/inbox";
 import { sweepTranscripts } from "@/domain/retention";
+import { expireAnalytics } from "@/domain/analytics";
 import { getChatbotService } from "@/db/service";
 
 /**
@@ -20,9 +21,10 @@ export async function GET(request: Request) {
 
   const { store, db } = await getChatbotService();
   // Ordinary staff traffic drives the automated transcript cleanup (ticket
-  // 10): expired conversations leave the dashboard without needing a
-  // scheduler beside the SQLite store.
+  // 10) and the analytics expiry (ticket 17, on its own retention period):
+  // expired data leaves without needing a scheduler beside the SQLite store.
   await sweepTranscripts(db, store);
+  await expireAnalytics(db, store);
   const view = new URL(request.url).searchParams.get("view");
   if (view === "history") {
     return NextResponse.json({ conversations: await summarizeConversationHistory(store) });

@@ -162,6 +162,16 @@ export function setSupportHours(db: DatabaseSync, hours: SupportHours | null): v
   setSetting(db, SUPPORT_HOURS_KEY, JSON.stringify(hours));
 }
 
+/** The zone must be a real IANA time zone; shared by hours and analytics. */
+function isIANATimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Shape + range validation; the zone must be a real IANA time zone. */
 export function isValidSupportHours(input: unknown): input is SupportHours {
   if (typeof input !== "object" || input === null) {
@@ -171,9 +181,7 @@ export function isValidSupportHours(input: unknown): input is SupportHours {
   if (typeof candidate.timeZone !== "string" || !Array.isArray(candidate.days)) {
     return false;
   }
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: candidate.timeZone });
-  } catch {
+  if (!isIANATimeZone(candidate.timeZone)) {
     return false;
   }
   const { startMinute, endMinute } = candidate;
@@ -197,4 +205,67 @@ export function isValidSupportHours(input: unknown): input is SupportHours {
   return days.every(
     (day) => Number.isInteger(day) && day >= 0 && day <= 6 && days.indexOf(day) === days.lastIndexOf(day),
   );
+}
+
+const REPORTING_TIME_ZONE_KEY = "reporting_time_zone";
+
+/** Day boundaries are always drawn somewhere; the ticket fixes the default. */
+export const DEFAULT_REPORTING_TIME_ZONE = "Asia/Singapore";
+
+/**
+ * Analytics outlives transcripts by design (kept separately, ticket 17), so
+ * the default is generous enough for month-over-month reading while still
+ * bounded. The owner's setting always wins.
+ */
+export const DEFAULT_ANALYTICS_RETENTION_DAYS = 90;
+
+/**
+ * The reporting time zone for analytics day boundaries (ticket 17). Unlike
+ * support hours there is no unconfigured state: day boundaries are always
+ * drawn somewhere, so an unset or corrupt value reads as the ticket's
+ * default rather than disabling reporting.
+ */
+export function getReportingTimeZone(db: DatabaseSync): string {
+  const raw = getSetting(db, REPORTING_TIME_ZONE_KEY);
+  if (raw !== null && isValidTimeZoneName(raw)) {
+    return raw;
+  }
+  return DEFAULT_REPORTING_TIME_ZONE;
+}
+
+export function setReportingTimeZone(db: DatabaseSync, timeZone: string): void {
+  setSetting(db, REPORTING_TIME_ZONE_KEY, timeZone);
+}
+
+/** The zone must be a real IANA time zone (same bar as support hours). */
+export function isValidTimeZoneName(input: unknown): input is string {
+  if (typeof input !== "string" || input.length === 0 || input.length > 64) {
+    return false;
+  }
+  return isIANATimeZone(input);
+}
+
+const ANALYTICS_RETENTION_KEY = "analytics_retention_days";
+
+/**
+ * How many days of analytics rows (anonymous presence and daily rollups)
+ * are kept before expiry removes them (ticket 17). Defined separately from
+ * transcript retention: purging a transcript must never change reported
+ * totals, and keeping transcripts forever must not keep visitor identifiers.
+ * Like reporting above, expiry is always on — an unset or corrupt value
+ * reads as the default, never as "keep indefinitely".
+ */
+export function getAnalyticsRetentionDays(db: DatabaseSync): number {
+  const raw = getSetting(db, ANALYTICS_RETENTION_KEY);
+  if (raw !== null) {
+    const parsed = Number(raw);
+    if (isValidRetentionDays(parsed)) {
+      return parsed;
+    }
+  }
+  return DEFAULT_ANALYTICS_RETENTION_DAYS;
+}
+
+export function setAnalyticsRetentionDays(db: DatabaseSync, days: number): void {
+  setSetting(db, ANALYTICS_RETENTION_KEY, String(days));
 }
