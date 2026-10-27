@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
-import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
+import DashboardHeader from "../../header";
 import RuleForm from "../rule-form";
 import styles from "../../dashboard.module.css";
 
@@ -18,10 +18,7 @@ export default async function NewAnswerPage() {
 
   return (
     <main className={styles.shell}>
-      <header className={styles.shellHeader}>
-        <h1>New answer</h1>
-        <Link href="/dashboard/answers">Back to answers</Link>
-      </header>
+      <DashboardHeader area="answers" title="New answer" name={guard.staff.name} role={guard.staff.role} />
       <RuleForm mode="create" initial={{ topic: "", response: "", phrasesText: "", keywordsText: "", link: "" }} />
     </main>
   );

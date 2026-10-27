@@ -59,7 +59,15 @@ export default function EnrollPage() {
   return (
     <main className={styles.loginShell}>
       <form className={styles.loginCard} onSubmit={totpUri ? confirmCode : startEnrollment}>
-        <h1>Set up your second factor</h1>
+        <h1 className={styles.srOnly}>Set up your second factor</h1>
+        <div className={styles.loginBrand}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" />
+          <span className={styles.loginBrandText}>
+            <strong>Springfield College</strong>
+            <span>Second factor</span>
+          </span>
+        </div>
         <p className={styles.hint}>
           A second factor is required for all staff. Use any authenticator app that supports
           time-based one-time passwords.

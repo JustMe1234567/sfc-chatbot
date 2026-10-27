@@ -1,97 +1,320 @@
+/* Springfield College staff dashboard (ticket 13).
+   Design tokens first: brand blue and gold from the college crest, a calm
+   light workspace, and one dark surface reserved for the conversation rail.
+   All pairings below meet WCAG AA on their stated backgrounds. */
+
+:root {
+  --sfc-blue: #1d4e89;
+  --sfc-blue-deep: #163c6b;
+  --sfc-blue-soft: #e8eef7;
+  --sfc-gold: #e3a739;
+  --sfc-gold-deep: #8a5f14;
+  --sfc-gold-soft: #f8ecd4;
+
+  --page: #f2f4f8;
+  --surface: #ffffff;
+  --line: #dfe5ee;
+  --ink: #1c2733;
+  --muted: #5a6b7e;
+
+  --rail-bg: #1b2330;
+  --rail-raised: #243244;
+  --rail-line: #31405a;
+  --rail-ink: #dbe4f0;
+  --rail-muted: #9dafc6;
+
+  --danger: #a8342a;
+  --danger-soft: #f9e9e7;
+  --ok: #1c6b3c;
+  --ok-soft: #e7f4ec;
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-pill: 999px;
+}
+
 .loginShell {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #f3f5f9;
+  background:
+    linear-gradient(160deg, rgba(29, 78, 137, 0.08), rgba(227, 167, 57, 0.06)),
+    var(--page);
+  padding: 24px;
 }
 
 .loginCard {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
-  padding: 28px;
-  width: min(380px, calc(100vw - 32px));
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 32px;
+  width: min(400px, calc(100vw - 32px));
+  box-shadow: 0 12px 32px rgba(28, 39, 51, 0.08);
+}
+
+.loginBrand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.loginBrand img {
+  width: 40px;
+  height: 40px;
+}
+
+.loginBrandText {
+  display: flex;
+  flex-direction: column;
+}
+
+.loginBrandText strong {
+  font: 650 16px/1.2 system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.loginBrandText span {
+  font: 500 12.5px system-ui, sans-serif;
+  color: var(--muted);
 }
 
 .hint {
-  color: #52606d;
+  color: var(--muted);
   font-size: 14px;
   margin: 0 0 8px;
 }
 
-.loginCard label {
+.loginCard label,
+.ruleCard label {
   font-size: 14px;
-  color: #1f2933;
+  color: var(--ink);
 }
 
-.loginCard input {
+.loginCard input,
+.ruleCard input,
+.ruleCard textarea,
+.replyForm textarea {
   font: inherit;
-  padding: 8px 10px;
-  border: 1px solid #cbd2dc;
-  border-radius: 8px;
+  padding: 9px 11px;
+  border: 1px solid #c4cdda;
+  border-radius: var(--radius-s);
+  color: var(--ink);
+  background: var(--surface);
 }
 
-.loginCard button {
-  margin-top: 12px;
+.loginCard input:focus-visible,
+.ruleCard input:focus-visible,
+.ruleCard textarea:focus-visible,
+.replyForm textarea:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 1px;
+  border-color: var(--sfc-blue);
+}
+
+.loginCard code {
+  font-size: 13px;
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  overflow-wrap: break-word;
+}
+
+.primaryButton,
+.loginCard button,
+.ruleCard button {
   border: 0;
-  border-radius: 8px;
-  background: #1d3a6b;
+  border-radius: var(--radius-s);
+  background: var(--sfc-blue);
   color: #fff;
   font: 600 15px system-ui, sans-serif;
   padding: 10px 16px;
   cursor: pointer;
 }
 
-.loginCard button:disabled {
+.primaryButton:hover,
+.loginCard button:hover,
+.ruleCard button:hover {
+  background: var(--sfc-blue-deep);
+}
+
+.secondaryButton {
+  border: 1px solid #c4cdda;
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-s);
+  font: 550 14px system-ui, sans-serif;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 36px;
+}
+
+.secondaryButton:hover {
+  border-color: var(--sfc-blue);
+  color: var(--sfc-blue-deep);
+}
+
+.ghostButton {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: var(--radius-s);
+  font: 550 14px system-ui, sans-serif;
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 36px;
+}
+
+.ghostButton:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.dangerButton {
+  border: 1px solid #e2b7b2;
+  background: var(--surface);
+  color: var(--danger);
+  border-radius: var(--radius-s);
+  font: 550 14px system-ui, sans-serif;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 36px;
+}
+
+.dangerButton:hover {
+  background: var(--danger-soft);
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.ghostButton:focus-visible,
+.dangerButton:focus-visible,
+.topNav a:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+/* Gold reads on the dark rail; blue carries the ring on light surfaces. */
+.deskItem:focus-visible,
+.deskTabs a:focus-visible {
+  outline-color: var(--sfc-gold);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.ghostButton:disabled,
+.dangerButton:disabled,
+.loginCard button:disabled,
+.ruleCard button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
 .error {
-  color: #a8342a;
+  color: var(--danger);
   font-size: 14px;
   margin: 4px 0 0;
 }
 
+/* Page shell and the shared top bar. */
+
 .shell {
   min-height: 100vh;
-  background: #f3f5f9;
-  padding: 24px;
+  background: var(--page);
+  padding: 20px 24px 32px;
 }
 
-.shellHeader {
-  display: flex;
+.topBar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  max-width: 52rem;
+  gap: 20px;
+  max-width: 72rem;
   margin: 0 auto 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 12px 18px;
 }
 
-.shellHeader h1 {
-  font-size: 22px;
-  margin: 0;
-}
-
-.whoami {
+.brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: #52606d;
-  font-size: 14px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.secondaryButton {
-  border: 1px solid #cbd2dc;
-  background: #fff;
-  border-radius: 8px;
-  font: 500 14px system-ui, sans-serif;
-  padding: 6px 12px;
-  cursor: pointer;
+.brandMark {
+  flex: none;
 }
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandCollege {
+  font: 600 11.5px/1.3 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sfc-gold-deep);
+}
+
+.pageTitle {
+  font: 700 19px/1.2 system-ui, sans-serif;
+  color: var(--ink);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.topNav {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.topNav a {
+  text-decoration: none;
+  color: var(--muted);
+  font: 550 14px system-ui, sans-serif;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.topNav a:hover {
+  color: var(--sfc-blue-deep);
+  background: var(--sfc-blue-soft);
+}
+
+.topNav a[aria-current="page"] {
+  background: var(--sfc-blue);
+  color: #fff;
+}
+
+.topIdentity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.whoText {
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Shared content column (forms, rosters, alert lists). */
 
 .inbox {
   max-width: 52rem;
@@ -104,30 +327,30 @@
 .empty {
   max-width: 52rem;
   margin: 0 auto;
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
   padding: 32px;
-  color: #52606d;
+  color: var(--muted);
   text-align: center;
 }
 
 .conversationCard {
   display: block;
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
   padding: 14px 18px;
   text-decoration: none;
   color: inherit;
 }
 
 .conversationCard:hover {
-  border-color: #1d3a6b;
+  border-color: var(--sfc-blue);
 }
 
 .conversationCard .meta {
-  color: #52606d;
+  color: var(--muted);
   font-size: 13px;
   margin-bottom: 4px;
 }
@@ -136,11 +359,46 @@
   font-size: 15px;
 }
 
+/* Status chips: one family for every state across the dashboard. */
+
+.chip {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  font: 600 12px/1.6 system-ui, sans-serif;
+  padding: 1px 10px;
+  vertical-align: middle;
+}
+
+.chipWaiting {
+  background: var(--sfc-gold-soft);
+  color: var(--sfc-gold-deep);
+}
+
+.chipClaimed {
+  background: var(--sfc-blue-soft);
+  color: var(--sfc-blue-deep);
+}
+
+.chipClosed {
+  background: #eef1f6;
+  color: var(--muted);
+}
+
+.chipBot {
+  background: #eef1f6;
+  color: #3d4d61;
+}
+
+.chipAttention {
+  background: var(--sfc-gold);
+  color: #241a05;
+}
+
 .badge {
   display: inline-block;
-  background: #fdeceA;
-  color: #a8342a;
-  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: var(--radius-pill);
   font-size: 12px;
   padding: 2px 10px;
   margin-left: 8px;
@@ -148,9 +406,9 @@
 
 .publishedBadge {
   display: inline-block;
-  background: #e7f4ec;
-  color: #1c6b3c;
-  border-radius: 999px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-radius: var(--radius-pill);
   font-size: 12px;
   padding: 2px 10px;
   margin-left: 8px;
@@ -159,12 +417,14 @@
 .draftBadge {
   display: inline-block;
   background: #eef1f6;
-  color: #52606d;
-  border-radius: 999px;
+  color: var(--muted);
+  border-radius: var(--radius-pill);
   font-size: 12px;
   padding: 2px 10px;
   margin-left: 8px;
 }
+
+/* Answer library. */
 
 .ruleGrid {
   max-width: 52rem;
@@ -185,49 +445,25 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
   padding: 20px 24px;
 }
 
-.ruleCard label {
-  font-size: 14px;
-  color: #1f2933;
-  margin-top: 8px;
-}
-
 .ruleCard input,
-.ruleCard textarea {
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid #cbd2dc;
-  border-radius: 8px;
-}
-
 .ruleCard textarea {
   resize: vertical;
 }
 
 .ruleCard button {
   margin-top: 12px;
-  border: 0;
-  border-radius: 8px;
-  background: #1d3a6b;
-  color: #fff;
-  font: 600 15px system-ui, sans-serif;
-  padding: 10px 16px;
-  cursor: pointer;
-}
-
-.ruleCard button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .ruleCard h2 {
   font-size: 16px;
   margin: 0;
+  color: var(--ink);
 }
 
 .publishBar {
@@ -249,17 +485,17 @@
 }
 
 .previewTopicButton {
-  border: 1px solid #cbd2dc;
-  background: #f3f5f9;
-  color: #1f2933;
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--page);
+  color: var(--ink);
+  border-radius: var(--radius-pill);
   font: 500 13px/1.2 system-ui, sans-serif;
   padding: 6px 12px;
 }
 
 .previewBubble {
-  background: #e4e9f1;
-  border-radius: 12px;
+  background: var(--sfc-blue-soft);
+  border-radius: var(--radius-m);
   border-bottom-left-radius: 4px;
   padding: 10px 14px;
   margin: 0;
@@ -272,8 +508,10 @@
 .previewBubble a {
   display: block;
   margin-top: 6px;
-  color: #1d3a6b;
+  color: var(--sfc-blue-deep);
 }
+
+/* Transcript bubbles: speaker is legible from shape and color alone. */
 
 .transcript {
   max-width: 52rem;
@@ -281,6 +519,46 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.bubble {
+  border-radius: var(--radius-m);
+  padding: 10px 14px;
+  max-width: 42rem;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  border: 1px solid transparent;
+}
+
+.bubbleVisitor {
+  align-self: flex-start;
+  background: #eef1f6;
+  border-color: var(--line);
+  border-bottom-left-radius: 4px;
+}
+
+.bubbleStaff {
+  align-self: flex-end;
+  background: var(--sfc-blue);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.bubbleBot {
+  align-self: flex-start;
+  background: var(--surface);
+  border-color: var(--line);
+  border-bottom-left-radius: 4px;
+}
+
+.bubble .role {
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.bubbleStaff .role {
+  color: #c6d7ee;
 }
 
 .srOnly {
@@ -311,20 +589,20 @@
 .replyForm textarea {
   flex: 1;
   resize: none;
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid #cbd2dc;
-  border-radius: 8px;
 }
 
 .replyForm button {
   border: 0;
-  border-radius: 8px;
-  background: #1d3a6b;
+  border-radius: var(--radius-s);
+  background: var(--sfc-blue);
   color: #fff;
   font: 600 14px system-ui, sans-serif;
   padding: 0 16px;
   cursor: pointer;
+}
+
+.replyForm button:hover {
+  background: var(--sfc-blue-deep);
 }
 
 .replyForm button:disabled {
@@ -338,112 +616,107 @@
 }
 
 .transcriptHeader a {
-  color: #1d3a6b;
+  color: var(--sfc-blue-deep);
 }
 
-.bubble {
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
-  padding: 10px 14px;
-  max-width: 42rem;
-  white-space: pre-wrap;
-}
-
-.bubble .role {
-  font-size: 12px;
-  color: #52606d;
-  margin-bottom: 4px;
-}
-
-/* The conversation desk (ticket 12): list left, transcript right. */
+/* The conversation desk (ticket 12, restyled in ticket 13): a dark rail of
+   conversations on the left, a light transcript workspace on the right. */
 
 .desk {
   max-width: 72rem;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .deskList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
+  gap: 6px;
+  background: var(--rail-bg);
+  border-radius: var(--radius-m);
   padding: 12px;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 150px);
   overflow-y: auto;
 }
 
 .deskList h2 {
-  font-size: 13px;
+  font: 650 11.5px/1.4 system-ui, sans-serif;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #52606d;
-  margin: 8px 0 2px;
+  letter-spacing: 0.08em;
+  color: var(--rail-muted);
+  margin: 10px 2px 4px;
 }
 
 .deskTabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
 .deskTabs a {
   flex: 1;
   text-align: center;
   text-decoration: none;
-  font: 600 14px system-ui, sans-serif;
-  color: #1f2933;
-  border: 1px solid #cbd2dc;
-  border-radius: 8px;
-  padding: 6px 10px;
+  font: 600 13.5px system-ui, sans-serif;
+  color: var(--rail-muted);
+  border: 1px solid var(--rail-line);
+  border-radius: var(--radius-s);
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.deskTabs a:hover {
+  color: var(--rail-ink);
+  border-color: var(--rail-muted);
 }
 
 .deskTabs a[aria-current="page"] {
-  background: #1d3a6b;
-  border-color: #1d3a6b;
+  background: var(--sfc-blue);
+  border-color: var(--sfc-blue);
   color: #fff;
 }
 
 .deskItem {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  border: 1px solid #e4e9f1;
-  border-radius: 8px;
-  padding: 8px 10px;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-s);
+  padding: 9px 11px;
   text-decoration: none;
-  color: inherit;
 }
 
 .deskItem:hover {
-  border-color: #1d3a6b;
+  background: var(--rail-raised);
 }
 
 .deskItem[data-selected] {
-  border-color: #1d3a6b;
-  background: #eef2f9;
+  background: var(--rail-raised);
+  border-color: var(--rail-line);
+  border-left-color: var(--sfc-gold);
 }
 
 .deskItemTop {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  color: #52606d;
+  color: var(--rail-muted);
   font-size: 12px;
 }
 
 .deskItemState {
-  font-weight: 600;
+  font-weight: 650;
+  color: var(--rail-ink);
 }
 
 .deskItemPreview {
-  font-size: 14px;
+  font-size: 13.5px;
+  color: var(--rail-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -451,40 +724,111 @@
   -webkit-box-orient: vertical;
 }
 
+.deskItem[data-selected] .deskItemPreview {
+  color: var(--rail-ink);
+}
+
 .attentionBadge {
   align-self: flex-start;
-  background: #fdecea;
-  color: #a8342a;
-  border-radius: 999px;
-  font-size: 12px;
-  padding: 1px 8px;
+  background: var(--sfc-gold);
+  color: #241a05;
+  border-radius: var(--radius-pill);
+  font: 600 11.5px/1.7 system-ui, sans-serif;
+  padding: 0 8px;
 }
 
 .deskEmpty {
-  color: #52606d;
-  font-size: 14px;
-  margin: 2px 0 4px;
+  color: var(--rail-muted);
+  font-size: 13.5px;
+  margin: 2px 4px 6px;
 }
 
 .deskPane {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #fff;
-  border: 1px solid #e4e9f1;
-  border-radius: 12px;
-  padding: 16px 20px;
-  min-height: 40vh;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  padding: 18px 22px;
+  min-height: 60vh;
+}
+
+.paneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.paneHead h2 {
+  font: 700 16px/1.3 system-ui, sans-serif;
+  color: var(--ink);
+  margin: 0;
+}
+
+.paneHeadMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.paneBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.paneBody .transcript {
+  flex: 1;
+}
+
+/* Deliberate empty state: brand watermark plus guidance, never a blank pane. */
+
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 16px;
+}
+
+.emptyState img {
+  width: 56px;
+  height: 56px;
+  opacity: 0.5;
+}
+
+.emptyState strong {
+  font: 650 16px system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.emptyState p {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 14.5px;
 }
 
 .deskActivity {
-  border-top: 1px solid #e4e9f1;
+  border-top: 1px solid var(--line);
   padding-top: 8px;
 }
 
 .deskActivity h2 {
   font-size: 15px;
   margin: 0 0 6px;
+  color: var(--ink);
 }
 
 .deskAuditRow {
@@ -495,7 +839,7 @@
 }
 
 .deskAuditMeta {
-  color: #52606d;
+  color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -505,7 +849,48 @@
   align-self: flex-start;
 }
 
+@media (max-width: 900px) {
+  /* The top bar wraps in a deliberate order: brand, then navigation, then
+     identity, so nothing competes for one row at the pictured width. */
+  .topBar {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "brand brand"
+      "nav identity";
+    row-gap: 10px;
+  }
+
+  .brand {
+    grid-area: brand;
+  }
+
+  .topNav {
+    grid-area: nav;
+    justify-content: flex-start;
+  }
+
+  .topIdentity {
+    grid-area: identity;
+  }
+}
+
 @media (max-width: 760px) {
+  .shell {
+    padding: 12px 12px 24px;
+  }
+
+  .topBar {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "brand"
+      "nav"
+      "identity";
+  }
+
+  .topIdentity {
+    justify-content: space-between;
+  }
+
   /* Narrow screens stack the panes; the back link makes switching between
      list and transcript explicit and keyboard-reachable. */
   .desk {

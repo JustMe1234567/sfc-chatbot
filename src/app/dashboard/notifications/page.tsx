@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
-import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
+import DashboardHeader from "../header";
 import { listNotifications } from "@/mail/notifications";
 import { getAlertRecipients, getSupportHours, getTranscriptRetentionDays } from "@/settings";
 import { scheduleSummary } from "@/domain/hours";
@@ -33,10 +33,12 @@ export default async function NotificationsPage() {
 
   return (
     <main className={styles.shell}>
-      <header className={styles.shellHeader}>
-        <h1>Email alerts</h1>
-        <Link href="/dashboard/inbox">Back to inbox</Link>
-      </header>
+      <DashboardHeader
+        area="alerts"
+        title="Email alerts"
+        name={guard.staff.name}
+        role={guard.staff.role}
+      />
 
       {guard.staff.role === "owner" ? (
         <SupportHoursForm initialHours={supportHours} />

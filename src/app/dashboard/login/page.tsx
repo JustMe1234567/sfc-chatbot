@@ -49,8 +49,16 @@ export default function StaffLoginPage() {
   return (
     <main className={styles.loginShell}>
       <form className={styles.loginCard} onSubmit={submitCredentials}>
-        <h1>Staff sign-in</h1>
-        <p className={styles.hint}>Example College chat dashboard. Staff accounts are invite-only.</p>
+        <h1 className={styles.srOnly}>Staff sign-in</h1>
+        <div className={styles.loginBrand}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" />
+          <span className={styles.loginBrandText}>
+            <strong>Springfield College</strong>
+            <span>Staff sign-in</span>
+          </span>
+        </div>
+        <p className={styles.hint}>Chat dashboard. Staff accounts are invite-only.</p>
         {stage === "credentials" ? (
           <>
             <label htmlFor="email">Email</label>

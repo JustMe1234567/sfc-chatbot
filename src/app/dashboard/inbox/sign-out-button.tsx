@@ -19,7 +19,7 @@ export default function SignOutButton() {
       <button type="button" className={styles.secondaryButton} onClick={signOut}>
         Sign out
       </button>
-      <button type="button" className={styles.secondaryButton} onClick={signOutEverywhere}>
+      <button type="button" className={styles.ghostButton} onClick={signOutEverywhere}>
         Sign out everywhere
       </button>
     </>

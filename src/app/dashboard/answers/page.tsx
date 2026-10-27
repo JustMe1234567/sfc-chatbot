@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
+import DashboardHeader from "../header";
 import { getChatbotService } from "@/db/service";
 import { getEscalationPhrases } from "@/settings";
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
@@ -30,18 +31,20 @@ export default async function AnswersPage() {
 
   return (
     <main className={styles.shell}>
-      <header className={styles.shellHeader}>
-        <h1>Answers</h1>
-        <div className={styles.whoami}>
-          {guard.staff.role === "owner" ? (
-            <Link href="/dashboard/inbox">Back to inbox</Link>
-          ) : null}
-          <Link href="/dashboard/answers/new">New answer</Link>
-          <span>
-            {guard.staff.name} · {guard.staff.role}
-          </span>
+      <DashboardHeader
+        area="answers"
+        title="Answers"
+        name={guard.staff.name}
+        role={guard.staff.role}
+      />
+
+      <div className={styles.inbox}>
+        <div className={styles.publishBar}>
+          <Link className={styles.secondaryButton} href="/dashboard/answers/new">
+            New answer
+          </Link>
         </div>
-      </header>
+      </div>
 
       {rules.length === 0 ? (
         <p className={styles.empty}>No answer rules yet. Create the first one.</p>

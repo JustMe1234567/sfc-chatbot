@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import Image from "next/image";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { roleLabel, summarizeConversationDesk, summarizeConversationHistory, type DeskItem } from "@/domain/inbox";
@@ -8,9 +9,9 @@ import { staffName } from "@/api/staffConversations";
 import { auditWithNames, type AuditView } from "@/api/audit";
 import { listStaffMembers } from "@/api/staffMembers";
 import { getChatbotService } from "@/db/service";
+import DashboardHeader from "../header";
 import AutoRefresh from "../conversations/[id]/auto-refresh";
 import { ClaimButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
-import SignOutButton from "./sign-out-button";
 import styles from "../dashboard.module.css";
 
 const ACTION_LABELS: Record<AuditView["action"], string> = {
@@ -26,12 +27,12 @@ const ACTION_LABELS: Record<AuditView["action"], string> = {
   staff_disabled: "disabled a staff account",
 };
 
-export interface DeskProps {
-  /** The conversation shown in the main pane, if any. */
-  selectedId: string | null;
-  /** Which list the left side shows: the live desk or the archive. */
-  view: "active" | "history";
-}
+const STATE_CHIPS: Record<string, string | undefined> = {
+  bot_active: styles.chipBot,
+  awaiting_staff: styles.chipWaiting,
+  claimed: styles.chipClaimed,
+  closed: styles.chipClosed,
+};
 
 const STATE_LABELS: Record<string, string> = {
   bot_active: "bot",
@@ -41,8 +42,9 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 function DeskEntry({ item, selected }: { item: DeskItem; selected: boolean }) {
+  // The CSS line-clamp trims the preview with an ellipsis; no JS slicing.
   const preview = item.lastMessage
-    ? `${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text.slice(0, 120)}`
+    ? `${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text}`
     : "No messages";
   return (
     <Link
@@ -67,13 +69,20 @@ function DeskEntry({ item, selected }: { item: DeskItem; selected: boolean }) {
   );
 }
 
+function bubbleClass(role: string): string {
+  if (role === "staff") return `${styles.bubble} ${styles.bubbleStaff}`;
+  if (role === "visitor") return `${styles.bubble} ${styles.bubbleVisitor}`;
+  return `${styles.bubble} ${styles.bubbleBot}`;
+}
+
 /**
- * The staff conversation desk (ticket 12): a compact conversation list on the
- * left, the selected transcript and reply controls on the right. Incoming
- * holds the waiting escalations; Active holds bot-active and claimed chats;
- * History is the archive of conversations quiet for a day or closed.
+ * The staff conversation desk (ticket 12, restyled in ticket 13): a compact
+ * dark rail of conversations on the left, the selected transcript and reply
+ * controls in a light workspace on the right. Incoming holds the waiting
+ * escalations; Active holds bot-active and claimed chats; History is the
+ * archive of conversations quiet for a day or closed.
  */
-export default async function ConversationDesk({ selectedId, view }: DeskProps) {
+export default async function ConversationDesk({ selectedId, view }: { selectedId: string | null; view: "active" | "history" }) {
   const staffHeaders = await headers();
   const guard = await requireStaff(staffHeaders, { roles: STAFF_ROLES });
   if ("response" in guard) {
@@ -125,22 +134,12 @@ export default async function ConversationDesk({ selectedId, view }: DeskProps) 
   return (
     <main className={styles.shell}>
       <AutoRefresh />
-      <header className={styles.shellHeader}>
-        <h1>Conversations</h1>
-        <div className={styles.whoami}>
-          {guard.staff.role === "owner" ? (
-            <>
-              <Link href="/dashboard/answers">Answers</Link>
-              <Link href="/dashboard/staff">Staff</Link>
-            </>
-          ) : null}
-          <Link href="/dashboard/notifications">Email alerts</Link>
-          <span>
-            {guard.staff.name} · {guard.staff.role}
-          </span>
-          <SignOutButton />
-        </div>
-      </header>
+      <DashboardHeader
+        area="inbox"
+        title="Conversations"
+        name={guard.staff.name}
+        role={guard.staff.role}
+      />
       <div className={styles.desk}>
         <nav className={styles.deskList} aria-label="Conversation list">
           <div className={styles.deskTabs}>
@@ -190,47 +189,65 @@ export default async function ConversationDesk({ selectedId, view }: DeskProps) 
         <section className={styles.deskPane} aria-label="Selected conversation">
           {selected ? (
             <>
+              <div className={styles.paneHead}>
+                <h2>Conversation</h2>
+                <span className={styles.paneHeadMeta}>
+                  <span className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}>
+                    {STATE_LABELS[selected.state] ?? selected.state}
+                  </span>
+                  <span>
+                    {selected.state === "claimed" && selectedActive
+                      ? claimedByMe
+                        ? "You are helping"
+                        : `${claimerName} is helping`
+                      : null}
+                    {selectedActive && selected.state !== "closed" && selected.state !== "claimed"
+                      ? `Last message ${new Date(selected.lastActivityAt).toLocaleString("en-GB")}`
+                      : null}
+                    {selected.state === "closed" ? "Closed by staff" : null}
+                    {!selectedActive && selected.state !== "closed"
+                      ? "Quiet since " + new Date(selected.lastActivityAt).toLocaleString("en-GB")
+                      : null}
+                  </span>
+                </span>
+              </div>
               <Link
                 className={styles.deskBack}
                 href={view === "history" ? "/dashboard/inbox?view=history" : "/dashboard/inbox"}
               >
                 ← All conversations
               </Link>
-              <p className={styles.hint}>
-                {selected.state === "awaiting_staff" && selectedActive &&
-                  "Waiting for a staff member to claim this conversation."}
-                {selected.state === "claimed" && selectedActive &&
-                  (claimedByMe
-                    ? "You are helping in this conversation."
-                    : `${claimerName} is helping in this conversation.`)}
-                {selected.state === "closed" && "This conversation is closed."}
-                {!selectedActive && selected.state !== "closed" &&
-                  "This conversation has gone quiet and moved to History. The visitor's next question starts a fresh chat."}
-              </p>
-              {selected.state === "awaiting_staff" && selectedActive && (
-                <ClaimButton conversationId={selected.id} />
-              )}
-              {mayReassign && selectedActive && (
-                <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />
-              )}
-              {claimedByMe && selected.state === "claimed" && selectedActive && (
-                <ReplyAndClose conversationId={selected.id} />
-              )}
-              {claimedByMe && selected.state === "claimed" && !selectedActive && (
+              <div className={styles.paneBody}>
                 <p className={styles.hint}>
-                  Replying is paused until a reopening action exists; the transcript is kept.
+                  {selected.state === "awaiting_staff" && selectedActive &&
+                    "Waiting for a staff member to claim this conversation."}
+                  {!selectedActive && selected.state !== "closed" &&
+                    "This conversation has gone quiet and moved to History. The visitor's next question starts a fresh chat."}
+                  {claimedByMe && selected.state === "claimed" && !selectedActive &&
+                    "Replying is paused until a reopening action exists; the transcript is kept."}
                 </p>
-              )}
-              <div className={styles.transcript}>
-                {messages.map((message) => (
-                  <div key={message.id} className={styles.bubble}>
-                    <div className={styles.role}>
-                      {roleLabel(message.role)} ·{" "}
-                      {new Date(message.createdAt).toLocaleString("en-GB")}
+                {selected.state === "awaiting_staff" && selectedActive && (
+                  <ClaimButton conversationId={selected.id} />
+                )}
+                {mayReassign && selectedActive && (
+                  <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />
+                )}
+                <div className={styles.transcript}>
+                  {messages.map((message) => (
+                    <div key={message.id} className={bubbleClass(message.role)}>
+                      <div className={styles.role}>
+                        {roleLabel(message.role)} ·{" "}
+                        {new Date(message.createdAt).toLocaleString("en-GB")}
+                      </div>
+                      {message.text}
                     </div>
-                    {message.text}
-                  </div>
-                ))}
+                  ))}
+                </div>
+                {/* The composer sits at the bottom of the workspace, after
+                    the transcript it replies to (ticket 13). */}
+                {claimedByMe && selected.state === "claimed" && selectedActive && (
+                  <ReplyAndClose conversationId={selected.id} />
+                )}
               </div>
               {auditEntries.length > 0 ? (
                 <section aria-label="Audit trail" className={styles.deskActivity}>
@@ -250,7 +267,20 @@ export default async function ConversationDesk({ selectedId, view }: DeskProps) 
               ) : null}
             </>
           ) : (
-            <p className={styles.empty}>Select a conversation from the list.</p>
+            <div className={styles.emptyState}>
+              <Image
+                src="/brand/cropped-SFC-Final-Logo-Single.png"
+                alt=""
+                width={56}
+                height={56}
+              />
+              <strong>No conversation selected</strong>
+              <p>
+                Choose a conversation from the list. Incoming chats are waiting
+                for a claim; Active chats are already being helped. Conversations
+                that go quiet for a day move to History with their transcripts kept.
+              </p>
+            </div>
           )}
         </section>
       </div>

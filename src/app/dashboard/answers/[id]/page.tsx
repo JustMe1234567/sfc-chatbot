@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
+import DashboardHeader from "../../header";
 import { auditWithNames, type AuditView } from "@/api/audit";
 import { getChatbotService } from "@/db/service";
 import { staffName } from "@/api/staffConversations";
@@ -44,10 +44,7 @@ export default async function EditAnswerPage({ params }: PageProps) {
 
   return (
     <main className={styles.shell}>
-      <header className={styles.shellHeader}>
-        <h1>{rule.topic}</h1>
-        <Link href="/dashboard/answers">Back to answers</Link>
-      </header>
+      <DashboardHeader area="answers" title={rule.topic} name={guard.staff.name} role={guard.staff.role} />
 
       <div className={styles.ruleCard}>
         <div className={styles.publishBar}>

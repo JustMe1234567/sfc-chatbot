@@ -19,7 +19,7 @@ export function ClaimButton({ conversationId }: { conversationId: string }) {
     <div>
       <button
         type="button"
-        className={styles.secondaryButton}
+        className={styles.primaryButton}
         disabled={busy}
         onClick={async () => {
           setBusy(true);
@@ -191,7 +191,7 @@ export function ReplyAndClose({
           Send reply
         </button>
       </form>
-      <button type="button" className={styles.secondaryButton} onClick={close} disabled={busy}>
+      <button type="button" className={styles.dangerButton} onClick={close} disabled={busy}>
         Close conversation
       </button>
       {error ? (

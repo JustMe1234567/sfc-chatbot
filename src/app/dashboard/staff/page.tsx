@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
-import Link from "next/link";
 import { requireStaff } from "@/api/staff";
+import DashboardHeader from "../header";
 import { listStaffMembers } from "@/api/staffMembers";
 import { getChatbotService } from "@/db/service";
 import InviteForm from "./invite-form";
@@ -24,15 +24,7 @@ export default async function StaffPage() {
 
   return (
     <main className={styles.shell}>
-      <header className={styles.shellHeader}>
-        <h1>Staff</h1>
-        <div className={styles.whoami}>
-          <Link href="/dashboard/inbox">Back to inbox</Link>
-          <span>
-            {guard.staff.name} · {guard.staff.role}
-          </span>
-        </div>
-      </header>
+      <DashboardHeader area="staff" title="Staff" name={guard.staff.name} role={guard.staff.role} />
 
       <div className={styles.inbox}>
         <InviteForm />
