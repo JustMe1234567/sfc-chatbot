@@ -284,13 +284,14 @@ describe("releasing a claim", () => {
     const visitorBody = (await visitorHistory.json()) as { conversation: { state: string } };
     expect(visitorBody.conversation.state).toBe("awaiting_staff");
 
-    // Back in the shared inbox, and Bob can take it over.
+    // Back in the shared inbox (the desk's Incoming section), and Bob can
+    // take it over.
     const inboxRoute = await import("../src/app/api/staff/conversations/route");
     const inbox = await inboxRoute.GET(
       new Request(`${TEST_ORIGIN}/api/staff/conversations`, { headers: { cookie: aliceJar.header() } }),
     );
-    const inboxBody = (await inbox.json()) as { conversations: { id: string }[] };
-    expect(inboxBody.conversations.some((item) => item.id === conversationId)).toBe(true);
+    const inboxBody = (await inbox.json()) as { incoming: { id: string }[] };
+    expect(inboxBody.incoming.some((item) => item.id === conversationId)).toBe(true);
 
     const bobJar = new CookieJar();
     await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);

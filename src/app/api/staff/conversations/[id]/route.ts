@@ -8,7 +8,12 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-/** Full transcript and accountability trail for one escalated conversation. */
+/**
+ * Full transcript and accountability trail for one conversation. Reading the
+ * transcript is viewing it: the in-dashboard attention alert (ticket 12)
+ * clears here, so a new visitor message re-raises it but a poll never
+ * duplicates one.
+ */
 export async function GET(request: Request, context: RouteContext) {
   const guard = await requireStaff(request.headers, { roles: STAFF_ROLES });
   if ("response" in guard) {
@@ -24,6 +29,7 @@ export async function GET(request: Request, context: RouteContext) {
       { status: 404 },
     );
   }
+  await store.clearConversationAttention(conversation.id);
   const messages = await store.listMessages(conversation.id);
   const auditEntries = auditWithNames(db, await store.listConversationAudit(conversation.id));
   return NextResponse.json({ conversation, messages, audit: auditEntries });

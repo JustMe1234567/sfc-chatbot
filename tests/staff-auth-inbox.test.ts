@@ -117,12 +117,14 @@ describe("protected shared inbox", () => {
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(200);
     const body = (await inbox.json()) as {
-      conversations: { id: string; state: string; messageCount: number; lastMessage: { text: string } | null }[];
+      incoming: { id: string; state: string; messageCount: number; lastMessage: { text: string } | null }[];
+      active: unknown[];
     };
-    expect(body.conversations.length).toBeGreaterThanOrEqual(1);
-    expect(body.conversations.every((item) => item.state === "awaiting_staff")).toBe(true);
+    expect(body.incoming.length).toBeGreaterThanOrEqual(1);
+    // The desk's Incoming section is the old waiting-only inbox: escalations.
+    expect(body.incoming.every((item) => item.state === "awaiting_staff")).toBe(true);
 
-    const first = body.conversations[0]!;
+    const first = body.incoming[0]!;
     const transcript = await staffApiRequest(jar, `/api/staff/conversations/${first.id}`);
     expect(transcript.status).toBe(200);
     const transcriptBody = (await transcript.json()) as {

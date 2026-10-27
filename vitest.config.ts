@@ -11,5 +11,12 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     globalSetup: "tests/global-setup.ts",
+    // Provisioning-heavy beforeAll hooks (service init, staff fixtures, TOTP
+    // enrollment) legitimately exceed vitest's 10s default when this machine
+    // is busy, and the API-flow tests drive many authenticated round trips
+    // per test. Both budgets stay generous; parallelism, not the app, is the
+    // variable.
+    hookTimeout: 60_000,
+    testTimeout: 20_000,
   },
 });

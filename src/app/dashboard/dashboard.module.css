@@ -355,3 +355,168 @@
   color: #52606d;
   margin-bottom: 4px;
 }
+
+/* The conversation desk (ticket 12): list left, transcript right. */
+
+.desk {
+  max-width: 72rem;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.deskList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #e4e9f1;
+  border-radius: 12px;
+  padding: 12px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+
+.deskList h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #52606d;
+  margin: 8px 0 2px;
+}
+
+.deskTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.deskTabs a {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  font: 600 14px system-ui, sans-serif;
+  color: #1f2933;
+  border: 1px solid #cbd2dc;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.deskTabs a[aria-current="page"] {
+  background: #1d3a6b;
+  border-color: #1d3a6b;
+  color: #fff;
+}
+
+.deskItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.deskItem:hover {
+  border-color: #1d3a6b;
+}
+
+.deskItem[data-selected] {
+  border-color: #1d3a6b;
+  background: #eef2f9;
+}
+
+.deskItemTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #52606d;
+  font-size: 12px;
+}
+
+.deskItemState {
+  font-weight: 600;
+}
+
+.deskItemPreview {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.attentionBadge {
+  align-self: flex-start;
+  background: #fdecea;
+  color: #a8342a;
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 1px 8px;
+}
+
+.deskEmpty {
+  color: #52606d;
+  font-size: 14px;
+  margin: 2px 0 4px;
+}
+
+.deskPane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e4e9f1;
+  border-radius: 12px;
+  padding: 16px 20px;
+  min-height: 40vh;
+}
+
+.deskActivity {
+  border-top: 1px solid #e4e9f1;
+  padding-top: 8px;
+}
+
+.deskActivity h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.deskAuditRow {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.deskAuditMeta {
+  color: #52606d;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.deskBack {
+  display: none;
+  align-self: flex-start;
+}
+
+@media (max-width: 760px) {
+  /* Narrow screens stack the panes; the back link makes switching between
+     list and transcript explicit and keyboard-reachable. */
+  .desk {
+    grid-template-columns: 1fr;
+  }
+
+  .deskList {
+    max-height: none;
+  }
+
+  .deskBack {
+    display: inline-block;
+  }
+}

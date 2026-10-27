@@ -19,6 +19,16 @@ export function sessionExpiry(): string {
   return new Date(Date.now() + VISITOR_SESSION_TTL_MS).toISOString();
 }
 
+/**
+ * The credential lifetime measured from a meaningful message (ticket 12):
+ * each visitor or staff message slides the conversation's visitor sessions
+ * forward, so an active exchange can continue for a full day after its
+ * latest message rather than a full day after creation.
+ */
+export function sessionExpiryFrom(at: Date): string {
+  return new Date(at.getTime() + VISITOR_SESSION_TTL_MS).toISOString();
+}
+
 export function returnLinkExpiry(): string {
   // RETURN_LINK_TTL_MS lets tests age a link out deterministically.
   return new Date(Date.now() + envMs("RETURN_LINK_TTL_MS", RETURN_LINK_TTL_MS)).toISOString();

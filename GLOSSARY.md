@@ -17,7 +17,16 @@ A request for staff help raised immediately when a question is unknown or matche
 The point in a conversation when a named staff member claims it and begins replying to the visitor in the same chat.
 
 **Shared inbox**:
-The queue of escalated conversations available to authorized staff until one person claims each conversation.
+The queue of escalated conversations available to authorized staff until one person claims each conversation. On the conversation desk it appears as the Incoming section.
+
+**Conversation desk**:
+The staff dashboard's two-pane view of the day's work: a conversation list on the left (Incoming and Active sections, with History a tab away) and the selected transcript with its reply controls on the right.
+
+**Activity**:
+Whether a conversation is still live on the desk, judged from its latest meaningful message — a visitor or staff message; polling, presence, and page views do not count. A conversation leaves the active lists exactly 24 hours after its latest meaningful message and waits in History, transcript kept.
+
+**Attention**:
+The in-dashboard signal that a conversation has something new for staff — a fresh escalation or a visitor message while staff help is active. Viewing, replying, or claiming clears it; it never duplicates while standing.
 
 **Conversation**:
 The message history shared by a visitor, the bot, and any administrator who takes over.

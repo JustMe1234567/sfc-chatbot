@@ -4,6 +4,7 @@ import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
 import { matchAnswerRules, matchesEscalationPhrase } from "@/domain/matcher";
 import { getEscalationPhrases, getSupportHours } from "@/settings";
 import { handoffReply } from "@/domain/hours";
+import { isConversationActive, recordVisitorActivity } from "@/domain/activity";
 import {
   createRateLimiter,
   HISTORY_RATE_LIMIT,
@@ -33,6 +34,19 @@ function newMessage(
 
 interface RouteContext {
   params: Promise<{ id: string }>;
+}
+
+/** The visitor is told when their chat has gone quiet (ticket 12). */
+function inactiveResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      error: {
+        code: "conversation_inactive",
+        message: "This conversation has gone quiet. Ask a new question to start again.",
+      },
+    },
+    { status: 409 },
+  );
 }
 
 export async function GET(request: Request, context: RouteContext) {
@@ -95,14 +109,19 @@ export async function POST(request: Request, context: RouteContext) {
         { status: 409 },
       );
     }
+    if (!isConversationActive(conversation)) {
+      return inactiveResponse();
+    }
     if (!messageLimiter.check(conversation.id)) {
       return NextResponse.json(
         { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
         { status: 429 },
       );
     }
+    const now = new Date();
     await store.appendMessage(newMessage(conversation.id, "visitor", rule.topic));
     await store.touchVisitorPresence(conversation.id);
+    await recordVisitorActivity(store, conversation.id, now);
     if (conversation.state !== "bot_active") {
       // Staff help is already requested; bot replies stay paused.
       return NextResponse.json({ conversation, reply: null });
@@ -132,6 +151,11 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 409 },
     );
   }
+  // Quiet for a day: the conversation is history now. The widget treats this
+  // exactly like a closure — fresh conversation, question carried over.
+  if (!isConversationActive(conversation)) {
+    return inactiveResponse();
+  }
   if (!messageLimiter.check(conversation.id)) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
@@ -142,6 +166,7 @@ export async function POST(request: Request, context: RouteContext) {
   const { store, db, mail } = await getChatbotService();
   await store.appendMessage(newMessage(conversation.id, "visitor", validation.text));
   await store.touchVisitorPresence(conversation.id);
+  await recordVisitorActivity(store, conversation.id, new Date());
 
   // Once staff help is requested, automated answers pause for the rest of the
   // conversation; only one escalation is raised per conversation.

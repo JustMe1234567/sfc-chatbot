@@ -67,3 +67,20 @@ export function claimConflictResponse(claimerName: string | null): NextResponse 
     { status: 409 },
   );
 }
+
+/**
+ * The shared refusal for staff actions on a conversation that went quiet a
+ * day ago (ticket 12): it has left the desk and no reopening action exists.
+ */
+export function conversationInactiveResponse(): NextResponse {
+  return NextResponse.json(
+    {
+      error: {
+        code: "conversation_inactive",
+        message:
+          "This conversation has gone quiet. It is kept in History; the visitor's next question starts a fresh chat.",
+      },
+    },
+    { status: 409 },
+  );
+}

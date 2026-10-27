@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { sameOriginGuard } from "@/api/staff";
 import { audit } from "@/api/audit";
-import { claimConflictResponse, loadStaffConversation, staffName } from "@/api/staffConversations";
+import {
+  claimConflictResponse,
+  conversationInactiveResponse,
+  loadStaffConversation,
+  staffName,
+} from "@/api/staffConversations";
+import { isConversationActive } from "@/domain/activity";
 import { getChatbotService } from "@/db/service";
 
 interface RouteContext {
@@ -34,6 +40,11 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 409 },
     );
   }
+  // A conversation quiet for a day has left the desk's Incoming list; it is
+  // history, not claimable work (ticket 12). No reopening action exists yet.
+  if (!isConversationActive(conversation)) {
+    return conversationInactiveResponse();
+  }
 
   const service = await getChatbotService();
   const claimed = await service.store.claimConversation(id, loaded.staff.userId);
@@ -43,6 +54,8 @@ export async function POST(request: Request, context: RouteContext) {
       current?.claimedBy ? staffName(service.db, current.claimedBy) : null,
     );
   }
+  // Taking the conversation is handling it: the attention alert clears.
+  await service.store.clearConversationAttention(id);
   await audit(service.store, loaded.staff.userId, "conversation_claimed", { conversationId: id });
   return NextResponse.json({ conversation: claimed });
 }

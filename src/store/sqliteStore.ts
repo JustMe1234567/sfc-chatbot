@@ -40,6 +40,8 @@ interface ConversationRow {
   visitor_email: string | null;
   visitor_last_seen_at: string | null;
   closed_at: string | null;
+  last_activity_at: string | null;
+  attention_at: string | null;
 }
 
 interface MessageRow {
@@ -82,11 +84,15 @@ function rowToConversation(row: ConversationRow): Conversation {
     visitorEmail: row.visitor_email,
     visitorLastSeenAt: row.visitor_last_seen_at,
     closedAt: row.closed_at,
+    // The migration backfills every row, so null here only guards a
+    // hand-edited database: fall back to creation.
+    lastActivityAt: row.last_activity_at ?? row.created_at,
+    attentionAt: row.attention_at,
   };
 }
 
 const CONVERSATION_COLUMNS =
-  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at";
+  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at, last_activity_at, attention_at";
 
 function rowToMessage(row: MessageRow): Message {
   let choices: Message["choices"];
@@ -132,8 +138,14 @@ export function createSqliteStore(db: DatabaseSync): Store {
   return {
     async createConversation(conversation) {
       db.prepare(
-        "INSERT INTO conversations (id, state, created_at, visitor_last_seen_at) VALUES (?, ?, ?, ?)",
-      ).run(conversation.id, conversation.state, conversation.createdAt, conversation.createdAt);
+        "INSERT INTO conversations (id, state, created_at, visitor_last_seen_at, last_activity_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(
+        conversation.id,
+        conversation.state,
+        conversation.createdAt,
+        conversation.createdAt,
+        conversation.createdAt,
+      );
     },
 
     async getConversation(id) {
@@ -165,6 +177,45 @@ export function createSqliteStore(db: DatabaseSync): Store {
         )
         .all(state) as unknown as ConversationRow[];
       return rows.map(rowToConversation);
+    },
+
+    // Unordered: the conversation desk's read model shapes and sorts in one
+    // pass (newest activity first), so no SQL ordering survives to callers.
+    async listConversations() {
+      const rows = db
+        .prepare(`SELECT ${CONVERSATION_COLUMNS} FROM conversations`)
+        .all() as unknown as ConversationRow[];
+      return rows.map(rowToConversation);
+    },
+
+    // One meaningful message (visitor or staff) moves the inactivity clock
+    // and slides the conversation's visitor credentials forward with it, so
+    // the credential can outlive its original 24 hours exactly as long as
+    // the exchange keeps going.
+    async touchConversationActivity(id, at, sessionExpiresAt) {
+      db.exec("BEGIN");
+      try {
+        db.prepare("UPDATE conversations SET last_activity_at = ? WHERE id = ?").run(at, id);
+        db.prepare(
+          "UPDATE visitor_sessions SET expires_at = ? WHERE conversation_id = ? AND expires_at < ?",
+        ).run(sessionExpiresAt, id, sessionExpiresAt);
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    },
+
+    // The guard keeps a burst of visitor messages one alert: the flag is
+    // raised only when nothing is standing.
+    async setConversationAttention(id, at) {
+      db.prepare(
+        "UPDATE conversations SET attention_at = ? WHERE id = ? AND attention_at IS NULL",
+      ).run(at, id);
+    },
+
+    async clearConversationAttention(id) {
+      db.prepare("UPDATE conversations SET attention_at = NULL WHERE id = ?").run(id);
     },
 
     // The conditional UPDATE is the whole claim protocol: whichever request

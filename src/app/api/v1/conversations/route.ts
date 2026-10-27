@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       { status: 429 },
     );
   }
+  const conversationCreatedAt = new Date().toISOString();
   const conversation: Conversation = {
     id: crypto.randomUUID(),
     state: "bot_active",
@@ -28,7 +29,10 @@ export async function POST(request: Request) {
     visitorEmail: null,
     visitorLastSeenAt: null,
     closedAt: null,
-    createdAt: new Date().toISOString(),
+    // A conversation with no messages is active for a day from creation.
+    lastActivityAt: conversationCreatedAt,
+    attentionAt: null,
+    createdAt: conversationCreatedAt,
   };
   const token = createSessionToken();
   const createdAt = new Date().toISOString();

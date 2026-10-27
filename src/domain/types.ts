@@ -13,6 +13,17 @@ export interface Conversation {
   visitorLastSeenAt: string | null;
   /** When staff closed the conversation; the retention clock starts here. */
   closedAt: string | null;
+  /**
+   * The inactivity clock (ticket 12): the latest visitor or staff message,
+   * or creation. The conversation leaves the active lists 24 hours after it;
+   * polling and presence never move it.
+   */
+  lastActivityAt: string;
+  /**
+   * The in-dashboard alert (ticket 12): set when a visitor message arrives
+   * and not duplicated until staff view, reply, or claim the conversation.
+   */
+  attentionAt: string | null;
 }
 
 export type MessageRole = "visitor" | "bot" | "staff";
@@ -134,6 +145,18 @@ export interface Store {
   getConversation(id: string): Promise<Conversation | null>;
   updateConversationState(id: string, state: ConversationState): Promise<void>;
   listConversationsByState(state: ConversationState): Promise<Conversation[]>;
+  /** Every conversation, any state: the conversation desk's source. */
+  listConversations(): Promise<Conversation[]>;
+  /**
+   * The activity bump for a meaningful message (visitor or staff): moves the
+   * inactivity clock and extends the conversation's visitor credentials so
+   * an active exchange can run a full day past its latest message.
+   */
+  touchConversationActivity(id: string, at: string, sessionExpiresAt: string): Promise<void>;
+  /** Raises the in-dashboard alert once per burst of visitor messages. */
+  setConversationAttention(id: string, at: string): Promise<void>;
+  /** Clears the alert: the conversation has been viewed or handled. */
+  clearConversationAttention(id: string): Promise<void>;
   /** Records the optional follow-up address the visitor left at handoff. */
   setConversationEmail(id: string, email: string): Promise<void>;
   /** Marks the visitor as present right now (polling and posting count). */

@@ -217,8 +217,11 @@ export default function WidgetFrame() {
     try {
       let response = await postMessage(session, text, choice);
       if (response.status === 401 || response.status === 404) {
-        // The stored credential stopped working: start over once.
+        // The stored credential stopped working: start over once. The old
+        // transcript belongs to the lapsed session, so the fresh chat view
+        // starts empty (ticket 12).
         dropSession();
+        setMessages([]);
         response = await postMessage(await ensureSession(), text, choice);
         if (!response || !response.ok) {
           showError();
@@ -227,7 +230,12 @@ export default function WidgetFrame() {
       }
       if (response.status === 409) {
         const conflict = (await response.json()) as { error?: { code?: string } };
-        if (conflict.error?.code === "conversation_closed") {
+        if (
+          conflict.error?.code === "conversation_closed" ||
+          // Quiet for a day: the old conversation is history; the visitor's
+          // question starts a fresh chat instead (ticket 12).
+          conflict.error?.code === "conversation_inactive"
+        ) {
           // Staff closed this conversation: drop the credential, start a
           // fresh one, and carry the visitor's question over so it is not
           // swallowed by the closure.

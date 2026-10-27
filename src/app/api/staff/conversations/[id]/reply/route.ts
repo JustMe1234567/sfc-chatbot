@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { sameOriginGuard } from "@/api/staff";
 import { audit } from "@/api/audit";
-import { claimConflictResponse, loadStaffConversation } from "@/api/staffConversations";
+import { claimConflictResponse, conversationInactiveResponse, loadStaffConversation } from "@/api/staffConversations";
 import { validateVisitorText } from "@/domain/limits";
+import { isConversationActive } from "@/domain/activity";
+import { sessionExpiryFrom } from "@/domain/tokens";
 import { getChatbotService } from "@/db/service";
 import type { Message } from "@/domain/types";
 
@@ -40,6 +42,11 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 409 },
     );
   }
+  // A conversation quiet for a day has left the desk; replying needs the
+  // reopening action this ticket deliberately does not add (ticket 12).
+  if (!isConversationActive(conversation)) {
+    return conversationInactiveResponse();
+  }
   // The claimer speaks; the owner role may override the assignment (ticket
   // 08) but never the conversation state itself.
   if (conversation.claimedBy !== staff.userId && staff.role !== "owner") {
@@ -54,15 +61,20 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
+  const now = new Date();
   const message: Message = {
     id: crypto.randomUUID(),
     conversationId: id,
     role: "staff",
     text: validation.text,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
   };
   const service = await getChatbotService();
   await service.store.appendMessage(message);
+  // A staff message is meaningful: the inactivity clock restarts and the
+  // visitor's credential lives long enough to poll the answer (ticket 12).
+  await service.store.touchConversationActivity(id, now.toISOString(), sessionExpiryFrom(now));
+  await service.store.clearConversationAttention(id);
   await audit(service.store, staff.userId, "conversation_replied", { conversationId: id });
   // A visitor who already left gets their one secure return link (ticket 07).
   // Notification failures never fail the reply itself; the notifications page

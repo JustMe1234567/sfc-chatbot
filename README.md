@@ -75,7 +75,7 @@ Secrets never reach client bundles: no `NEXT_PUBLIC_` variable carries them.
 | `src/api/` | Request-side helpers shared by route handlers (visitor + staff auth guards) |
 | `src/auth/` | Better Auth configuration and server-side staff provisioning |
 | `src/lib/` | Shared client helpers (auth client, visitor session storage) |
-| `src/domain/` | Pure matching, limits, tokens, hours, retention sweep, entity types, and answer-rule input validation |
+| `src/domain/` | Pure matching, limits, tokens, hours, activity, retention sweep, entity types, and answer-rule input validation |
 | `src/store/` | SQLite store behind the `Store` port, and seed content |
 | `src/db/` | SQLite connection, versioned migration runner, service singleton |
 | `src/widget/` | Loader script bundled to `public/widget/v1.js` |
