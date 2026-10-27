@@ -283,3 +283,76 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* The visitor's Clear conversation control (ticket 14): a quiet row under
+   the composer, with an inline confirmation that says what happens. */
+
+.clearRow {
+  padding: 0 16px 10px;
+}
+
+.clearButton {
+  border: 0;
+  background: transparent;
+  color: #52606d;
+  font: 500 12px system-ui, sans-serif;
+  text-decoration: underline;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.clearButton:hover {
+  color: #a8342a;
+}
+
+.clearButton:focus-visible,
+.confirmClear:focus-visible,
+.confirmKeep:focus-visible {
+  outline: 2px solid #1d3a6b;
+  outline-offset: 2px;
+}
+
+.confirmBox {
+  border: 1px solid #e4e9f1;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px 10px;
+}
+
+.confirmText {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  color: #1f2933;
+}
+
+.confirmButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.confirmClear {
+  border: 0;
+  border-radius: 6px;
+  background: #a8342a;
+  color: #fff;
+  font: 600 12px system-ui, sans-serif;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.confirmClear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.confirmKeep {
+  border: 1px solid #cbd2dc;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2933;
+  font: 550 12px system-ui, sans-serif;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}

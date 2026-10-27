@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { sameOriginGuard } from "@/api/staff";
 import { claimConflictResponse, loadStaffConversation } from "@/api/staffConversations";
+import { CLOSING_NOTICE } from "@/domain/conversations";
 import { getChatbotService } from "@/db/service";
 import type { Message } from "@/domain/types";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
-
-const CLOSING_NOTICE =
-  "This conversation has been closed. If you need anything else, just ask a new question and we will pick it up from there.";
 
 /**
  * Closes a resolved conversation. A later visitor message is refused and the

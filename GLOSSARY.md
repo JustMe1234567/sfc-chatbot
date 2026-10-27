@@ -28,6 +28,9 @@ Whether a conversation is still live on the desk, judged from its latest meaning
 **Attention**:
 The in-dashboard signal that a conversation has something new for staff — a fresh escalation or a visitor message while staff help is active. Viewing, replying, or claiming clears it; it never duplicates while standing.
 
+**Clear conversation**:
+The visitor's action to end the current chat and start a fresh one. Staff keep the old transcript in History under the retention policy; the visitor's credential and any unused return link are revoked immediately.
+
 **Conversation**:
 The message history shared by a visitor, the bot, and any administrator who takes over.
 

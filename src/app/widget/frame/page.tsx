@@ -44,6 +44,10 @@ export default function WidgetFrame() {
   const sessionRef = useRef<StoredSession | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Bumped whenever the visitor's conversation is replaced (ticket 14): any
+  // in-flight request from an older generation must never repaint the chat.
+  const generationRef = useRef(0);
+  const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
 
   const showError = useCallback(() => {
     setError("The chat is temporarily unavailable. Please try again.");
@@ -100,17 +104,23 @@ export default function WidgetFrame() {
   }, []);
 
   // Authorized polling: new staff messages appear promptly, and a reload or
-  // reconnect recovers everything from the stored conversation.
+  // reconnect recovers everything from the stored conversation. Each tick is
+  // tagged with the current generation so a response from a cleared
+  // conversation can never repaint the fresh chat (ticket 14).
   useEffect(() => {
     const timer = setInterval(() => {
       const session = sessionRef.current;
       if (!session) {
         return;
       }
+      const generation = generationRef.current;
       fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
         headers: { Authorization: `Bearer ${session.token}` },
       })
         .then(async (response) => {
+          if (generationRef.current !== generation) {
+            return;
+          }
           if (response.status === 401 || response.status === 404) {
             dropSession();
             return;
@@ -118,7 +128,12 @@ export default function WidgetFrame() {
           if (!response.ok) {
             return; // Transient network trouble; the next tick retries.
           }
-          applyHistory(await response.json());
+          const body = await response.json();
+          // The clear can land inside the parse await.
+          if (generationRef.current !== generation) {
+            return;
+          }
+          applyHistory(body);
         })
         .catch(() => {});
     }, 3000);
@@ -207,6 +222,7 @@ export default function WidgetFrame() {
     if (!session) {
       return;
     }
+    const generation = generationRef.current;
     setError("");
     setMessages((current) => [
       ...current,
@@ -216,6 +232,9 @@ export default function WidgetFrame() {
     setSending(true);
     try {
       let response = await postMessage(session, text, choice);
+      if (generationRef.current !== generation) {
+        return; // The chat was cleared mid-send; the message dies with it.
+      }
       if (response.status === 401 || response.status === 404) {
         // The stored credential stopped working: start over once. The old
         // transcript belongs to the lapsed session, so the fresh chat view
@@ -223,6 +242,9 @@ export default function WidgetFrame() {
         dropSession();
         setMessages([]);
         response = await postMessage(await ensureSession(), text, choice);
+        if (generationRef.current !== generation) {
+          return;
+        }
         if (!response || !response.ok) {
           showError();
           return;
@@ -246,11 +268,14 @@ export default function WidgetFrame() {
           setError("");
           setEmailPrompt("asking");
           const fresh = await ensureSession();
-          if (!fresh) {
+          if (!fresh || generationRef.current !== generation) {
             return;
           }
           response = await postMessage(fresh, text, choice);
-          if (!response.ok) {
+          if (generationRef.current !== generation) {
+            return;
+          }
+          if (!response || !response.ok) {
             showError();
             return;
           }
@@ -266,6 +291,11 @@ export default function WidgetFrame() {
         conversation: { state: string };
         reply: DisplayedMessage | null;
       };
+      // A clear can land inside the parse await; nothing from the old
+      // conversation may repaint the fresh chat afterwards.
+      if (generationRef.current !== generation) {
+        return;
+      }
       setHandoff(body.conversation.state === "awaiting_staff");
       setClaimed(body.conversation.state === "claimed");
       if (body.reply) {
@@ -320,6 +350,58 @@ export default function WidgetFrame() {
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     await send(question.trim());
+  }
+
+  /**
+   * The visitor's Clear conversation (ticket 14): ends this chat server-side
+   * and swaps in the one fresh conversation the server returns, blanking the
+   * view. A request that fails with 401/404 already ended server-side (the
+   * credential was revoked or expired), so the fallback starts a plain fresh
+   * conversation instead — the visitor still sees exactly one new chat. The
+   * generation bump strands every in-flight request from the old chat.
+   */
+  async function confirmClear(): Promise<void> {
+    const session = sessionRef.current ?? readSession();
+    if (!session || clearState === "busy") {
+      return;
+    }
+    const generation = generationRef.current;
+    setClearState("busy");
+    try {
+      let response = await fetch(
+        `/api/v1/conversations/${encodeURIComponent(session.id)}/clear`,
+        { method: "POST", headers: { Authorization: `Bearer ${session.token}` } },
+      );
+      if (response.status === 401 || response.status === 404) {
+        response = await fetch("/api/v1/conversations", { method: "POST" });
+      }
+      if (generationRef.current !== generation) {
+        return;
+      }
+      if (!response.ok) {
+        showError();
+        return;
+      }
+      const fresh = (await response.json()) as StoredSession;
+      // The double-clear race can land inside the parse await.
+      if (generationRef.current !== generation) {
+        return;
+      }
+      generationRef.current = generation + 1;
+      writeSession(fresh);
+      sessionRef.current = fresh;
+      setMessages([]);
+      setHandoff(false);
+      setClaimed(false);
+      setEmailPrompt("asking");
+      setQuestion("");
+      setError("");
+    } catch {
+      showError();
+    } finally {
+      setClearState("idle");
+      inputRef.current?.focus();
+    }
   }
 
   return (
@@ -465,6 +547,44 @@ export default function WidgetFrame() {
           Send
         </button>
       </form>
+      {messages.length > 0 ? (
+        <div className={styles.clearRow}>
+          {clearState === "idle" ? (
+            <button
+              type="button"
+              className={styles.clearButton}
+              onClick={() => setClearState("confirm")}
+            >
+              Clear conversation
+            </button>
+          ) : (
+            <div className={styles.confirmBox} role="group" aria-label="Confirm clear conversation">
+              <p className={styles.confirmText}>
+                Staff will keep a record of this chat on their side. You lose
+                access to it here, and a fresh chat starts.
+              </p>
+              <div className={styles.confirmButtons}>
+                <button
+                  type="button"
+                  className={styles.confirmClear}
+                  disabled={clearState === "busy"}
+                  onClick={() => void confirmClear()}
+                >
+                  {clearState === "busy" ? "Clearing…" : "Clear chat"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.confirmKeep}
+                  disabled={clearState === "busy"}
+                  onClick={() => setClearState("idle")}
+                >
+                  Keep chatting
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
     </main>
   );
 }

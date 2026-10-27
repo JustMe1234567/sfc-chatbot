@@ -14,6 +14,12 @@ export interface Conversation {
   /** When staff closed the conversation; the retention clock starts here. */
   closedAt: string | null;
   /**
+   * The one fresh conversation that replaced this one when the visitor
+   * cleared their chat (ticket 14). Deliberately not a foreign key: the
+   * retention sweep purges closed conversations independently.
+   */
+  replacedBy: string | null;
+  /**
    * The inactivity clock (ticket 12): the latest visitor or staff message,
    * or creation. The conversation leaves the active lists 24 hours after it;
    * polling and presence never move it.
@@ -182,6 +188,22 @@ export interface Store {
    * starts to run.
    */
   closeConversation(id: string): Promise<void>;
+  /**
+   * The visitor's Clear conversation action (ticket 14), as one transaction:
+   * closes the old conversation unless already closed (staff closure's
+   * timestamp is preserved), revokes its visitor sessions and unused return
+   * links, and gets-or-creates the single successor conversation with the
+   * given credential. The resolved successor id comes back — a concurrent
+   * or retried clear joins the existing successor rather than the proposed
+   * one; unknown conversations yield null.
+   */
+  replaceConversation(
+    oldId: string,
+    successorId: string,
+    session: Omit<VisitorSession, "conversationId">,
+    at: string,
+    closingNotice: string,
+  ): Promise<string | null>;
   /**
    * Closed conversations whose retention period ended before the cutoff
    * instant: the retention sweep's candidates.

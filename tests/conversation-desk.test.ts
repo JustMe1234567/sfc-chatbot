@@ -215,6 +215,7 @@ describe("the exact 24-hour inactivity boundary", () => {
       visitorEmail: null,
       visitorLastSeenAt: null,
       closedAt: null,
+      replacedBy: null,
       attentionAt: null,
     };
     const now = new Date("2027-01-02T00:00:00.000Z");

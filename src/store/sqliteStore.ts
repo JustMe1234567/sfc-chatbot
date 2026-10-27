@@ -42,6 +42,7 @@ interface ConversationRow {
   closed_at: string | null;
   last_activity_at: string | null;
   attention_at: string | null;
+  replaced_by: string | null;
 }
 
 interface MessageRow {
@@ -84,6 +85,7 @@ function rowToConversation(row: ConversationRow): Conversation {
     visitorEmail: row.visitor_email,
     visitorLastSeenAt: row.visitor_last_seen_at,
     closedAt: row.closed_at,
+    replacedBy: row.replaced_by,
     // The migration backfills every row, so null here only guards a
     // hand-edited database: fall back to creation.
     lastActivityAt: row.last_activity_at ?? row.created_at,
@@ -92,7 +94,7 @@ function rowToConversation(row: ConversationRow): Conversation {
 }
 
 const CONVERSATION_COLUMNS =
-  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at, last_activity_at, attention_at";
+  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at, last_activity_at, attention_at, replaced_by";
 
 function rowToMessage(row: MessageRow): Message {
   let choices: Message["choices"];
@@ -280,6 +282,71 @@ export function createSqliteStore(db: DatabaseSync): Store {
       db.prepare(
         "UPDATE conversations SET state = 'closed', closed_at = ? WHERE id = ? AND state <> 'closed'",
       ).run(new Date().toISOString(), id);
+    },
+
+    // The visitor's Clear conversation (ticket 14) in one transaction. The
+    // replaced_by link is what makes retries safe: every request after the
+    // first finds the same successor and only mints another credential for
+    // it, so one click can never grow a second fresh chat. Revocation drops
+    // the old conversation's visitor sessions and any unused return links;
+    // used links, transcripts, notifications, and audit rows stay.
+    async replaceConversation(oldId, successorId, session, at, closingNotice) {
+      db.exec("BEGIN");
+      try {
+        const old = db
+          .prepare("SELECT state, replaced_by FROM conversations WHERE id = ?")
+          .get(oldId) as { state: Conversation["state"]; replaced_by: string | null } | undefined;
+        if (!old) {
+          db.exec("ROLLBACK");
+          return null;
+        }
+        let resolvedId = successorId;
+        if (old.replaced_by) {
+          // A concurrent or earlier clear already created the successor:
+          // join it instead of the proposed id.
+          resolvedId = old.replaced_by;
+        } else {
+          // Guarded writes, matching the claim protocol's shape: they keep a
+          // second transaction a no-op even where drivers interleave inside
+          // a transaction (the Postgres store for ticket 11 must preserve
+          // this; on this driver the whole transaction is synchronous).
+          const closed = db
+            .prepare(
+              "UPDATE conversations SET state = 'closed', closed_at = ? WHERE id = ? AND state <> 'closed'",
+            )
+            .run(at, oldId);
+          if (closed.changes > 0) {
+            db.prepare(
+              "INSERT INTO messages (id, conversation_id, role, text, created_at) VALUES (?, ?, 'bot', ?, ?)",
+            ).run(crypto.randomUUID(), oldId, closingNotice, at);
+          }
+          db.prepare("DELETE FROM visitor_sessions WHERE conversation_id = ?").run(oldId);
+          db.prepare(
+            "DELETE FROM return_tokens WHERE conversation_id = ? AND used_at IS NULL",
+          ).run(oldId);
+          db.prepare(
+            "INSERT INTO conversations (id, state, created_at, visitor_last_seen_at, last_activity_at) VALUES (?, 'bot_active', ?, ?, ?)",
+          ).run(successorId, at, at, at);
+          const linked = db
+            .prepare(
+              "UPDATE conversations SET replaced_by = ? WHERE id = ? AND replaced_by IS NULL",
+            )
+            .run(successorId, oldId);
+          if (linked.changes === 0) {
+            // Unreachable on this driver; the guard exists so the Postgres
+            // store inherits the join-don't-duplicate rule.
+            throw new Error(`conversation ${oldId} was linked to a successor concurrently`);
+          }
+        }
+        db.prepare(
+          "INSERT INTO visitor_sessions (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        ).run(session.tokenHash, resolvedId, session.createdAt, session.expiresAt);
+        db.exec("COMMIT");
+        return resolvedId;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     },
 
     async listConversationsClosedBefore(cutoffIso) {

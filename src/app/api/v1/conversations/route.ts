@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     visitorEmail: null,
     visitorLastSeenAt: null,
     closedAt: null,
+    replacedBy: null,
     // A conversation with no messages is active for a day from creation.
     lastActivityAt: conversationCreatedAt,
     attentionAt: null,
