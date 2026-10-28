@@ -10,6 +10,11 @@ import {
   type StoredSession,
 } from "@/lib/visitorSession";
 import { startPresenceHeartbeat } from "@/widget/presence";
+import {
+  emptyArrivalState,
+  nextArrivalState,
+  type ArrivalMessage,
+} from "@/widget/arrivals";
 import styles from "./frame.module.css";
 
 interface DisplayedMessage {
@@ -128,18 +133,54 @@ export default function WidgetFrame() {
   // Synchronous mirror of the sending flag: state updates land after React
   // renders, but the duplicate-send guard must hold during awaits.
   const sendingRef = useRef(false);
+  // Arrival bookkeeping (ticket 15): which messages have ever been on
+  // screen, so entrance animations run once for genuinely new messages and
+  // never for history restores, polling refreshes, or the persisted twin of
+  // a just-sent optimistic bubble.
+  const arrivalStateRef = useRef(emptyArrivalState());
+  const [arrivingIds, setArrivingIds] = useState<Set<string>>(new Set());
+  const [noticesArrive, setNoticesArrive] = useState(false);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
 
   const showError = useCallback(() => {
     setError("The chat is temporarily unavailable. Please try again.");
   }, []);
 
+  function applyArrivals(messages: ArrivalMessage[], animate: boolean): void {
+    const { state, arrivals } = nextArrivalState(arrivalStateRef.current, messages, animate);
+    arrivalStateRef.current = state;
+    if (arrivals.size > 0) {
+      setArrivingIds((current) => new Set([...current, ...arrivals]));
+    }
+  }
+
+  /** A fresh conversation starts with a clean arrival slate. */
+  function resetArrivals(): void {
+    arrivalStateRef.current = emptyArrivalState();
+    setArrivingIds(new Set());
+    setNoticesArrive(false);
+  }
+
+  /** The handoff/claim notice animates only when it appears live, never on
+      a history restore; every conversation-state application funnels here. */
+  function applyConversationState(state: string, animate: boolean): void {
+    setHandoff(state === "awaiting_staff");
+    setClaimed(state === "claimed");
+    if (animate && state !== "bot_active") {
+      setNoticesArrive(true);
+    }
+    if (!animate) {
+      setNoticesArrive(false);
+    }
+  }
+
   const applyHistory = useCallback(
-    (body: { conversation: { state: string }; messages: DisplayedMessage[] }) => {
+    (body: { conversation: { state: string }; messages: DisplayedMessage[] }, animate: boolean) => {
+      applyArrivals(body.messages, animate);
       setMessages(body.messages);
-      setHandoff(body.conversation.state === "awaiting_staff");
-      setClaimed(body.conversation.state === "claimed");
+      applyConversationState(body.conversation.state, animate);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -163,7 +204,7 @@ export default function WidgetFrame() {
           showError();
           return;
         }
-        applyHistory(await response.json());
+        applyHistory(await response.json(), false);
       })
       .catch(showError);
   }, [showError, applyHistory]);
@@ -239,7 +280,7 @@ export default function WidgetFrame() {
           if (generationRef.current !== generation) {
             return;
           }
-          applyHistory(body);
+          applyHistory(body, true);
         })
         .catch(() => {});
     }, 3000);
@@ -331,10 +372,15 @@ export default function WidgetFrame() {
     setSending(true);
     const generation = generationRef.current;
     setError("");
-    setMessages((current) => [
-      ...current,
-      { id: `local-${Date.now()}`, role: "visitor", text },
-    ]);
+    // The optimistic bubble is a genuine arrival; the poller's later
+    // persisted twin is silenced by the arrival state's word-based key.
+    const localMessage: DisplayedMessage = {
+      id: `local-${Date.now()}`,
+      role: "visitor",
+      text,
+    };
+    applyArrivals([localMessage], true);
+    setMessages((current) => [...current, localMessage]);
     setQuestion("");
     try {
       const session = await ensureSession();
@@ -351,6 +397,7 @@ export default function WidgetFrame() {
         // starts empty (ticket 12).
         dropSession();
         setMessages([]);
+        resetArrivals();
         response = await postMessage(await ensureSession(), text, choice);
         if (generationRef.current !== generation) {
           return;
@@ -373,8 +420,8 @@ export default function WidgetFrame() {
           // swallowed by the closure.
           dropSession();
           setMessages([]);
-          setHandoff(false);
-          setClaimed(false);
+          resetArrivals();
+          applyConversationState("bot_active", false);
           setError("");
           setEmailPrompt("asking");
           const fresh = await ensureSession();
@@ -406,10 +453,11 @@ export default function WidgetFrame() {
       if (generationRef.current !== generation) {
         return;
       }
-      setHandoff(body.conversation.state === "awaiting_staff");
-      setClaimed(body.conversation.state === "claimed");
+      applyConversationState(body.conversation.state, true);
       if (body.reply) {
-        setMessages((current) => [...current, body.reply as DisplayedMessage]);
+        const reply = body.reply as DisplayedMessage;
+        applyArrivals([reply], true);
+        setMessages((current) => [...current, reply]);
       }
     } catch {
       showError();
@@ -502,8 +550,8 @@ export default function WidgetFrame() {
       writeSession(fresh);
       sessionRef.current = fresh;
       setMessages([]);
-      setHandoff(false);
-      setClaimed(false);
+      resetArrivals();
+      applyConversationState("bot_active", false);
       setEmailPrompt("asking");
       setQuestion("");
       setError("");
@@ -542,17 +590,17 @@ export default function WidgetFrame() {
             : "Pick a topic, or type your question."}
       </p>
       {handoff ? (
-        <p className={styles.handoff}>
+        <p className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}>
           College staff will reply in this chat. Automated answers are paused.
         </p>
       ) : null}
       {claimed ? (
-        <p className={styles.handoff}>
+        <p className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}>
           A college staff member has joined the conversation and will reply here.
         </p>
       ) : null}
       {(handoff || claimed) && emailPrompt === "asking" ? (
-        <div className={styles.emailBox}>
+        <div className={`${styles.emailBox} ${noticesArrive ? styles.arrive : ""}`}>
           <p className={styles.emailText}>
             Leaving? Add your email and staff can send you a secure one-time
             link back to this conversation if they reply after you go.
@@ -601,7 +649,24 @@ export default function WidgetFrame() {
       ) : null}
       <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">
         {messages.map((message, index) => (
-          <li key={message.id} className={`${styles.message} ${styles[message.role]}`}>
+          <li
+            key={message.id}
+            className={`${styles.message} ${styles[message.role]}`}
+            data-arrive={arrivingIds.has(message.id) ? "" : undefined}
+            onAnimationEnd={
+              arrivingIds.has(message.id)
+                ? () =>
+                    setArrivingIds((current) => {
+                      if (!current.has(message.id)) {
+                        return current;
+                      }
+                      const next = new Set(current);
+                      next.delete(message.id);
+                      return next;
+                    })
+                : undefined
+            }
+          >
             {message.text}
             {message.link && isHttpLink(message.link) && (
               <a href={message.link} target="_blank" rel="noopener noreferrer">

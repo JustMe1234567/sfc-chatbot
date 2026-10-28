@@ -1,5 +1,52 @@
 /* The frame fills the loader's iframe; spacing and the panel chrome live
    here, while the launcher and iframe placement live in the loader script. */
+
+/* Motion tokens (ticket 15): one small set, same values as the loader's
+   panel transition and the dashboard. Under prefers-reduced-motion every
+   animated change lands immediately; the media query is live, so a change
+   of the OS preference applies without a reload. */
+:root {
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+
+  /* Pressed feedback goes non-spatial: the color changes remain. */
+  .topicButton:active,
+  .send:active {
+    transform: none;
+  }
+}
+
+/* Entrance for genuinely new messages and live notices (ticket 15):
+   opacity + a small translate only, never layout. */
+@keyframes sfcw-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.message[data-arrive] {
+  animation: sfcw-arrive var(--motion-base) var(--ease-out);
+}
+
+/* Live handoff/claim notices and the clear-conversation confirmation get
+   the same treatment; history restores render without it. */
+.arrive {
+  animation: sfcw-arrive var(--motion-base) var(--ease-out);
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -120,6 +167,10 @@
   font: 500 13px/1.2 system-ui, sans-serif;
   padding: 6px 12px;
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
   /* Long questions wrap to at most two lines instead of clipping or
      stretching the row. The clamp lives on an inner span: buttons' own
      internal layout ignores -webkit-line-clamp in Chromium. */
@@ -134,7 +185,8 @@
   overflow-wrap: break-word;
 }
 
-.topicButton:hover {
+.topicButton:hover,
+.topicButton:active {
   border-color: #e3a739;
   color: #163c6b;
 }
@@ -144,9 +196,14 @@
   outline-offset: 2px;
 }
 
+.topicButton:active {
+  transform: scale(0.98);
+}
+
 .topicButton:disabled {
   opacity: 0.5;
   cursor: default;
+  transform: none;
 }
 
 /* Edge fades: soft hints that the strip continues that way, shown only on
@@ -353,6 +410,17 @@
   font: 600 14px system-ui, sans-serif;
   padding: 0 16px;
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.send:hover,
+.send:active {
+  background: #163c6b;
+}
+
+.send:active {
+  transform: scale(0.98);
 }
 
 .send:disabled {
@@ -401,6 +469,7 @@
 }
 
 .confirmBox {
+  animation: sfcw-arrive var(--motion-fast) var(--ease-out);
   border: 1px solid #e4e9f1;
   border-radius: 8px;
   background: #f8fafc;
