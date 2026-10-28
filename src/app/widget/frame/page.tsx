@@ -31,6 +31,83 @@ function isHttpLink(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+/**
+ * The suggested-questions strip (ticket 18): a two-row, horizontally
+ * scrollable rail pinned directly above the composer, visible for the whole
+ * conversation — not only before the first message. Tracks where the
+ * horizontal overflow stands so a soft edge fade can hint at more content
+ * without relying on a scrollbar that touch devices hide.
+ */
+function TopicsStrip({
+  topics,
+  disabled,
+  onPick,
+}: {
+  topics: TopicButton[];
+  disabled: boolean;
+  onPick: (question: string) => void;
+}) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+
+  const updateEdges = useCallback(() => {
+    const strip = stripRef.current;
+    if (!strip) {
+      return;
+    }
+    // One-pixel tolerances keep sub-pixel scroll rounding from flickering
+    // the fades on and off at either end.
+    const maxScroll = strip.scrollWidth - strip.clientWidth;
+    setEdges({ start: strip.scrollLeft > 1, end: strip.scrollLeft < maxScroll - 1 });
+  }, []);
+
+  useEffect(() => {
+    updateEdges();
+    const strip = stripRef.current;
+    if (!strip || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(updateEdges);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [updateEdges, topics.length]);
+
+  return (
+    <div className={styles.topicsShell}>
+      <div
+        ref={stripRef}
+        className={styles.topics}
+        role="group"
+        aria-label="Suggested questions"
+        onScroll={updateEdges}
+      >
+        {topics.map((topic) => (
+          <button
+            key={topic.id}
+            type="button"
+            className={styles.topicButton}
+            disabled={disabled}
+            onClick={() => onPick(topic.question)}
+            onFocus={(event) => {
+              event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }}
+          >
+            <span className={styles.topicLabel}>{topic.topic}</span>
+          </button>
+        ))}
+      </div>
+      <span
+        className={`${styles.topicsFade} ${styles.fadeStart} ${edges.start ? styles.fadeOn : ""}`}
+        aria-hidden="true"
+      />
+      <span
+        className={`${styles.topicsFade} ${styles.fadeEnd} ${edges.end ? styles.fadeOn : ""}`}
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
 export default function WidgetFrame() {
   const [messages, setMessages] = useState<DisplayedMessage[]>([]);
   const [handoff, setHandoff] = useState(false);
@@ -48,6 +125,9 @@ export default function WidgetFrame() {
   // Bumped whenever the visitor's conversation is replaced (ticket 14): any
   // in-flight request from an older generation must never repaint the chat.
   const generationRef = useRef(0);
+  // Synchronous mirror of the sending flag: state updates land after React
+  // renders, but the duplicate-send guard must hold during awaits.
+  const sendingRef = useRef(false);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
 
   const showError = useCallback(() => {
@@ -241,13 +321,14 @@ export default function WidgetFrame() {
   }
 
   async function send(text: string, choice?: string): Promise<void> {
-    if (text.length === 0 || text.length > MAX_MESSAGE_LENGTH || sending) {
+    // The ref guard closes the pending-send race (ticket 18): the state flag
+    // alone only flips after ensureSession's await, so a second chip click
+    // during the very first message's session setup could double-send.
+    if (text.length === 0 || text.length > MAX_MESSAGE_LENGTH || sendingRef.current) {
       return;
     }
-    const session = await ensureSession();
-    if (!session) {
-      return;
-    }
+    sendingRef.current = true;
+    setSending(true);
     const generation = generationRef.current;
     setError("");
     setMessages((current) => [
@@ -255,8 +336,11 @@ export default function WidgetFrame() {
       { id: `local-${Date.now()}`, role: "visitor", text },
     ]);
     setQuestion("");
-    setSending(true);
     try {
+      const session = await ensureSession();
+      if (!session) {
+        return;
+      }
       let response = await postMessage(session, text, choice);
       if (generationRef.current !== generation) {
         return; // The chat was cleared mid-send; the message dies with it.
@@ -330,6 +414,7 @@ export default function WidgetFrame() {
     } catch {
       showError();
     } finally {
+      sendingRef.current = false;
       setSending(false);
       inputRef.current?.focus();
     }
@@ -448,23 +533,14 @@ export default function WidgetFrame() {
         </button>
       </header>
       <p className={styles.intro}>
-        {topics.length > 0 ? "Pick a topic, or type your question." : "Ask us your question."}
+        {topics.length === 0
+          ? "Ask us your question."
+          : handoff || claimed
+            ? // Takeover wording (ticket 18): a picked topic goes to staff,
+              // so the strip must not promise an instant automated answer.
+              "Pick a topic to send to staff, or type your question."
+            : "Pick a topic, or type your question."}
       </p>
-      {topics.length > 0 && messages.length === 0 ? (
-        <div className={styles.topics}>
-          {topics.map((topic) => (
-            <button
-              key={topic.id}
-              type="button"
-              className={styles.topicButton}
-              disabled={sending}
-              onClick={() => void send(topic.question)}
-            >
-              {topic.topic}
-            </button>
-          ))}
-        </div>
-      ) : null}
       {handoff ? (
         <p className={styles.handoff}>
           College staff will reply in this chat. Automated answers are paused.
@@ -553,6 +629,9 @@ export default function WidgetFrame() {
       <p className={styles.status} role="status">
         {error}
       </p>
+      {topics.length > 0 ? (
+        <TopicsStrip topics={topics} disabled={sending} onPick={(question) => void send(question)} />
+      ) : null}
       <form className={styles.form} onSubmit={submit}>
         <label className={styles.srOnly} htmlFor="sfcw-question">
           Your question

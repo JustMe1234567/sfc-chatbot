@@ -66,11 +66,42 @@
   font-size: 14px;
 }
 
+/* The suggested-questions strip (ticket 18): exactly two rows of chips that
+   overflow horizontally when there are more than fit, pinned above the
+   composer for the whole conversation. The scrollbar is hidden (touch
+   devices barely show it) and cut-off chips plus the edge fades carry the
+   overflow cue instead. */
+.topicsShell {
+  position: relative;
+  padding: 6px 16px 0;
+}
+
 .topics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 16px 0;
+  display: grid;
+  grid-auto-flow: column;
+  /* max-content keeps each chip at its natural width (within the button's
+     own cap): auto tracks would shrink chips to squeeze everything in,
+     which would defeat the horizontal overflow. */
+  grid-auto-columns: max-content;
+  grid-template-rows: repeat(2, auto);
+  gap: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.topics::-webkit-scrollbar {
+  display: none;
+}
+
+/* Focus scrolls the picked chip into view; smooth only when the visitor has
+   not asked for reduced motion (ticket 18 / the project's reduced-motion
+   behavior). */
+@media (prefers-reduced-motion: no-preference) {
+  .topics {
+    scroll-behavior: smooth;
+  }
 }
 
 /* Same chips, but inside a chat bubble: no horizontal padding. */
@@ -89,6 +120,18 @@
   font: 500 13px/1.2 system-ui, sans-serif;
   padding: 6px 12px;
   cursor: pointer;
+  /* Long questions wrap to at most two lines instead of clipping or
+     stretching the row. The clamp lives on an inner span: buttons' own
+     internal layout ignores -webkit-line-clamp in Chromium. */
+  max-width: 200px;
+}
+
+.topicLabel {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 .topicButton:hover {
@@ -104,6 +147,31 @@
 .topicButton:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Edge fades: soft hints that the strip continues that way, shown only on
+   the sides that actually have more to scroll to. */
+.topicsFade {
+  position: absolute;
+  top: 6px;
+  bottom: 4px;
+  width: 22px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.fadeStart {
+  left: 16px;
+  background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+}
+
+.fadeEnd {
+  right: 16px;
+  background: linear-gradient(to left, #fff, rgba(255, 255, 255, 0));
+}
+
+.fadeOn {
+  opacity: 1;
 }
 
 .handoff {

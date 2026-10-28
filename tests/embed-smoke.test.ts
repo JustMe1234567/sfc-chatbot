@@ -59,6 +59,27 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain("Your question");
   });
 
+  it("ships the suggested-questions strip contract (ticket 18)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    const frameCss = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/frame.module.css"),
+      "utf8",
+    );
+    // Two rows that overflow horizontally for the whole conversation, with
+    // keyboard focus moving chips into view, fades as the overflow cue, and
+    // smooth scrolling only when the visitor allows motion.
+    expect(frame).toContain('aria-label="Suggested questions"');
+    expect(frame).toContain("scrollIntoView");
+    expect(frame).toContain("Pick a topic to send to staff");
+    expect(frameCss).toContain("grid-auto-flow: column");
+    expect(frameCss).toContain("repeat(2, auto)");
+    expect(frameCss).toContain("prefers-reduced-motion: no-preference");
+    expect(frameCss).toContain("-webkit-line-clamp: 2");
+  });
+
   it("keeps service secrets out of the loader bundle", async () => {
     const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
     expect(script).not.toMatch(/process\.env/);
