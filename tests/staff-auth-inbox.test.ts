@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, startConversation, TEST_ORIGIN } from "./helpers";
+import { ask, startConversation, TEST_ORIGIN,
+  warmChatbotService,
+} from "./helpers";
 import {
   authRequest,
   CookieJar,
@@ -27,11 +29,12 @@ async function escalateAConversation(): Promise<void> {
 }
 
 beforeAll(async () => {
+  process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   useTempDatabase();
+  await warmChatbotService();
   // The auth layer only trusts its own base URL: make the synthetic test
   // origin the trusted origin so cookie flows behave like the real dashboard.
-  process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "College Owner", role: "owner" });
+    await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "College Owner", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Front Desk" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Content Editor", role: "editor" });
   // Enroll and activate second factors once; later tests sign in with
@@ -57,7 +60,7 @@ describe("staff authentication gate", () => {
     await provisionStaff({ email: "unverified@example.edu", password: "valid-password-123", name: "Unverified" });
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    db.prepare('UPDATE "user" SET "emailVerified" = 0 WHERE "email" = ?').run("unverified@example.edu");
+    await db.run('UPDATE "user" SET "emailVerified" = ? WHERE "email" = ?', false, "unverified@example.edu");
 
     const jar = new CookieJar();
     const response = await authRequest(jar, "/api/auth/sign-in/email", {
@@ -152,7 +155,9 @@ describe("protected shared inbox", () => {
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
     const userId = (
-      db.prepare('SELECT "id" FROM "user" WHERE "email" = ?').get(STAFF_EMAIL) as { id: string }
+      (await db.get<{ id: string }>('SELECT "id" FROM "user" WHERE "email" = ?', STAFF_EMAIL)) as {
+        id: string;
+      }
     ).id;
 
     // The owner performs the disable through the admin endpoint (the
@@ -203,9 +208,7 @@ describe("protected shared inbox", () => {
     await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    db.prepare('UPDATE "session" SET "expiresAt" = ?').run(
-      new Date(Date.now() - 60_000).toISOString(),
-    );
+    await db.run('UPDATE "session" SET "expiresAt" = ?', new Date(Date.now() - 60_000).toISOString());
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(401);
   });

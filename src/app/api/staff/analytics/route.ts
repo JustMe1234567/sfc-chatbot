@@ -34,8 +34,8 @@ export async function GET(request: Request) {
 
   const { store, db } = await getChatbotService();
   const report = await buildAnalyticsReport(store, {
-    timeZone: getReportingTimeZone(db),
-    retentionDays: getAnalyticsRetentionDays(db),
+    timeZone: await getReportingTimeZone(db),
+    retentionDays: await getAnalyticsRetentionDays(db),
     period,
     now: new Date(),
   });

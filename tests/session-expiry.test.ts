@@ -1,11 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ask, loadHistory, startConversation, useTempDatabase, warmChatbotService } from "./helpers";
-import { openDatabase } from "../src/db/sqlite";
-
-let dbPath: string;
 
 beforeAll(async () => {
-  dbPath = useTempDatabase();
+  useTempDatabase();
   await warmChatbotService();
 });
 
@@ -17,8 +14,10 @@ describe("visitor session expiry", () => {
 
     // Fast-forward the clock at the persistence layer: the HTTP seam cannot
     // time-travel, and the spec allows asserting persisted state directly.
-    const db = openDatabase(dbPath);
-    db.prepare("UPDATE visitor_sessions SET expires_at = ?").run(
+    const { getChatbotService } = await import("../src/db/service");
+    const { db } = await getChatbotService();
+    await db.run(
+      "UPDATE visitor_sessions SET expires_at = ?",
       new Date(Date.now() - 1000).toISOString(),
     );
 

@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, startConversation, TEST_ORIGIN } from "./helpers";
+import { ask, startConversation, testPostgresUrl, TEST_ORIGIN,
+  warmChatbotService,
+  countQuery,
+} from "./helpers";
 import {
   authRequest,
   CookieJar,
@@ -36,9 +39,10 @@ async function listNotifications(jar: CookieJar): Promise<Response> {
 }
 
 beforeAll(async () => {
-  useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Owner", role: "owner" });
+  useTempDatabase();
+  await warmChatbotService();
+    await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Owner", role: "owner" });
   ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
 });
 
@@ -60,9 +64,13 @@ describe("escalations before recipients are configured", () => {
 
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    let mails = db
-      .prepare("SELECT COUNT(*) AS count FROM mail_outbox WHERE to_address = ?")
-      .get(RECIPIENT) as { count: number };
+    let mails = await db.get<{ count: number }>(
+      countQuery(
+        "SELECT COUNT(*)::int AS count FROM mail_outbox WHERE to_address = ?",
+        "SELECT COUNT(*) AS count FROM mail_outbox WHERE to_address = ?",
+      ),
+      RECIPIENT,
+    ) as { count: number };
     expect(mails.count).toBe(0);
 
     // The owner configures recipients; retry delivers to the current list.
@@ -79,9 +87,12 @@ describe("escalations before recipients are configured", () => {
     const retried = (await retry.json()) as { status: string };
     expect(retried.status).toBe("sent");
 
-    mails = db
-      .prepare("SELECT COUNT(*) AS count FROM mail_outbox WHERE to_address = ?")
-      .get(RECIPIENT) as { count: number };
+    mails = await db.get<{ count: number }>(
+      testPostgresUrl()
+        ? "SELECT COUNT(*)::int AS count FROM mail_outbox WHERE to_address = ?"
+        : "SELECT COUNT(*) AS count FROM mail_outbox WHERE to_address = ?",
+      RECIPIENT,
+    ) as { count: number };
     expect(mails.count).toBe(1);
   });
 });
@@ -136,9 +147,10 @@ describe("one escalation alert per conversation", () => {
     const { db } = await getChatbotService();
     // The alert for THIS conversation links to it, distinguishing it from
     // alerts delivered by earlier tests in this file.
-    const mails = db
-      .prepare("SELECT to_address, subject, body FROM mail_outbox WHERE to_address = ? AND body LIKE ?")
-      .all(RECIPIENT, `%${conversation.id}%`) as { to_address: string; subject: string; body: string }[];
+    const mails = await db.all<{ to_address: string; subject: string; body: string }>(
+      "SELECT to_address, subject, body FROM mail_outbox WHERE to_address = ? AND body LIKE ?",
+      RECIPIENT, `%${conversation.id}%`,
+    );
     expect(mails).toHaveLength(1);
     // The alert links to the protected conversation, contains no transcript
     // excerpt and no visitor credential.
@@ -158,9 +170,13 @@ describe("one escalation alert per conversation", () => {
 
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    const alerts = db
-      .prepare("SELECT COUNT(*) AS count FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?")
-      .get(conversation.id) as { count: number };
+    const alerts = await db.get<{ count: number }>(
+      countQuery(
+        "SELECT COUNT(*)::int AS count FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?",
+        "SELECT COUNT(*) AS count FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?",
+      ),
+      conversation.id,
+    ) as { count: number };
     expect(alerts.count).toBe(1);
   });
 });

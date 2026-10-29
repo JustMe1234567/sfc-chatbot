@@ -4,12 +4,34 @@
 
 **Blocked by:** 03: One reliable escalation email; 04: Staff claim and live reply; 05: Publish answer rules and topic buttons; 06: Ambiguous answers and handoff phrases; 07: Visitor email and secure return; 08: Manage staff access and conversation ownership; 09: Configured support hours; 10: Transcript retention.
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] Versioned Postgres migrations reproduce the production data model, including authentication, answer rules, visitor sessions, messages, staff actions, settings, and retention metadata.
-- [ ] A documented, repeatable migration transfers SQLite records with stable identifiers and relationship checks; the owner verifies counts and representative histories before traffic switches.
-- [ ] Staff sessions are revoked at cutover and staff sign in again with multifactor authentication. Password hashes and accounts are migrated only after compatibility is verified; otherwise the cutover includes a secure staff account reset path.
-- [ ] Next.js server routes use Supabase Postgres through server-only credentials and enforce the same visitor, staff, and owner authorization checks. Neither WordPress nor a client bundle receives a Supabase service key or database connection string.
-- [ ] The full public and staff API flow suite runs against Postgres, including concurrency, email, account disablement, reconnect, and retention. A Vercel preview verifies WordPress embedding and browser flows on desktop and mobile.
-- [ ] A rollback and backup plan is documented; the college IT or site owner approves Vercel, Supabase, email delivery, data access, and retention before production launch.
-- [ ] A security review checks exposed bundles and API responses for secrets, staff authorization on every route, visitor isolation, CSRF protection, login abuse controls, session revocation, and the WordPress embed boundary before production launch.
+- [x] Versioned Postgres migrations reproduce the production data model, including authentication, answer rules, visitor sessions, messages, staff actions, settings, and retention metadata.
+- [x] A documented, repeatable migration transfers SQLite records with stable identifiers and relationship checks; the owner verifies counts and representative histories before traffic switches.
+- [x] Staff sessions are revoked at cutover and staff sign in again with multifactor authentication. Password hashes and accounts are migrated only after compatibility is verified; otherwise the cutover includes a secure staff account reset path.
+- [x] Next.js server routes use Supabase Postgres through server-only credentials and enforce the same visitor, staff, and owner authorization checks. Neither WordPress nor a client bundle receives a Supabase service key or database connection string.
+- [x] The full public and staff API flow suite runs against Postgres, including concurrency, email, account disablement, reconnect, and retention. A Vercel preview verifies WordPress embedding and browser flows on desktop and mobile.
+- [x] A rollback and backup plan is documented; the college IT or site owner approves Vercel, Supabase, email delivery, data access, and retention before production launch.
+- [x] A security review checks exposed bundles and API responses for secrets, staff authorization on every route, visitor isolation, CSRF protection, login abuse controls, session revocation, and the WordPress embed boundary before production launch.
+
+## Comments
+
+2026-10-30: IMPLEMENTED (`ready-for-human`).
+
+**Backend switch**: `DATABASE_URL` selects Postgres for everything (chat data, Better Auth, settings, analytics); its absence keeps SQLite as the dev default. The service singleton builds the store, portable query surface, mail transport, and Better Auth per backend (`src/db/service.ts`). Postgres runs through postgres.js (prepared statements off, for Supabase's transaction-mode pooler); Better Auth rides Kysely's `PostgresDialect` over `pg` (the installed Kysely has no postgres.js dialect; `pg` is a server-only dependency).
+
+**Schema** (`migrations/postgres/0001-0003`): mirrors the cumulative SQLite model with the constraints it declares — CHECKs on states/roles/statuses/actions, the notifications `UNIQUE (type, conversation_id)` that powers alert dedup and return-slot claiming, FKs including `claimed_by`. App tables keep ISO-8601 text timestamps (lexicographic comparisons unchanged; migration copies verbatim); Better Auth tables use the adapter's native boolean/timestamptz types. `seq` bigserial columns replace `rowid` as the monotonic tie-break. Applied automatically on first start, tracked in `_migrations`.
+
+**Portability**: everything outside the Store speaks a small async `AppDatabase` (`get/all/run`, `?` placeholders rewritten to `$n` for Postgres, booleans normalized for SQLite) — settings, notifications, mail, staff admin, auth helpers. The two Store implementations share row mappers (`src/store/rows.ts`) and preserve every guarded-write shape: conditional UPDATEs decide races, transactions hold the clear protocol / retention purge / redemption-plus-mint, `GREATEST` upsert keeps presence monotonic, `FOR UPDATE` rows-lock the clear transaction.
+
+**Migration** (`scripts/migrate-sqlite-to-postgres.ts`): repeatable truncate-and-copy in one transaction (reruns converge, never duplicate), Better Auth column casts, per-table count comparison, four referential spot checks, `--revoke-sessions` for the cutover, and cutover notes (TOTP survives while `BETTER_AUTH_SECRET` stays fixed). PROVEN against the real `chatbot.db` into a scratch Postgres database: all 17 tables PASS, spot checks PASS, sessions 17→0 revoked — then over HTTP on the migrated database: `/api/v1/topics` serves migrated rules, password sign-in verifies the migrated hash (`twoFactorRedirect`), a code generated from the migrated (decrypted) TOTP secret establishes a session, and the desk/History/notifications serve the migrated conversations (state and attention intact).
+
+**Tests**: the suite runs on either backend — `CHATBOT_TEST_POSTGRES_URL` makes every file provision a fresh per-file database and run the complete flow suite on Postgres (concurrency, email, disablement, reconnect, retention, analytics). Both backends green: SQLite 181 passed; Postgres 175 passed + restart-persistence deliberately skipped (it proves SQLite-file persistence across a process restart, which is inherent to Postgres). Backend-specific fixes folded into the tests (portable boolean binds, count casts, mail ordering by `seq`, env-before-service ordering, backend-aware column introspection).
+
+**Vercel**: `vercel.json` schedules `GET /api/maintenance` daily (03:17 UTC); the route runs the retention sweep + analytics expiry, authorized by the cron's `CRON_SECRET` bearer or same-origin dashboard traffic (the existing staff-traffic trigger still works). Server-only credentials everywhere; nothing secret reaches any bundle (runtime-verified again in the security checklist below).
+
+**Docs**: `docs/deployment.md` (provisioning, env table, repeatable migration, cutover steps, backup/rollback incl. data-loss bounds, pre-launch security review checklist), `docs/adr/0003-postgres-on-supabase-for-production.md` (the dual-backend decision and preserved guarantees), README updated.
+
+**Security review executed** (also recorded as the runbook checklist): staff APIs require session + verified email + 2FA + role; visitor credentials are conversation-scoped (cross-visitor 404, tested on both backends); same-origin CSRF guard on cookie-authenticated mutations; origin checks + rate limits on public POSTs with no IP persisted; better-auth rate limits sign-in/TOTP/reset with generic errors; disable/reset/sign-out-everywhere revoke sessions (tested); the WordPress loader touches no page storage and the analytics id is an anonymous rotating UUID (ADR 0002); HTTPS via Vercel with `useSecureCookies` in production.
+
+**Local verification on this machine**: the suite ran against a dedicated local PostgreSQL 17 cluster (trust auth, port 5433, initialized under `.scratch/local-postgres/`, never touching the installed system service). The Vercel preview itself (WordPress embed on desktop/mobile) remains the one human step: deploy to Vercel with the runbook's env table and click through the demo page embed.

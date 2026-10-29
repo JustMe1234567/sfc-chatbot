@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { getChatbotService } from "@/db/service";
@@ -17,12 +17,9 @@ export type LoadedConversationResult =
   | { response: NextResponse };
 
 /** Display name of a staff account, for claim-conflict messages. */
-export function staffName(db: DatabaseSync, userId: string): string | null {
-  return (
-    (db.prepare('SELECT "name" FROM "user" WHERE "id" = ?').get(userId) as
-      | { name: string }
-      | undefined)?.name ?? null
-  );
+export async function staffName(db: AppDatabase, userId: string): Promise<string | null> {
+  const row = await db.get<{ name: string }>('SELECT "name" FROM "user" WHERE "id" = ?', userId);
+  return row?.name ?? null;
 }
 
 /**
@@ -49,7 +46,9 @@ export async function loadStaffConversation(
       ),
     };
   }
-  const claimerName = conversation.claimedBy ? staffName(db, conversation.claimedBy) : null;
+  const claimerName = conversation.claimedBy
+    ? await staffName(db, conversation.claimedBy)
+    : null;
   return { conversation, staff: guard.staff, claimerName };
 }
 

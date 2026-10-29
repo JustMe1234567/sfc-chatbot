@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     return guard.response;
   }
   const { db } = await getChatbotService();
-  return NextResponse.json({ recipients: getAlertRecipients(db) });
+  return NextResponse.json({ recipients: await getAlertRecipients(db) });
 }
 
 /** Configure the staff alert list. Owner only. */
@@ -37,6 +37,6 @@ export async function PUT(request: Request) {
     );
   }
   const { db } = await getChatbotService();
-  setAlertRecipients(db, body.recipients);
+  await setAlertRecipients(db, body.recipients);
   return NextResponse.json({ recipients: body.recipients });
 }

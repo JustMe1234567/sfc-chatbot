@@ -57,7 +57,15 @@ async function stopServers(): Promise<void> {
   }
 }
 
-describe("visitor journey across a Next.js process restart", () => {
+// A SQLite-specific proof (ticket 01): the visitor's conversation survives a
+// Next.js process restart because the store is a file. On Postgres (ticket
+// 11) persistence across processes is the platform's own property — the
+// database outlives every function — so this suite runs on SQLite only.
+const describeSqliteOnly = process.env.CHATBOT_TEST_POSTGRES_URL
+  ? describe.skip
+  : describe;
+
+describeSqliteOnly("visitor journey across a Next.js process restart", () => {
   let firstRunBaseUrl: string;
   let conversation: { id: string; token: string };
 

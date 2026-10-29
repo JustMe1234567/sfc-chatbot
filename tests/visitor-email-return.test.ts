@@ -5,9 +5,11 @@ import {
   loadHistoryAs,
   startConversation,
   TEST_ORIGIN,
+  testPostgresUrl,
   useTempDatabase,
   warmChatbotService,
   type ConversationStart,
+  countQuery,
 } from "./helpers";
 import {
   CookieJar,
@@ -35,9 +37,12 @@ interface OutboxMail {
 async function outbox(): Promise<OutboxMail[]> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return db
-    .prepare("SELECT to_address, subject, body FROM mail_outbox ORDER BY rowid")
-    .all() as unknown as OutboxMail[];
+  return db.all<OutboxMail>(
+    countQuery(
+      "SELECT to_address, subject, body FROM mail_outbox ORDER BY seq",
+      "SELECT to_address, subject, body FROM mail_outbox ORDER BY rowid",
+    ),
+  );
 }
 
 async function postEmail(conversation: ConversationStart, email: string): Promise<Response> {

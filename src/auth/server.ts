@@ -1,9 +1,9 @@
-import type { DatabaseSync } from "node:sqlite";
-import { Kysely } from "kysely";
+import { Kysely, type Dialect } from "kysely";
 import { NodeSqliteDialect } from "@better-auth/kysely-adapter/node-sqlite-dialect";
 import { betterAuth } from "better-auth";
 import { admin, createAccessControl, twoFactor } from "better-auth/plugins";
 import { trustedOrigins } from "../config";
+import type { AppDatabase } from "../db/appDatabase";
 import type { MailTransport } from "../mail/outbox";
 
 export type StaffRole = "owner" | "staff" | "editor";
@@ -40,7 +40,11 @@ const roles = {
 };
 
 export interface AuthDeps {
-  db: DatabaseSync;
+  db: AppDatabase;
+  /** Kysely dialect for the active backend (SQLite node:sqlite or Postgres). */
+  dialect: Dialect;
+  /** Better Auth's Kysely database type: "sqlite" or "postgres". */
+  kyselyType: "sqlite" | "postgres";
   mail: MailTransport;
   baseUrl: string;
 }
@@ -48,12 +52,14 @@ export interface AuthDeps {
 /**
  * Staff authentication. Invite-only (no public sign-up route is ever exposed),
  * email+password with required email verification and TOTP second factor,
- * sessions and accounts stored in the same SQLite database as the chat data so
- * ticket 11 can move both to Postgres together. Secrets come from server
- * environment settings (BETTER_AUTH_SECRET), never from client code.
+ * sessions and accounts stored in the same database as the chat data — SQLite
+ * in development, Supabase Postgres in production (ticket 11). Secrets come
+ * from server environment settings (BETTER_AUTH_SECRET), never from client
+ * code; rotating the secret invalidates enrolled TOTP secrets, so it stays
+ * fixed per environment.
  */
-export function createAuth({ db, mail, baseUrl }: AuthDeps) {
-  const kysely = new Kysely({ dialect: new NodeSqliteDialect({ database: db }) });
+export function createAuth({ db, dialect, kyselyType, mail, baseUrl }: AuthDeps) {
+  const kysely = new Kysely({ dialect });
 
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret && process.env.NODE_ENV === "production") {
@@ -64,7 +70,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
     appName: "Springfield College chat",
     baseURL: baseUrl,
     secret: secret ?? "dev-only-secret-7c1f4a2e9b8d4f6a0e3c5b7d9f1a2c4e6b8d0f2a4c6e8b0d2f4a6c8e0b2d4f6",
-    database: { db: kysely, type: "sqlite" },
+    database: { db: kysely, type: kyselyType },
     trustedOrigins: trustedOrigins(),
     advanced: {
       // HttpOnly + SameSite are better-auth defaults; Secure cookies in
@@ -88,7 +94,7 @@ export function createAuth({ db, mail, baseUrl }: AuthDeps) {
       // A completed reset signs the account out everywhere, including the
       // requester, so a stolen session cannot survive a password rotation.
       onPasswordReset: async ({ user }) => {
-        db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(user.id);
+        await db.run('DELETE FROM "session" WHERE "userId" = ?', user.id);
       },
     },
     emailVerification: {

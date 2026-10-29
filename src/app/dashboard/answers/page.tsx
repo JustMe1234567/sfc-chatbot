@@ -26,8 +26,8 @@ export default async function AnswersPage() {
   }
 
   const { store, db } = await getChatbotService();
-  const rules = rulesWithPublisherNames(db, await store.listAnswerRules());
-  const phrases = getEscalationPhrases(db);
+  const rules = await rulesWithPublisherNames(db, await store.listAnswerRules());
+  const phrases = await getEscalationPhrases(db);
 
   return (
     <main className={styles.shell}>

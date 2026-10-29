@@ -47,7 +47,7 @@ export async function maybeSendVisitorReturn(
   if (!visitorDeparted(conversation)) {
     return;
   }
-  const notificationId = insertVisitorReturnRow(
+  const notificationId = await insertVisitorReturnRow(
     service.db,
     conversation.id,
     conversation.visitorEmail,

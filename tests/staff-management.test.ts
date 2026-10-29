@@ -24,7 +24,9 @@ let bobTotp: Awaited<ReturnType<typeof enrollTotp>>;
 async function staffId(email: string): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return (db.prepare('SELECT "id" FROM "user" WHERE "email" = ?').get(email) as { id: string }).id;
+  return ((await db.get<{ id: string }>('SELECT "id" FROM "user" WHERE "email" = ?', email)) as {
+    id: string;
+  }).id;
 }
 
 async function conversationAction(
@@ -477,16 +479,17 @@ describe("the audit trail", () => {
     expect(create.status).toBe(201);
     const ruleId = ((await create.json()) as { id: string }).id;
 
-    const rows = db
-      .prepare("SELECT action FROM audit_log WHERE rule_id = ? ORDER BY created_at")
-      .all(ruleId) as { action: string }[];
+    const rows = (await db.all<{ action: string }>(
+      "SELECT action FROM audit_log WHERE rule_id = ? ORDER BY created_at",
+      ruleId,
+    )) as { action: string }[];
     expect(rows.map((row) => row.action)).toContain("rule_created");
 
     const ownerJar = new CookieJar();
     await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-    const staffRows = db
-      .prepare("SELECT action, detail FROM audit_log WHERE action IN ('staff_invited','staff_disabled')")
-      .all() as { action: string; detail: string }[];
+    const staffRows = (await db.all<{ action: string; detail: string }>(
+      "SELECT action, detail FROM audit_log WHERE action IN ('staff_invited','staff_disabled')",
+    )) as { action: string; detail: string }[];
     expect(staffRows.some((row) => row.action === "staff_invited" && row.detail.includes("carol@example.edu"))).toBe(true);
     expect(staffRows.some((row) => row.action === "staff_disabled" && /@example\.edu/.test(row.detail))).toBe(true);
   });

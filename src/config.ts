@@ -24,3 +24,13 @@ export function trustedOrigins(): string[] {
 export function appDbPath(): string {
   return process.env.CHATBOT_DB ?? path.join(repoRoot(), "chatbot.db");
 }
+
+/**
+ * Postgres connection string (Supabase in production, a local cluster for
+ * development and tests). When set, it takes precedence over CHATBOT_DB:
+ * the application runs entirely on Postgres (ticket 11).
+ */
+export function appDatabaseUrl(): string | null {
+  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+  return url && url.trim().length > 0 ? url.trim() : null;
+}

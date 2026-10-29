@@ -36,16 +36,14 @@ async function storedPresence(): Promise<
 > {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return db
-    .prepare(
-      "SELECT visitor_hash, day, first_seen_at, last_seen_at FROM analytics_seen ORDER BY visitor_hash",
-    )
-    .all() as unknown as {
+  return db.all<{
     visitor_hash: string;
     day: string;
     first_seen_at: string;
     last_seen_at: string;
-  }[];
+  }>(
+    "SELECT visitor_hash, day, first_seen_at, last_seen_at FROM analytics_seen ORDER BY visitor_hash",
+  );
 }
 
 beforeAll(async () => {
@@ -98,10 +96,19 @@ describe("presence heartbeat request handling", () => {
     // The analytics schema has nowhere an address could land: presence rows
     // carry the hashed id, the reporting day, and the two instants only.
     const { getChatbotService } = await import("../src/db/service");
+    const { testPostgresUrl } = await import("./helpers");
     const { db } = await getChatbotService();
-    const columns = (
-      db.prepare("PRAGMA table_info(analytics_seen)").all() as unknown as { name: string }[]
-    ).map((column) => column.name);
+    const columns = testPostgresUrl()
+      ? (
+          await db.all<{ column_name: string }>(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'analytics_seen' ORDER BY ordinal_position",
+          )
+        ).map((column) => column.column_name)
+      : (
+          (await db.all<{ name: string }>("PRAGMA table_info(analytics_seen)")) as unknown as {
+            name: string;
+          }[]
+        ).map((column) => column.name);
     expect(columns).toEqual(["visitor_hash", "day", "first_seen_at", "last_seen_at"]);
   });
 

@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import { createOutboxTransport, type MailTransport } from "./outbox";
 
 /**
@@ -32,7 +32,7 @@ function createResendTransport(apiKey: string, from: string): MailTransport {
 
 /** Test transport: the first send fails (as an unreachable provider would),
  *  every later send is delivered to the outbox. */
-function createFailThenSucceedTransport(db: DatabaseSync): MailTransport {
+function createFailThenSucceedTransport(db: AppDatabase): MailTransport {
   const outbox = createOutboxTransport(db);
   let failedOnce = false;
   return {
@@ -55,7 +55,7 @@ function createFailThenSucceedTransport(db: DatabaseSync): MailTransport {
  * browser checks can pick a transport explicitly: "fail-then-succeed"
  * exercises failed deliveries end to end, "outbox" records mail locally.
  */
-export function createMailTransportFromEnv(db: DatabaseSync): MailTransport {
+export function createMailTransportFromEnv(db: AppDatabase): MailTransport {
   const mode = process.env.CHATBOT_MAIL_TRANSPORT;
   if (mode === "fail-then-succeed") {
     return createFailThenSucceedTransport(db);

@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase } from "./helpers";
+import { ask, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase,
+  countQuery,
+} from "./helpers";
 import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
 
 const STAFF_EMAIL = "retry@example.edu";
@@ -15,9 +17,12 @@ interface OutboxMail {
 async function outbox(): Promise<OutboxMail[]> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return db
-    .prepare("SELECT to_address, body FROM mail_outbox ORDER BY rowid")
-    .all() as unknown as OutboxMail[];
+  return db.all<OutboxMail>(
+    countQuery(
+      "SELECT to_address, body FROM mail_outbox ORDER BY seq",
+      "SELECT to_address, body FROM mail_outbox ORDER BY rowid",
+    ),
+  );
 }
 
 async function staffReply(conversationId: string, text: string): Promise<number> {
@@ -100,9 +105,9 @@ describe("retrying a failed visitor return notification", () => {
     expect(await outbox()).toHaveLength(0);
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    const row = db
-      .prepare("SELECT id, status FROM notifications WHERE type = 'visitor_return'")
-      .get() as { id: string; status: string };
+    const row = (await db.get<{ id: string; status: string }>(
+      "SELECT id, status FROM notifications WHERE type = 'visitor_return'",
+    )) as { id: string; status: string };
     expect(row.status).toBe("failed");
 
     const retried = await retryNotification(row.id);

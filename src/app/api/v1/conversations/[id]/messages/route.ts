@@ -184,7 +184,8 @@ export async function POST(request: Request, context: RouteContext) {
     // First transition out of bot-active is the escalation the analytics
     // report counts (ticket 17); releases from a claim never pass here.
     await recordEscalation(db, store, new Date());
-    const reply = newMessage(target.id, "bot", handoffReply(getSupportHours(db)));
+    const hours = await getSupportHours(db);
+    const reply = newMessage(target.id, "bot", handoffReply(hours));
     await store.appendMessage(reply);
     try {
       const { recordEscalationAlert } = await import("@/mail/notifications");
@@ -196,7 +197,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   // Explicit handoff wording wins over every answer rule (ticket 06).
-  if (matchesEscalationPhrase(validation.text, getEscalationPhrases(db))) {
+  if (matchesEscalationPhrase(validation.text, await getEscalationPhrases(db))) {
     return escalate(conversation);
   }
 

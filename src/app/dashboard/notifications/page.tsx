@@ -26,9 +26,9 @@ export default async function NotificationsPage() {
 
   const { db, store } = await getChatbotService();
   const notifications = await listNotifications(db);
-  const recipients = getAlertRecipients(db);
-  const supportHours = getSupportHours(db);
-  const retentionDays = getTranscriptRetentionDays(db);
+  const recipients = await getAlertRecipients(db);
+  const supportHours = await getSupportHours(db);
+  const retentionDays = await getTranscriptRetentionDays(db);
   const lastRun = await latestRetentionRun(store);
 
   return (

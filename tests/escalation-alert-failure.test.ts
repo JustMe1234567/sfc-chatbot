@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, startConversation, TEST_ORIGIN } from "./helpers";
+import { ask, startConversation, testPostgresUrl, TEST_ORIGIN,
+  warmChatbotService,
+  countQuery,
+} from "./helpers";
 import {
   authRequest,
   CookieJar,
@@ -30,12 +33,14 @@ async function retryNotification(
 }
 
 beforeAll(async () => {
-  useTempDatabase();
+  // Both env values must precede service init: the transport is chosen when
+  // the singleton builds, and this module's app uses one whose first attempt
+  // fails and later attempts succeed — exactly the failure-then-retry story
+  // of this suite.
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
-  // Runs before the service singleton initializes: this module's app uses a
-  // transport whose first attempt fails and later attempts succeed, which is
-  // exactly the failure-then-retry story of this suite.
   process.env.CHATBOT_MAIL_TRANSPORT = "fail-then-succeed";
+  useTempDatabase();
+  await warmChatbotService();
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Owner", role: "owner" });
   ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
 
@@ -74,9 +79,13 @@ describe("escalation alert failure and retry", () => {
     // Nothing reached the recipient.
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    const mails = db
-      .prepare("SELECT COUNT(*) AS count FROM mail_outbox WHERE to_address = ?")
-      .get(RECIPIENT) as { count: number };
+    const mails = await db.get<{ count: number }>(
+      countQuery(
+        "SELECT COUNT(*)::int AS count FROM mail_outbox WHERE to_address = ?",
+        "SELECT COUNT(*) AS count FROM mail_outbox WHERE to_address = ?",
+      ),
+      RECIPIENT,
+    ) as { count: number };
     expect(mails.count).toBe(0);
   });
 
@@ -104,9 +113,10 @@ describe("escalation alert failure and retry", () => {
     // Exactly one successful delivery exists for that conversation.
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    const mails = db
-      .prepare("SELECT to_address FROM mail_outbox WHERE to_address = ?")
-      .all(RECIPIENT);
+    const mails = await db.all<{ to_address: string }>(
+      "SELECT to_address FROM mail_outbox WHERE to_address = ?",
+      RECIPIENT,
+    );
     expect(mails).toHaveLength(1);
   });
 

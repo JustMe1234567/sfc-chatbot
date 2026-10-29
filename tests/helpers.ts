@@ -1,19 +1,84 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 export const TEST_ORIGIN = "http://chatbot.test";
 
 /**
- * Points the app's database singleton at a fresh temporary SQLite file.
- * Call once per test file in beforeAll, before any route handler runs:
- * each vitest file has its own module registry, so the singleton and its
- * in-process rate limiters start clean.
+ * The Postgres backend for the whole suite (ticket 11): set
+ * CHATBOT_TEST_POSTGRES_URL to a Postgres URL whose database acts as the
+ * administrative handle (databases get created on its server), and every
+ * test file runs the complete flow suite against its own freshly-migrated
+ * Postgres database instead of SQLite. Without it the suite runs on SQLite.
+ */
+export function testPostgresUrl(): string | null {
+  const url = process.env.CHATBOT_TEST_POSTGRES_URL;
+  return url && url.trim().length > 0 ? url.trim() : null;
+}
+
+let postgresDbName: string | null = null;
+
+/**
+ * Points the app's database singleton at a fresh temporary store. Call once
+ * per test file in beforeAll, before any route handler runs: each vitest
+ * file has its own module registry, so the singleton and its in-process
+ * rate limiters start clean.
+ *
+ * SQLite mode creates a temp file; Postgres mode creates a uniquely-named
+ * database on the CHATBOT_TEST_POSTGRES_URL server (dropping any leftover of
+ * the same name first — names are random per run, so this only reaps debris
+ * from a crashed run of this very file). The database is left behind for the
+ * retention/restart checks to inspect and dropped by the next run of the
+ * same file name; drop it manually or let the server's own maintenance clear
+ * test databases.
  */
 export function useTempDatabase(): string {
+  const postgresUrl = testPostgresUrl();
+  if (postgresUrl) {
+    if (!postgresDbName) {
+      // Synchronous env setup: vitest files need the name decided inside
+      // beforeAll, and CREATE DATABASE itself is awaited in warmChatbotService.
+      postgresDbName = `sfc_test_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+    }
+    process.env.CHATBOT_TEST_PG_DBNAME = postgresDbName;
+    // Swap the admin URL's database segment (a single path segment such as
+    // /postgres) for the per-file database; query strings survive.
+    process.env.DATABASE_URL = postgresUrl.replace(/\/[^/?]+(\?|$)/, `/${postgresDbName}$1`);
+    return process.env.DATABASE_URL;
+  }
   const dbPath = path.join(mkdtempSync(path.join(tmpdir(), "sfc-chatbot-test-")), "test.db");
   process.env.CHATBOT_DB = dbPath;
   return dbPath;
+}
+
+/**
+ * Postgres mode: creates the per-file database (dropping any leftover) before
+ * the service singleton migrates it. No-op on SQLite. Called from
+ * warmChatbotService so every file gets it for free.
+ */
+export async function provisionTestDatabase(): Promise<void> {
+  const adminUrl = testPostgresUrl();
+  const dbName = process.env.CHATBOT_TEST_PG_DBNAME;
+  if (!adminUrl || !dbName) {
+    return;
+  }
+  const { withPostgres } = await import("../src/db/postgres");
+  await withPostgres(adminUrl, async (sql) => {
+    // WITH (FORCE) disconnects any straggler from a crashed earlier run.
+    await sql.unsafe(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
+    await sql.unsafe(`CREATE DATABASE ${dbName}`);
+  });
+}
+
+/**
+ * A portable `SELECT COUNT(*) ...` assertion query: Postgres hands bigint
+ * counts back as strings, so the count is cast to int there while SQLite
+ * keeps the plain form. Only for tests — the application never reads counts
+ * through this surface.
+ */
+export function countQuery(postgresSql: string, sqliteSql: string): string {
+  return testPostgresUrl() ? postgresSql : sqliteSql;
 }
 
 /**
@@ -21,8 +86,10 @@ export function useTempDatabase(): string {
  * hook budget instead of the first test's 5s: under a full parallel suite
  * run, cold init can outgrow a single test's timeout even though the suite
  * itself is fine. Staff files get this for free by provisioning accounts.
+ * Postgres mode provisions and migrates the per-file database here too.
  */
 export async function warmChatbotService(): Promise<void> {
+  await provisionTestDatabase();
   const { getChatbotService } = await import("../src/db/service");
   await getChatbotService();
 }

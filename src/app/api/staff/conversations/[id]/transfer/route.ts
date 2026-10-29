@@ -47,7 +47,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { store, db } = await getChatbotService();
-  const target = activeInboxMember(db, targetId);
+  const target = await activeInboxMember(db, targetId);
   // Transferring to the conversation's current owner is always a no-op: the
   // claimer picking themselves. (An owner overriding may take a conversation
   // over by transferring it to themselves.)

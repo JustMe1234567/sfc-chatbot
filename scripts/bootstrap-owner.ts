@@ -1,6 +1,8 @@
 // Server-side owner bootstrap: the only way the first owner account exists.
 // Usage: npm run bootstrap:owner -- --email owner@example.edu --password '…' [--name 'College Owner']
 import { openDatabase } from "../src/db/sqlite";
+import { sqliteAppDatabase } from "../src/db/appDatabase";
+import { NodeSqliteDialect } from "@better-auth/kysely-adapter/node-sqlite-dialect";
 import { createAuth } from "../src/auth/server";
 import { createOutboxTransport } from "../src/mail/outbox";
 import { provisionStaffMember } from "../src/auth/provision";
@@ -25,13 +27,17 @@ if (!email || !password) {
 }
 
 const db = openDatabase(appDbPath());
+const appDb = sqliteAppDatabase(db);
+const mail = createOutboxTransport(appDb);
 const auth = createAuth({
-  db,
-  mail: createOutboxTransport(db),
+  db: appDb,
+  dialect: new NodeSqliteDialect({ database: db }),
+  kyselyType: "sqlite",
+  mail,
   baseUrl: appBaseUrl(),
 });
 
-const owner = await provisionStaffMember(auth, db, {
+const owner = await provisionStaffMember(auth, appDb, {
   email,
   password,
   name,

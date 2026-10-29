@@ -39,8 +39,8 @@ export default async function EditAnswerPage({ params }: PageProps) {
   if (!rule) {
     notFound();
   }
-  const publisherName = rule.publishedBy ? staffName(db, rule.publishedBy) : null;
-  const ruleAudit = auditWithNames(db, await store.listRuleAudit(rule.id));
+  const publisherName = rule.publishedBy ? await staffName(db, rule.publishedBy) : null;
+  const ruleAudit = await auditWithNames(db, await store.listRuleAudit(rule.id));
 
   return (
     <main className={styles.shell}>

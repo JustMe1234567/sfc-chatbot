@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return guard.response;
   }
   const { db } = await getChatbotService();
-  return NextResponse.json({ hours: getSupportHours(db) });
+  return NextResponse.json({ hours: await getSupportHours(db) });
 }
 
 export async function PUT(request: Request) {
@@ -53,6 +53,6 @@ export async function PUT(request: Request) {
   }
 
   const { db } = await getChatbotService();
-  setSupportHours(db, body.hours);
+  await setSupportHours(db, body.hours);
   return NextResponse.json({ hours: body.hours });
 }

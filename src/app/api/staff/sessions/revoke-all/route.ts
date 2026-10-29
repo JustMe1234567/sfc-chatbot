@@ -18,6 +18,6 @@ export async function POST(request: Request) {
   }
 
   const { db } = await getChatbotService();
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(guard.staff.userId);
+  await db.run('DELETE FROM "session" WHERE "userId" = ?', guard.staff.userId);
   return NextResponse.json({ status: true });
 }

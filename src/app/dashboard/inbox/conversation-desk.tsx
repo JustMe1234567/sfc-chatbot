@@ -109,9 +109,11 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
     await store.clearConversationAttention(selected.id);
   }
   const messages = selected ? await store.listMessages(selected.id) : [];
-  const auditEntries = selected ? auditWithNames(db, await store.listConversationAudit(selected.id)) : [];
+  const auditEntries = selected
+    ? await auditWithNames(db, await store.listConversationAudit(selected.id))
+    : [];
   const claimerName = selected?.claimedBy
-    ? (staffName(db, selected.claimedBy) ?? "another staff member")
+    ? ((await staffName(db, selected.claimedBy)) ?? "another staff member")
     : null;
   const claimedByMe = selected?.claimedBy === guard.staff.userId;
   const mayReassign =
@@ -119,7 +121,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // Transfer targets mirror the API's eligibility exactly: active, verified,
   // second-factor-enrolled inbox members who don't already own it.
   const transferTargets = selected
-    ? listStaffMembers(db)
+    ? (await listStaffMembers(db))
         .filter(
           (member) =>
             member.id !== selected.claimedBy &&

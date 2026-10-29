@@ -48,5 +48,5 @@ export async function POST(request: Request) {
   // exactly like the visitor credentials it must never entangle with.
   const visitorHash = hashSessionToken(body.browserId);
   await recordAnalyticsPresence(db, store, visitorHash, new Date());
-  return NextResponse.json({ retentionDays: getAnalyticsRetentionDays(db) });
+  return NextResponse.json({ retentionDays: await getAnalyticsRetentionDays(db) });
 }

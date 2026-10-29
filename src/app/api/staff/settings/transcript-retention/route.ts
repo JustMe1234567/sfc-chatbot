@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     return guard.response;
   }
   const { db } = await getChatbotService();
-  return NextResponse.json({ days: getTranscriptRetentionDays(db) });
+  return NextResponse.json({ days: await getTranscriptRetentionDays(db) });
 }
 
 export async function PUT(request: Request) {
@@ -49,7 +49,7 @@ export async function PUT(request: Request) {
   }
 
   const { db, store } = await getChatbotService();
-  setTranscriptRetentionDays(db, body.days);
+  await setTranscriptRetentionDays(db, body.days);
   const swept = await sweepTranscripts(db, store);
   return NextResponse.json({
     days: body.days,

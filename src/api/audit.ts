@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import { staffName } from "@/api/staffConversations";
 import type { AuditEntry, Store } from "@/domain/types";
 
@@ -7,11 +7,13 @@ export interface AuditView extends AuditEntry {
 }
 
 /** The trail with display names resolved from the staff account table. */
-export function auditWithNames(db: DatabaseSync, entries: AuditEntry[]): AuditView[] {
-  return entries.map((entry) => ({
-    ...entry,
-    actorName: staffName(db, entry.actorId),
-  }));
+export async function auditWithNames(db: AppDatabase, entries: AuditEntry[]): Promise<AuditView[]> {
+  return Promise.all(
+    entries.map(async (entry) => ({
+      ...entry,
+      actorName: await staffName(db, entry.actorId),
+    })),
+  );
 }
 
 /**

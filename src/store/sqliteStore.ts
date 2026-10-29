@@ -1,140 +1,29 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
-  AnswerRule,
-  AuditEntry,
-  Conversation,
-  Message,
   RetentionRun,
   ReturnToken,
   Store,
 } from "../domain/types";
+import {
+  CONVERSATION_COLUMNS,
+  RULE_COLUMNS,
+  rowToAudit,
+  rowToConversation,
+  rowToMessage,
+  rowToRule,
+  type AuditRow,
+  type ConversationRow,
+  type MessageRow,
+  type RuleRow,
+} from "./rows";
 
-interface AuditRow {
-  id: string;
-  conversation_id: string | null;
-  rule_id: string | null;
-  actor_id: string;
-  action: AuditEntry["action"];
-  detail: string | null;
-  created_at: string;
-}
-
-function rowToAudit(row: AuditRow): AuditEntry {
-  return {
-    id: row.id,
-    conversationId: row.conversation_id,
-    ruleId: row.rule_id,
-    actorId: row.actor_id,
-    action: row.action,
-    detail: row.detail,
-    createdAt: row.created_at,
-  };
-}
-
-interface ConversationRow {
-  id: string;
-  state: Conversation["state"];
-  created_at: string;
-  claimed_by: string | null;
-  claimed_at: string | null;
-  visitor_email: string | null;
-  visitor_last_seen_at: string | null;
-  closed_at: string | null;
-  last_activity_at: string | null;
-  attention_at: string | null;
-  replaced_by: string | null;
-}
-
-interface MessageRow {
-  id: string;
-  conversation_id: string;
-  role: Message["role"];
-  text: string;
-  link: string | null;
-  choices: string | null;
-  created_at: string;
-}
-
-interface RuleRow {
-  id: string;
-  topic: string;
-  response: string;
-  link: string | null;
-  phrases: string;
-  keywords: string | null;
-  status: AnswerRule["status"];
-  updated_at: string;
-  published_by: string | null;
-  reviewed_at: string | null;
-}
-
-interface SessionRow {
+/** The visitor_sessions columns read back by findConversationIdByTokenHash. */
+type SessionRow = {
   token_hash: string;
   conversation_id: string;
   created_at: string;
   expires_at: string;
-}
-
-function rowToConversation(row: ConversationRow): Conversation {
-  return {
-    id: row.id,
-    state: row.state,
-    createdAt: row.created_at,
-    claimedBy: row.claimed_by,
-    claimedAt: row.claimed_at,
-    visitorEmail: row.visitor_email,
-    visitorLastSeenAt: row.visitor_last_seen_at,
-    closedAt: row.closed_at,
-    replacedBy: row.replaced_by,
-    // The migration backfills every row, so null here only guards a
-    // hand-edited database: fall back to creation.
-    lastActivityAt: row.last_activity_at ?? row.created_at,
-    attentionAt: row.attention_at,
-  };
-}
-
-const CONVERSATION_COLUMNS =
-  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at, last_activity_at, attention_at, replaced_by";
-
-function rowToMessage(row: MessageRow): Message {
-  let choices: Message["choices"];
-  if (row.choices) {
-    try {
-      choices = JSON.parse(row.choices) as Message["choices"];
-    } catch {
-      // A corrupt offer must not take the whole transcript down; the text
-      // still reads and a fresh question re-offers topics.
-      choices = undefined;
-    }
-  }
-  return {
-    id: row.id,
-    conversationId: row.conversation_id,
-    role: row.role,
-    text: row.text,
-    ...(row.link ? { link: row.link } : {}),
-    ...(choices ? { choices } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-function rowToRule(row: RuleRow): AnswerRule {
-  return {
-    id: row.id,
-    topic: row.topic,
-    response: row.response,
-    ...(row.link ? { link: row.link } : {}),
-    phrases: JSON.parse(row.phrases) as string[],
-    ...(row.keywords ? { keywords: JSON.parse(row.keywords) as string[][] } : {}),
-    status: row.status,
-    updatedAt: row.updated_at,
-    publishedBy: row.published_by,
-    reviewedAt: row.reviewed_at,
-  };
-}
-
-const RULE_COLUMNS =
-  "id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at";
+};
 
 export function createSqliteStore(db: DatabaseSync): Store {
   return {
@@ -295,7 +184,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
       try {
         const old = db
           .prepare("SELECT state, replaced_by FROM conversations WHERE id = ?")
-          .get(oldId) as { state: Conversation["state"]; replaced_by: string | null } | undefined;
+          .get(oldId) as { state: string; replaced_by: string | null } | undefined;
         if (!old) {
           db.exec("ROLLBACK");
           return null;

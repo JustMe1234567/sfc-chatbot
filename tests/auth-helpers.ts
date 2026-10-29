@@ -1,5 +1,5 @@
 import { TOTP, URI } from "otpauth";
-import { useTempDatabase, TEST_ORIGIN } from "./helpers";
+import { countQuery, testPostgresUrl, TEST_ORIGIN, useTempDatabase } from "./helpers";
 
 /**
  * Cookie jar + request helpers for driving the real better-auth HTTP handler
@@ -150,9 +150,12 @@ export async function signInWithTotp(
 export async function latestOutboxMail(): Promise<{ to: string; subject: string; body: string }> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  const row = db
-    .prepare("SELECT to_address, subject, body FROM mail_outbox ORDER BY rowid DESC LIMIT 1")
-    .get() as { to_address: string; subject: string; body: string };
+  const row = await db.get<{ to_address: string; subject: string; body: string }>(
+    countQuery(
+      "SELECT to_address, subject, body FROM mail_outbox ORDER BY seq DESC LIMIT 1",
+      "SELECT to_address, subject, body FROM mail_outbox ORDER BY rowid DESC LIMIT 1",
+    ),
+  );
   if (!row) {
     throw new Error("outbox is empty");
   }

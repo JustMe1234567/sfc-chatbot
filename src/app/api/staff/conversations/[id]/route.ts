@@ -31,6 +31,6 @@ export async function GET(request: Request, context: RouteContext) {
   }
   await store.clearConversationAttention(conversation.id);
   const messages = await store.listMessages(conversation.id);
-  const auditEntries = auditWithNames(db, await store.listConversationAudit(conversation.id));
+  const auditEntries = await auditWithNames(db, await store.listConversationAudit(conversation.id));
   return NextResponse.json({ conversation, messages, audit: auditEntries });
 }

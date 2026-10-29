@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import { getAlertRecipients } from "../settings";
 import type { MailTransport } from "./outbox";
 import { appBaseUrl } from "../config";
@@ -47,16 +47,12 @@ function rowToNotification(row: NotificationRecord): NotificationRow {
   };
 }
 
-function fetchNotification(db: DatabaseSync, id: string): NotificationRecord | undefined {
-  return db
-    .prepare(`SELECT ${NOTIFICATION_COLUMNS} FROM notifications WHERE id = ?`)
-    .get(id) as unknown as NotificationRecord | undefined;
+async function fetchNotification(db: AppDatabase, id: string): Promise<NotificationRecord | undefined> {
+  return db.get<NotificationRecord>(`SELECT ${NOTIFICATION_COLUMNS} FROM notifications WHERE id = ?`, id);
 }
 
-function listRows(db: DatabaseSync): NotificationRow[] {
-  const rows = db
-    .prepare(`SELECT ${NOTIFICATION_COLUMNS} FROM notifications ORDER BY created_at DESC`)
-    .all() as unknown as NotificationRecord[];
+async function listRows(db: AppDatabase): Promise<NotificationRow[]> {
+  const rows = await db.all<NotificationRecord>(`SELECT ${NOTIFICATION_COLUMNS} FROM notifications ORDER BY created_at DESC`);
   return rows.map(rowToNotification);
 }
 
@@ -114,45 +110,47 @@ function composeMail(record: NotificationRecord, visitorLink: string | null): {
  * to whoever is configured at retry time.
  */
 export async function recordEscalationAlert(
-  db: DatabaseSync,
+  db: AppDatabase,
   mail: MailTransport,
   conversationId: string,
 ): Promise<NotificationRow | null> {
-  const recipients = getAlertRecipients(db);
+  const recipients = await getAlertRecipients(db);
   const createdAt = new Date().toISOString();
   const id = crypto.randomUUID();
-  const inserted = db
-    .prepare(
-      `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
-       VALUES (?, 'escalation_alert', ?, ?, 'pending', 0, ?)
-       ON CONFLICT(type, conversation_id) DO NOTHING
-       RETURNING id`,
-    )
-    .get(id, conversationId, JSON.stringify(recipients), createdAt) as { id: string } | undefined;
+  const inserted = await db.get<{ id: string }>(
+    `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
+     VALUES (?, 'escalation_alert', ?, ?, 'pending', 0, ?)
+     ON CONFLICT(type, conversation_id) DO NOTHING
+     RETURNING id`,
+    id,
+    conversationId,
+    JSON.stringify(recipients),
+    createdAt,
+  );
   if (!inserted) {
     // An alert for this conversation already exists; never send twice.
     return null;
   }
   if (recipients.length === 0) {
-    db.prepare(
+    await db.run(
       "UPDATE notifications SET last_error = 'No alert recipients configured yet.' WHERE id = ?",
-    ).run(inserted.id);
-    const row = fetchNotification(db, inserted.id) as NotificationRecord;
+      inserted.id,
+    );
+    const row = (await fetchNotification(db, inserted.id)) as NotificationRecord;
     return rowToNotification(row);
   }
   return deliverNotification(db, mail, inserted.id);
 }
 
 /** Whether the visitor return notification for a conversation exists yet. */
-export function hasVisitorReturnNotification(
-  db: DatabaseSync,
+export async function hasVisitorReturnNotification(
+  db: AppDatabase,
   conversationId: string,
-): boolean {
-  const row = db
-    .prepare(
-      "SELECT 1 FROM notifications WHERE type = 'visitor_return' AND conversation_id = ?",
-    )
-    .get(conversationId);
+): Promise<boolean> {
+  const row = await db.get(
+    "SELECT 1 FROM notifications WHERE type = 'visitor_return' AND conversation_id = ?",
+    conversationId,
+  );
   return row !== undefined;
 }
 
@@ -162,24 +160,21 @@ export function hasVisitorReturnNotification(
  * null when one already exists. The caller delivers it (see
  * mail/visitorReturn.ts): the link is minted only after the slot is won.
  */
-export function insertVisitorReturnRow(
-  db: DatabaseSync,
+export async function insertVisitorReturnRow(
+  db: AppDatabase,
   conversationId: string,
   visitorEmail: string,
-): string | null {
-  const inserted = db
-    .prepare(
-      `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
-       VALUES (?, 'visitor_return', ?, ?, 'pending', 0, ?)
-       ON CONFLICT(type, conversation_id) DO NOTHING
-       RETURNING id`,
-    )
-    .get(
-      crypto.randomUUID(),
-      conversationId,
-      JSON.stringify([visitorEmail]),
-      new Date().toISOString(),
-    ) as { id: string } | undefined;
+): Promise<string | null> {
+  const inserted = await db.get<{ id: string }>(
+    `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
+     VALUES (?, 'visitor_return', ?, ?, 'pending', 0, ?)
+     ON CONFLICT(type, conversation_id) DO NOTHING
+     RETURNING id`,
+    crypto.randomUUID(),
+    conversationId,
+    JSON.stringify([visitorEmail]),
+    new Date().toISOString(),
+  );
   return inserted?.id ?? null;
 }
 
@@ -192,12 +187,12 @@ export function insertVisitorReturnRow(
  * never re-send a stale link.
  */
 export async function deliverNotification(
-  db: DatabaseSync,
+  db: AppDatabase,
   mail: MailTransport,
   notificationId: string,
   makeVisitorLink?: (conversationId: string) => Promise<string>,
 ): Promise<NotificationRow> {
-  const record = fetchNotification(db, notificationId);
+  const record = await fetchNotification(db, notificationId);
   if (!record) {
     throw new Error(`notification ${notificationId} not found`);
   }
@@ -207,10 +202,12 @@ export async function deliverNotification(
   let visitorLink: string | null = null;
   if (record.type === "visitor_return") {
     if (!makeVisitorLink) {
-      db.prepare(
+      await db.run(
         "UPDATE notifications SET status = 'failed', attempts = attempts + 1, last_error = ? WHERE id = ?",
-      ).run("Return link could not be created for this notification.", notificationId);
-      const failed = fetchNotification(db, notificationId) as NotificationRecord;
+        "Return link could not be created for this notification.",
+        notificationId,
+      );
+      const failed = (await fetchNotification(db, notificationId)) as NotificationRecord;
       return rowToNotification(failed);
     }
     visitorLink = await makeVisitorLink(record.conversation_id);
@@ -223,7 +220,7 @@ export async function deliverNotification(
       const composed = composeMail(record, visitorLink);
       await mail.send({ to: recipient, subject: composed.subject, body: composed.body });
       deliveredTo.add(recipient);
-      db.prepare("UPDATE notifications SET delivered_to = ? WHERE id = ?").run(
+      await db.run("UPDATE notifications SET delivered_to = ? WHERE id = ?",
         JSON.stringify([...deliveredTo]),
         notificationId,
       );
@@ -234,14 +231,13 @@ export async function deliverNotification(
   }
 
   const complete = [...recipients].every((recipient) => deliveredTo.has(recipient));
-  db.prepare(
+  await db.run(
     `UPDATE notifications SET
        status = ?,
        attempts = attempts + 1,
        last_error = ?,
        sent_at = CASE WHEN ? THEN ? ELSE sent_at END
      WHERE id = ?`,
-  ).run(
     complete ? "sent" : "failed",
     failure,
     complete ? 1 : 0,
@@ -249,11 +245,11 @@ export async function deliverNotification(
     notificationId,
   );
 
-  const updated = fetchNotification(db, notificationId) as NotificationRecord;
+  const updated = (await fetchNotification(db, notificationId)) as NotificationRecord;
   return rowToNotification(updated);
 }
 
-export function listNotifications(db: DatabaseSync): NotificationRow[] {
+export async function listNotifications(db: AppDatabase): Promise<NotificationRow[]> {
   return listRows(db);
 }
 
@@ -265,12 +261,12 @@ export function listNotifications(db: DatabaseSync): NotificationRow[] {
  * re-sent email never carries a stale token.
  */
 export async function retryNotificationById(
-  db: DatabaseSync,
+  db: AppDatabase,
   mail: MailTransport,
   notificationId: string,
   makeVisitorLink?: (conversationId: string) => Promise<string>,
 ): Promise<{ status: "sent" | "failed" } | "already_sent" | "not_found"> {
-  const record = fetchNotification(db, notificationId);
+  const record = await fetchNotification(db, notificationId);
   if (!record) {
     return "not_found";
   }
@@ -279,9 +275,9 @@ export async function retryNotificationById(
   }
   const storedRecipients = JSON.parse(record.recipients) as string[];
   if (storedRecipients.length === 0) {
-    const current = getAlertRecipients(db);
+    const current = await getAlertRecipients(db);
     if (current.length > 0) {
-      db.prepare("UPDATE notifications SET recipients = ?, last_error = NULL WHERE id = ?").run(
+      await db.run("UPDATE notifications SET recipients = ?, last_error = NULL WHERE id = ?",
         JSON.stringify(current),
         notificationId,
       );

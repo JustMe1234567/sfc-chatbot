@@ -27,8 +27,8 @@ export default async function AnalyticsPage() {
   const settings =
     guard.staff.role === "owner"
       ? {
-          reportingTimeZone: getReportingTimeZone(db),
-          retentionDays: getAnalyticsRetentionDays(db),
+          reportingTimeZone: await getReportingTimeZone(db),
+          retentionDays: await getAnalyticsRetentionDays(db),
         }
       : null;
 

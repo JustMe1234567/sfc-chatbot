@@ -26,8 +26,8 @@ export async function GET(request: Request) {
   }
   const { db } = await getChatbotService();
   return NextResponse.json({
-    reportingTimeZone: getReportingTimeZone(db),
-    retentionDays: getAnalyticsRetentionDays(db),
+    reportingTimeZone: await getReportingTimeZone(db),
+    retentionDays: await getAnalyticsRetentionDays(db),
   });
 }
 
@@ -62,11 +62,11 @@ export async function PUT(request: Request) {
   }
 
   const { db, store } = await getChatbotService();
-  setReportingTimeZone(db, body.reportingTimeZone);
-  setAnalyticsRetentionDays(db, body.retentionDays);
+  await setReportingTimeZone(db, body.reportingTimeZone);
+  await setAnalyticsRetentionDays(db, body.retentionDays);
   const removed = await expireAnalytics(db, store);
   return NextResponse.json({
-    reportingTimeZone: getReportingTimeZone(db),
+    reportingTimeZone: await getReportingTimeZone(db),
     retentionDays: body.retentionDays,
     removed,
   });

@@ -295,7 +295,7 @@ describe("purge and expiry keep reported history stable", () => {
     // one-day retention period.
     await store.closeConversation(id);
     const closedBefore = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-    db.prepare("UPDATE conversations SET closed_at = ? WHERE id = ?").run(closedBefore, id);
+    await db.run("UPDATE conversations SET closed_at = ? WHERE id = ?", closedBefore, id);
 
     await putTranscriptRetention(ownerJar, 1);
     // The save above sweeps immediately; the transcript is gone…

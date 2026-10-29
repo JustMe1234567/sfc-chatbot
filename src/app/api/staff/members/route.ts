@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     return guard.response;
   }
   const { db } = await getChatbotService();
-  return NextResponse.json({ members: listStaffMembers(db) });
+  return NextResponse.json({ members: await listStaffMembers(db) });
 }
 
 /**

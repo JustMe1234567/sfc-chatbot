@@ -20,7 +20,7 @@ export default async function StaffPage() {
   }
 
   const { db } = await getChatbotService();
-  const members = listStaffMembers(db);
+  const members = await listStaffMembers(db);
 
   return (
     <main className={styles.shell}>

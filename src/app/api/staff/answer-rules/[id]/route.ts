@@ -45,5 +45,5 @@ export async function PUT(request: Request, context: RouteContext) {
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);
   await audit(store, staff.userId, "rule_revised", { ruleId: rule.id });
-  return NextResponse.json(rulesWithPublisherNames(db, [rule])[0]);
+  return NextResponse.json((await rulesWithPublisherNames(db, [rule]))[0]);
 }

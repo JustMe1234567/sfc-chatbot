@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, startConversation, TEST_ORIGIN, useTempDatabase } from "./helpers";
+import { ask, startConversation, TEST_ORIGIN, useTempDatabase,
+  warmChatbotService,
+} from "./helpers";
 import {
   authRequest,
   CookieJar,
@@ -122,9 +124,10 @@ async function askFresh(
 }
 
 beforeAll(async () => {
-  useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
+  useTempDatabase();
+  await warmChatbotService();
+    await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);

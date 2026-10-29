@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import type { Store } from "./types";
 import {
   getAnalyticsRetentionDays,
@@ -98,7 +98,7 @@ export function periodDayList(timeZone: string, count: number, now: Date): strin
  * instant is the server's — clients never supply timestamps.
  */
 export async function recordAnalyticsPresence(
-  db: DatabaseSync,
+  db: AppDatabase,
   store: Store,
   visitorHash: string,
   at: Date,
@@ -106,7 +106,7 @@ export async function recordAnalyticsPresence(
   await store.recordAnalyticsPresence(
     visitorHash,
     at.toISOString(),
-    reportingDay(getReportingTimeZone(db), at),
+    reportingDay(await getReportingTimeZone(db), at),
   );
 }
 
@@ -115,13 +115,13 @@ export async function recordAnalyticsPresence(
  * Called from every path that mints a conversation row, so purged
  * transcripts leave their already-counted totals untouched.
  */
-export async function recordChatStarted(db: DatabaseSync, store: Store, at: Date): Promise<void> {
-  await store.recordChatCount(reportingDay(getReportingTimeZone(db), at));
+export async function recordChatStarted(db: AppDatabase, store: Store, at: Date): Promise<void> {
+  await store.recordChatCount(reportingDay(await getReportingTimeZone(db), at));
 }
 
 /** The escalation rollup for the reporting day a handoff was raised in. */
-export async function recordEscalation(db: DatabaseSync, store: Store, at: Date): Promise<void> {
-  await store.recordEscalationCount(reportingDay(getReportingTimeZone(db), at));
+export async function recordEscalation(db: AppDatabase, store: Store, at: Date): Promise<void> {
+  await store.recordEscalationCount(reportingDay(await getReportingTimeZone(db), at));
 }
 
 /**
@@ -180,12 +180,12 @@ export async function buildAnalyticsReport(
  * to expire.
  */
 export async function runAnalyticsExpiry(
-  db: DatabaseSync,
+  db: AppDatabase,
   store: Store,
   now: Date = new Date(),
 ): Promise<{ removedPresence: number; removedDaily: number }> {
-  const retentionDays = getAnalyticsRetentionDays(db);
-  const today = reportingDay(getReportingTimeZone(db), now);
+  const retentionDays = await getAnalyticsRetentionDays(db);
+  const today = reportingDay(await getReportingTimeZone(db), now);
   const cutoff = addCalendarDays(today, -(retentionDays - 1));
   return store.expireAnalyticsBefore(cutoff);
 }
@@ -195,7 +195,7 @@ export async function runAnalyticsExpiry(
  * so a failing sweep must never take the desk down with it.
  */
 export async function expireAnalytics(
-  db: DatabaseSync,
+  db: AppDatabase,
   store: Store,
   now: Date = new Date(),
 ): Promise<{ removedPresence: number; removedDaily: number }> {

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     return guard.response;
   }
   const { store, db } = await getChatbotService();
-  const rules = rulesWithPublisherNames(db, await store.listAnswerRules());
+  const rules = await rulesWithPublisherNames(db, await store.listAnswerRules());
   return NextResponse.json({ rules });
 }
 
@@ -52,5 +52,5 @@ export async function POST(request: Request) {
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);
   await audit(store, guard.staff.userId, "rule_created", { ruleId: rule.id });
-  return NextResponse.json(rulesWithPublisherNames(db, [rule])[0], { status: 201 });
+  return NextResponse.json((await rulesWithPublisherNames(db, [rule]))[0], { status: 201 });
 }

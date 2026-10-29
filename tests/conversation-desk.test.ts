@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { ask, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -79,7 +79,9 @@ async function staffDetail(jar: CookieJar, conversationId: string): Promise<Resp
 async function sql<T>(query: string, ...params: (string | number)[]): Promise<T> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return db.prepare(query).get(...params) as T;
+  // Postgres returns bigint counts as strings; cast so assertions see numbers.
+  const query_ = testPostgresUrl() ? query.split("COUNT(*)").join("COUNT(*)::int") : query;
+  return (await db.get<T>(query_, ...params)) as T;
 }
 
 async function setLastActivity(conversationId: string, iso: string): Promise<void> {

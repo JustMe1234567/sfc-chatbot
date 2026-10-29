@@ -38,9 +38,8 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const service = await getChatbotService();
-  const target = service.db
-    .prepare('SELECT "id", "email", "role" FROM "user" WHERE "id" = ?')
-    .get(id) as TargetRow | undefined;
+  const target = await service.db
+    .get<TargetRow>('SELECT "id", "email", "role" FROM "user" WHERE "id" = ?', id);
   if (!target) {
     return NextResponse.json(
       { error: { code: "not_found", message: "Staff account not found." } },
@@ -56,13 +55,15 @@ export async function POST(request: Request, context: RouteContext) {
 
   // Trusted server context (like provisioning): flip the ban flag directly.
   // requireStaff checks it on every request, and deleting the session rows
-  // ends live access immediately, including dashboard polling.
-  service.db
-    .prepare(
-      'UPDATE "user" SET "banned" = 1, "banReason" = ? WHERE "id" = ?',
-    )
-    .run("Disabled by the owner", id);
-  service.db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(id);
+  // ends live access immediately, including dashboard polling. The flag is
+  // a portable boolean bind (0/1 on SQLite, true/false on Postgres).
+  await service.db.run(
+    'UPDATE "user" SET "banned" = ?, "banReason" = ? WHERE "id" = ?',
+    true,
+    "Disabled by the owner",
+    id,
+  );
+  await service.db.run('DELETE FROM "session" WHERE "userId" = ?', id);
   await audit(service.store, guard.staff.userId, "staff_disabled", {}, target.email);
 
   // Their claims cannot survive them: release each conversation back to the

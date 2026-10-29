@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, TEST_ORIGIN } from "./helpers";
+import { ask, loadHistory, startConversation, TEST_ORIGIN,
+  warmChatbotService,
+} from "./helpers";
 import {
   authRequest,
   CookieJar,
@@ -50,13 +52,16 @@ async function escalate(): Promise<{ id: string; token: string }> {
 async function staffId(email: string): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return (db.prepare('SELECT "id" FROM "user" WHERE "email" = ?').get(email) as { id: string }).id;
+  return ((await db.get<{ id: string }>('SELECT "id" FROM "user" WHERE "email" = ?', email)) as {
+    id: string;
+  }).id;
 }
 
 beforeAll(async () => {
-  useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
-  await provisionStaff({ email: ALICE_EMAIL, password: ALICE_PASSWORD, name: "Alice" });
+  useTempDatabase();
+  await warmChatbotService();
+    await provisionStaff({ email: ALICE_EMAIL, password: ALICE_PASSWORD, name: "Alice" });
   await provisionStaff({ email: BOB_EMAIL, password: BOB_PASSWORD, name: "Bob" });
   aliceTotp = await enrollTotp(new CookieJar(), ALICE_EMAIL, ALICE_PASSWORD);
   bobTotp = await enrollTotp(new CookieJar(), BOB_EMAIL, BOB_PASSWORD);

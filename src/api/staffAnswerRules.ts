@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import { requireStaff, sameOriginGuard, type StaffContext } from "@/api/staff";
 import { staffName } from "@/api/staffConversations";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
@@ -12,11 +12,16 @@ export interface RuleView extends AnswerRule {
   publishedByName: string | null;
 }
 
-export function rulesWithPublisherNames(db: DatabaseSync, rules: AnswerRule[]): RuleView[] {
-  return rules.map((rule) => ({
-    ...rule,
-    publishedByName: rule.publishedBy ? staffName(db, rule.publishedBy) : null,
-  }));
+export async function rulesWithPublisherNames(
+  db: AppDatabase,
+  rules: AnswerRule[],
+): Promise<RuleView[]> {
+  return Promise.all(
+    rules.map(async (rule) => ({
+      ...rule,
+      publishedByName: rule.publishedBy ? await staffName(db, rule.publishedBy) : null,
+    })),
+  );
 }
 
 export type LoadedAnswerRule =

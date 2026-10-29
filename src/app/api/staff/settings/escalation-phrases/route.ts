@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     return guard.response;
   }
   const { db } = await getChatbotService();
-  return NextResponse.json({ phrases: getEscalationPhrases(db) });
+  return NextResponse.json({ phrases: await getEscalationPhrases(db) });
 }
 
 export async function PUT(request: Request) {
@@ -44,6 +44,6 @@ export async function PUT(request: Request) {
     );
   }
   const { db } = await getChatbotService();
-  setEscalationPhrases(db, body.phrases);
+  await setEscalationPhrases(db, body.phrases);
   return NextResponse.json({ phrases: body.phrases });
 }

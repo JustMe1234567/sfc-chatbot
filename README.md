@@ -67,6 +67,28 @@ Environment settings: `CHATBOT_DB` (database file), `CHATBOT_BASE_URL`
 (public origin), `BETTER_AUTH_SECRET` (required outside local development).
 Secrets never reach client bundles: no `NEXT_PUBLIC_` variable carries them.
 
+## Production database (Postgres)
+
+Setting `DATABASE_URL` switches the whole application — chat data, staff
+authentication, settings, analytics — to Postgres; without it the app runs
+on SQLite as above. The Postgres schema lives in `migrations/postgres/` and
+is applied automatically on first start. `docs/deployment.md` is the
+step-by-step Vercel + Supabase runbook: provisioning, the repeatable
+SQLite→Postgres data migration with verification, the session-revoking
+cutover, backups and rollback, and the pre-launch security review. The
+architecture decision is recorded in
+`docs/adr/0003-postgres-on-supabase-for-production.md`.
+
+Run the full test suite against Postgres:
+
+```bash
+CHATBOT_TEST_POSTGRES_URL="postgres://user:pass@host:5432/postgres" npm test
+```
+
+Scheduled maintenance (transcript retention + analytics expiry) runs through
+`GET /api/maintenance`, triggered daily by Vercel cron (`vercel.json`) with
+`CRON_SECRET`, or by ordinary staff dashboard traffic.
+
 ## Layout
 
 | Path | Purpose |
@@ -76,15 +98,13 @@ Secrets never reach client bundles: no `NEXT_PUBLIC_` variable carries them.
 | `src/auth/` | Better Auth configuration and server-side staff provisioning |
 | `src/lib/` | Shared client helpers (auth client, visitor session storage) |
 | `src/domain/` | Pure matching, limits, tokens, hours, activity, retention sweep, entity types, and answer-rule input validation |
-| `src/store/` | SQLite store behind the `Store` port, and seed content |
-| `src/db/` | SQLite connection, versioned migration runner, service singleton |
+| `src/store/` | SQLite and Postgres stores behind the `Store` port, shared row mappers, and seed content |
+| `src/db/` | Backend connections (SQLite + Postgres), portable query surface, versioned migration runners, service singleton |
 | `src/widget/` | Loader script bundled to `public/widget/v1.js` |
 | `src/mail/` | Development mail transport (mail_outbox table) |
-| `migrations/` | Versioned SQL schema migrations |
+| `migrations/` | Versioned SQL schema migrations (SQLite and `postgres/`) |
 | `public/demo/` | WordPress-style test page for the embed |
 | `wordpress/` | Optional mu-plugin that enqueues the loader site-wide |
 
-SQLite is for development and stateful self-hosted preview only; Vercel's
-filesystem is ephemeral. Production deployment waits for the Supabase Postgres
-migration (ticket 11), which is also a college-review launch gate documented in
-the spec.
+SQLite is for development and stateful self-hosted preview only; production
+on Vercel runs on Supabase Postgres (see `docs/deployment.md`).

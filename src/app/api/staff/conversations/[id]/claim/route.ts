@@ -51,7 +51,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (!claimed) {
     const current = await service.store.getConversation(id);
     return claimConflictResponse(
-      current?.claimedBy ? staffName(service.db, current.claimedBy) : null,
+      current?.claimedBy ? await staffName(service.db, current.claimedBy) : null,
     );
   }
   // Taking the conversation is handling it: the attention alert clears.

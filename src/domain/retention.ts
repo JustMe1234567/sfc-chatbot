@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import { getTranscriptRetentionDays } from "../settings";
 import type { RetentionRun, Store } from "./types";
 
@@ -15,11 +15,11 @@ export interface RetentionSweepResult {
  * actual removals, and reruns stay free.
  */
 export async function runRetentionSweep(
-  db: DatabaseSync,
+  db: AppDatabase,
   store: Store,
   now: Date = new Date(),
 ): Promise<RetentionSweepResult | null> {
-  const retentionDays = getTranscriptRetentionDays(db);
+  const retentionDays = await getTranscriptRetentionDays(db);
   if (retentionDays === null) {
     return null;
   }
@@ -48,7 +48,7 @@ export async function runRetentionSweep(
  * failing sweep must never take the inbox or the settings save down with it.
  */
 export async function sweepTranscripts(
-  db: DatabaseSync,
+  db: AppDatabase,
   store: Store,
   now: Date = new Date(),
 ): Promise<RetentionSweepResult | null> {

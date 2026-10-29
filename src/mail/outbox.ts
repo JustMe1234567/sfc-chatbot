@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 
 export interface OutgoingMail {
   to: string;
@@ -15,12 +15,17 @@ export interface MailTransport {
  * later staff alerts) is recorded in the mail_outbox table instead of leaving
  * the machine. Production delivery uses the approved sender (ticket 03).
  */
-export function createOutboxTransport(db: DatabaseSync): MailTransport {
+export function createOutboxTransport(db: AppDatabase): MailTransport {
   return {
     async send(mail) {
-      db.prepare(
+      await db.run(
         "INSERT INTO mail_outbox (id, to_address, subject, body, created_at) VALUES (?, ?, ?, ?, ?)",
-      ).run(crypto.randomUUID(), mail.to, mail.subject, mail.body, new Date().toISOString());
+        crypto.randomUUID(),
+        mail.to,
+        mail.subject,
+        mail.body,
+        new Date().toISOString(),
+      );
     },
   };
 }

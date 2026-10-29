@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { AppDatabase } from "../db/appDatabase";
 import type { Auth, StaffRole } from "./server";
 
 export interface ProvisionInput {
@@ -23,7 +23,7 @@ export interface ProvisionedStaff {
  */
 export async function provisionStaffMember(
   auth: Auth,
-  db: DatabaseSync,
+  db: AppDatabase,
   input: ProvisionInput,
 ): Promise<ProvisionedStaff> {
   const created = await auth.api.createUser({
@@ -38,6 +38,6 @@ export async function provisionStaffMember(
   if (!user?.id) {
     throw new Error(`provisioning failed for ${input.email}: ${JSON.stringify(created).slice(0, 200)}`);
   }
-  db.prepare('UPDATE "user" SET "emailVerified" = 1 WHERE "id" = ?').run(user.id);
+  await db.run('UPDATE "user" SET "emailVerified" = ? WHERE "id" = ?', true, user.id);
   return { userId: user.id, email: input.email, role: input.role };
 }

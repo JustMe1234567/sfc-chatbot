@@ -171,7 +171,9 @@ describe("the visitor's handoff wording follows the configuration", () => {
   it("treats a corrupt stored configuration as unconfigured", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('support_hours', ?, ?)").run(
+    await db.run(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('support_hours', ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       JSON.stringify({ timeZone: "Not/AZone", days: [1], startMinute: 0, endMinute: 60 }),
       new Date().toISOString(),
     );
@@ -184,7 +186,7 @@ describe("the visitor's handoff wording follows the configuration", () => {
     const body = (await response.json()) as { reply: { text: string } };
     expect(body.reply.text).toContain("handed our conversation to the college staff");
     expect(body.reply.text).not.toContain("Not/AZone");
-    db.prepare("DELETE FROM settings WHERE key = 'support_hours'").run();
+    await db.run("DELETE FROM settings WHERE key = 'support_hours'");
   });
 
   it("uses the general message while unconfigured, schedule wording once set", async () => {

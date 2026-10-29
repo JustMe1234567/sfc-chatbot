@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { ask, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -119,19 +119,21 @@ async function claimedConversation(): Promise<ConversationStart> {
 async function sql<T>(query: string, ...params: (string | number)[]): Promise<T> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return db.prepare(query).get(...params) as T;
+  // Postgres returns bigint counts as strings; cast so assertions see numbers.
+  const query_ = testPostgresUrl() ? query.split("COUNT(*)").join("COUNT(*)::int") : query;
+  return (await db.get<T>(query_, ...params)) as T;
 }
 
 async function setClosedAt(conversationId: string, iso: string): Promise<void> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  db.prepare("UPDATE conversations SET closed_at = ? WHERE id = ?").run(iso, conversationId);
+  await db.run("UPDATE conversations SET closed_at = ? WHERE id = ?", iso, conversationId);
 }
 
 async function setCreatedAt(conversationId: string, iso: string): Promise<void> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  db.prepare("UPDATE conversations SET created_at = ? WHERE id = ?").run(iso, conversationId);
+  await db.run("UPDATE conversations SET created_at = ? WHERE id = ?", iso, conversationId);
 }
 
 beforeAll(async () => {
@@ -292,7 +294,7 @@ describe("the retention boundary is the configured period", () => {
     const { runRetentionSweep } = await import("../src/domain/retention");
     const { db, store } = await getChatbotService();
 
-    db.prepare("DELETE FROM settings WHERE key = 'transcript_retention_days'").run();
+    await db.run("DELETE FROM settings WHERE key = 'transcript_retention_days'");
     const oldClosed = await closedConversation();
     await setClosedAt(oldClosed.id, daysAgo(365));
 
@@ -314,9 +316,10 @@ describe("a deleted conversation is unavailable everywhere", () => {
     const { hashSessionToken } = await import("../src/domain/tokens");
     const rawToken = `return-${crypto.randomUUID()}`;
     const { db } = await (await import("../src/db/service")).getChatbotService();
-    db.prepare(
+    await db.run(
       "INSERT INTO return_tokens (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-    ).run(hashSessionToken(rawToken), gone.id, daysAgo(1), new Date(Date.now() + 86_400_000).toISOString());
+      hashSessionToken(rawToken), gone.id, daysAgo(1), new Date(Date.now() + 86_400_000).toISOString(),
+    );
 
     const ownerJar = new CookieJar();
     await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
