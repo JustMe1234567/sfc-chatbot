@@ -24,7 +24,9 @@ const STYLES = `
 .sfcw-launcher img{width:24px;height:24px;display:block;background:#fff;border-radius:6px;padding:1px}
 .sfcw-launcher-close{width:26px;height:26px;display:none;align-items:center;justify-content:center;font:400 26px/1 system-ui,sans-serif}
 .sfcw-launcher[aria-expanded="true"] img{display:none}
+.sfcw-launcher[data-closing="true"] img{display:none}
 .sfcw-launcher[aria-expanded="true"] .sfcw-launcher-close{display:flex}
+.sfcw-launcher[data-closing="true"] .sfcw-launcher-close{display:flex}
 .sfcw-frame{position:fixed;right:16px;bottom:76px;z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px));opacity:0;transform:translateY(10px) scale(.98);transition:opacity 180ms cubic-bezier(.2,.8,.2,1),transform 180ms cubic-bezier(.2,.8,.2,1)}
 .sfcw-frame.sfcw-frame-in{opacity:1;transform:none}
 .sfcw-frame[hidden]{display:none}
@@ -88,6 +90,7 @@ function boot(): void {
 
   function openFrame(): void {
     isOpen = true;
+    delete launcher.dataset.closing;
     if (hideTimer !== undefined) {
       window.clearTimeout(hideTimer);
       hideTimer = undefined;
@@ -110,6 +113,9 @@ function boot(): void {
   function close(): void {
     isOpen = false;
     frame.classList.remove("sfcw-frame-in");
+    // Keep the close affordance until the fading frame (and its crest) is
+    // display-hidden, so the launcher crest never duplicates it on screen.
+    launcher.dataset.closing = "true";
     launcher.setAttribute("aria-label", "Chat with Springfield College");
     launcher.setAttribute("aria-expanded", "false");
     launcher.focus();
@@ -120,6 +126,7 @@ function boot(): void {
     // always finishes before display:none.
     hideTimer = window.setTimeout(() => {
       frame.hidden = true;
+      delete launcher.dataset.closing;
       hideTimer = undefined;
     }, 200);
   }

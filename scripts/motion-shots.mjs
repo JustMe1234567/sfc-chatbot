@@ -74,7 +74,7 @@ mkdirSync(OUT, { recursive: true });
   for (let cycle = 0; cycle < 3; cycle += 1) {
     await launcher.click();
     await page.waitForTimeout(40);
-    await page.keyboard.press("Escape");
+    await launcher.click();
     await page.waitForTimeout(40);
   }
   await launcher.click();

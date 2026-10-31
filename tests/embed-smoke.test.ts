@@ -39,6 +39,8 @@ describe("WordPress embed smoke check", () => {
     expect(script).toContain('aria-expanded","false"');
     expect(script).toContain("sfcw-launcher-close");
     expect(script).toContain('.sfcw-launcher[aria-expanded="true"] img{display:none}');
+    expect(script).toContain('.sfcw-launcher[data-closing="true"] img{display:none}');
+    expect(source).toContain('delete launcher.dataset.closing');
     expect(source).not.toContain("launcher.hidden = true");
   });
 
