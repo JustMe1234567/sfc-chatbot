@@ -104,7 +104,7 @@ async function staffClaimReply(
 /** Escalate, then optionally leave an email: the ticket 07 setup. */
 async function escalatedConversation(email?: string): Promise<ConversationStart> {
   const conversation = await startConversation();
-  await ask(conversation, "Something no rule covers, I need staff help.");
+  await ask(conversation, "Something no rule covers; I need to speak to a human.");
   if (email !== undefined) {
     const response = await postEmail(conversation, email);
     expect(response.status).toBe(200);
@@ -141,7 +141,7 @@ describe("an optional email is collected only after escalation", () => {
     const tooEarly = await postEmail(conversation, "visitor@example.org");
     expect(tooEarly.status).toBe(409);
 
-    await ask(conversation, "Please tell me about the canteen menu on Fridays?");
+    await ask(conversation, "Please tell me about the canteen menu on Fridays; I need to speak to a human.");
     const invalid = await postEmail(conversation, "not-an-email");
     expect(invalid.status).toBe(400);
 

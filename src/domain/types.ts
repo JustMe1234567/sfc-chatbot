@@ -34,9 +34,9 @@ export interface Conversation {
 
 export type MessageRole = "visitor" | "bot" | "staff";
 
-/** A topic choice offered on a bot message when several rules matched. */
+/** A keyboard-accessible action offered on a bot message. */
 export interface MessageChoice {
-  /** The published answer rule a selection resolves to. */
+  /** The published answer rule or reserved visitor action a selection resolves to. */
   id: string;
   topic: string;
 }

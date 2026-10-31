@@ -148,6 +148,7 @@ describe("the visitor's selected choice answers", () => {
   it("does not answer a selection once staff help is requested", async () => {
     const conversation = await startConversation();
     await ask(conversation, "Something no rule covers at all, escalate me");
+    await askWithChoice(conversation, "request-human", "Chat with a human");
     await askWithChoice(conversation, "fees-overview", "Fees");
 
     const history = await loadHistory(conversation);
@@ -227,20 +228,23 @@ describe("configured handoff phrases take priority over answer rules", () => {
   });
 });
 
-describe("unknown questions keep ticket 02's immediate handoff", () => {
-  it("escalates when no rule or phrase applies", async () => {
+describe("unknown questions offer a visitor-consented handoff", () => {
+  it("offers human help when no rule or phrase applies", async () => {
     const conversation = await startConversation();
     const response = await ask(conversation, "What is the canteen menu on Thursdays?");
     const body = (await response.json()) as ReplyBody;
-    expect(body.conversation.state).toBe("awaiting_staff");
-    expect(body.reply?.text).toContain("handed our conversation to the college staff");
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.choices).toEqual([
+      { id: "request-human", topic: "Chat with a human" },
+    ]);
   });
 
   it("does not match rule keywords inside other words", async () => {
     const conversation = await startConversation();
     const response = await ask(conversation, "Do you sell coffee on campus?");
     const body = (await response.json()) as ReplyBody;
-    expect(body.conversation.state).toBe("awaiting_staff");
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.choices?.[0]?.id).toBe("request-human");
   });
 });
 

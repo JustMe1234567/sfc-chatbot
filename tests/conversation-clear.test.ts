@@ -69,7 +69,7 @@ async function staffJar(): Promise<CookieJar> {
 
 async function escalatedConversation(text: string): Promise<ConversationStart> {
   const conversation = await startConversation();
-  await ask(conversation, text);
+  await ask(conversation, `${text} Please speak to a human.`);
   return conversation;
 }
 
@@ -207,7 +207,7 @@ describe("clearing after escalation and while claimed", () => {
     expect(desk.active.some((item) => item.id === old.id)).toBe(false);
     expect(desk.active.some((item) => item.id === fresh.id)).toBe(true);
 
-    const freshAsk = await ask({ id: fresh.id, token: fresh.token }, "Clear test: starting over.");
+    const freshAsk = await ask({ id: fresh.id, token: fresh.token }, "Clear test: starting over; speak to a human.");
     expect(freshAsk.status).toBe(200);
     // And staff can work the successor: claim it.
     expect((await staffAction(jar, fresh.id, "claim")).status).toBe(200);

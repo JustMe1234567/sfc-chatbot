@@ -83,7 +83,7 @@ async function inboxGet(jar: CookieJar): Promise<Response> {
 /** Escalate (optionally leave an email), claim, and close — a finished conversation. */
 async function closedConversation(email?: string): Promise<ConversationStart> {
   const conversation = await startConversation();
-  await ask(conversation, "Nothing approved covers this, I need a person.");
+  await ask(conversation, "Nothing approved covers this; I need to speak to a human.");
   if (email) {
     const { POST } = await import("../src/app/api/v1/conversations/[id]/email/route");
     const response = await POST(
@@ -109,7 +109,7 @@ async function closedConversation(email?: string): Promise<ConversationStart> {
 /** A claimed-but-open conversation, for the "active is preserved" checks. */
 async function claimedConversation(): Promise<ConversationStart> {
   const conversation = await startConversation();
-  await ask(conversation, "Please hand this to the desk, nothing covers it.");
+  await ask(conversation, "Please let me speak to a human; nothing covers it.");
   const jar = new CookieJar();
   await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
   expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
@@ -218,7 +218,7 @@ describe("cleanup removes only closed conversations past the period", () => {
     await setClosedAt(recentlyClosed.id, daysAgo(29));
 
     const awaiting = await startConversation();
-    await ask(awaiting, "Nothing covers this ancient question.");
+    await ask(awaiting, "Nothing covers this ancient question; I need to speak to a human.");
     await setCreatedAt(awaiting.id, daysAgo(60));
 
     const claimed = await claimedConversation();

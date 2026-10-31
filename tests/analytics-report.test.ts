@@ -247,7 +247,7 @@ describe("real flows drive the rollups", () => {
     const escalationsBefore = (await readReport(ownerJar, "today")).totals.escalations;
 
     const conversation = await startConversation();
-    await ask(conversation, "zzqx no rule matches this wonderwall");
+    await ask(conversation, "zzqx no rule matches this wonderwall; speak to a human");
 
     const afterEscalation = await readReport(ownerJar, "today");
     expect(afterEscalation.totals.chats).toBe(chatsBefore + 1);
@@ -271,7 +271,7 @@ describe("real flows drive the rollups", () => {
   it("answers a second visitor message in an escalated chat without another escalation", async () => {
     const escalationsBefore = (await readReport(ownerJar, "today")).totals.escalations;
     const conversation = await startConversation();
-    await ask(conversation, "zzqx no rule matches this wonderwall");
+    await ask(conversation, "zzqx no rule matches this wonderwall; speak to a human");
     await ask(conversation, "still nothing matches this second try zzqx");
     const after = await readReport(ownerJar, "today");
     expect(after.totals.escalations).toBe(escalationsBefore + 1);

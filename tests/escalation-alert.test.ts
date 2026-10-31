@@ -50,7 +50,7 @@ describe("escalations before recipients are configured", () => {
   it("records a visible pending alert that retry delivers once configured", async () => {
     // No recipients yet: the escalation must still leave a visible record.
     const conversation = await startConversation();
-    await ask(conversation, "Can I visit the campus this weekend?");
+    await ask(conversation, "Can I speak to a human about visiting campus this weekend?");
 
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
@@ -131,7 +131,7 @@ describe("one escalation alert per conversation", () => {
     await setRecipients(jar, [RECIPIENT]);
 
     const conversation = await startConversation();
-    const response = await ask(conversation, "Can you post my application form for me?");
+    const response = await ask(conversation, "Can I speak to a human about my application form?");
     expect(response.status).toBe(200);
 
     const notifications = await listNotifications(jar);
@@ -164,7 +164,7 @@ describe("one escalation alert per conversation", () => {
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
 
     const conversation = await startConversation();
-    await ask(conversation, "Do you validate parking?");
+    await ask(conversation, "Can I speak to a human about parking validation?");
     await ask(conversation, "Also, what are your opening hours?");
     await ask(conversation, "Hello?");
 

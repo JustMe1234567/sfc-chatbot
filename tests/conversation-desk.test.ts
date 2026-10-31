@@ -124,7 +124,7 @@ async function staffJar(): Promise<CookieJar> {
 /** Escalate so the conversation reaches awaiting_staff. */
 async function escalatedConversation(text: string): Promise<ConversationStart> {
   const conversation = await startConversation();
-  await ask(conversation, text);
+  await ask(conversation, `${text} Please speak to a human.`);
   return conversation;
 }
 

@@ -25,7 +25,7 @@ let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function escalateAConversation(): Promise<void> {
   const conversation = await startConversation();
-  await ask(conversation, "Do you offer helicopter pilot licences?");
+  await ask(conversation, "Do you offer helicopter pilot licences? I need to speak to a human.");
 }
 
 beforeAll(async () => {

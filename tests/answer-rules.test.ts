@@ -147,7 +147,7 @@ describe("an editor maintains answer rules", () => {
     expect(rule.publishedBy).toBeNull();
 
     const asked = await askFresh(question);
-    expect(asked.state).toBe("awaiting_staff");
+    expect(asked.state).toBe("bot_active");
     expect(asked.reply?.text ?? "").not.toContain("Main Street lot");
   });
 
@@ -186,7 +186,7 @@ describe("an editor maintains answer rules", () => {
     expect(((await unpublish.json()) as RuleRecord).status).toBe("draft");
 
     const asked = await askFresh(question);
-    expect(asked.state).toBe("awaiting_staff");
+    expect(asked.state).toBe("bot_active");
     expect((await topics()).topics.find((topic) => topic.id === rule.id)).toBeUndefined();
   });
 
@@ -228,7 +228,7 @@ describe("an editor maintains answer rules", () => {
     expect(((await revised.json()) as RuleRecord).status).toBe("draft");
 
     const stale = await askFresh(question);
-    expect(stale.state).toBe("awaiting_staff");
+    expect(stale.state).toBe("bot_active");
 
     await publishRule(jar, rule.id);
     const fresh = await askFresh(question);

@@ -16,6 +16,11 @@ import type { Conversation, Message } from "@/domain/types";
 
 const messageLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
+const REQUEST_HUMAN_CHOICE_ID = "request-human";
+const REQUEST_HUMAN_CHOICE = {
+  id: REQUEST_HUMAN_CHOICE_ID,
+  topic: "Chat with a human",
+};
 
 function newMessage(
   conversationId: string,
@@ -31,6 +36,28 @@ function newMessage(
     ...(link ? { link } : {}),
     createdAt: new Date().toISOString(),
   };
+}
+
+async function escalateConversation(
+  target: Conversation,
+  service: Awaited<ReturnType<typeof getChatbotService>>,
+): Promise<Response> {
+  const { store, db, mail } = service;
+  const escalated: Conversation = { ...target, state: "awaiting_staff" };
+  await store.updateConversationState(target.id, "awaiting_staff");
+  // First transition out of bot-active is the escalation the analytics
+  // report counts (ticket 17); releases from a claim never pass here.
+  await recordEscalation(db, store, new Date());
+  const hours = await getSupportHours(db);
+  const reply = newMessage(target.id, "bot", handoffReply(hours));
+  await store.appendMessage(reply);
+  try {
+    const { recordEscalationAlert } = await import("@/mail/notifications");
+    await recordEscalationAlert(db, mail, target.id);
+  } catch (error) {
+    console.error("escalation alert recording failed:", error);
+  }
+  return NextResponse.json({ conversation: escalated, reply });
 }
 
 interface RouteContext {
@@ -94,7 +121,46 @@ export async function POST(request: Request, context: RouteContext) {
     if (typeof body.choice !== "string" || body.choice.length === 0) {
       return invalidChoice();
     }
-    const { store } = await getChatbotService();
+    const service = await getChatbotService();
+    const { store } = service;
+    if (body.choice === REQUEST_HUMAN_CHOICE_ID) {
+      const messages = await store.listMessages(conversation.id);
+      const offered = messages.at(-1)?.choices?.some(
+        (choice) => choice.id === REQUEST_HUMAN_CHOICE_ID,
+      );
+      if (!offered) {
+        return invalidChoice();
+      }
+      if (conversation.state === "closed") {
+        return NextResponse.json(
+          {
+            error: {
+              code: "conversation_closed",
+              message: "This conversation was closed. Ask a new question to start again.",
+            },
+          },
+          { status: 409 },
+        );
+      }
+      if (!isConversationActive(conversation)) {
+        return inactiveResponse();
+      }
+      if (!messageLimiter.check(conversation.id)) {
+        return NextResponse.json(
+          { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
+          { status: 429 },
+        );
+      }
+      await store.appendMessage(
+        newMessage(conversation.id, "visitor", REQUEST_HUMAN_CHOICE.topic),
+      );
+      await store.touchVisitorPresence(conversation.id);
+      await recordVisitorActivity(store, conversation.id, new Date());
+      if (conversation.state !== "bot_active") {
+        return NextResponse.json({ conversation, reply: null });
+      }
+      return escalateConversation(conversation, service);
+    }
     const rule = await store.getAnswerRule(body.choice);
     if (!rule || rule.status !== "published") {
       return invalidChoice();
@@ -164,7 +230,8 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const { store, db, mail } = await getChatbotService();
+  const service = await getChatbotService();
+  const { store, db } = service;
   await store.appendMessage(newMessage(conversation.id, "visitor", validation.text));
   await store.touchVisitorPresence(conversation.id);
   await recordVisitorActivity(store, conversation.id, new Date());
@@ -175,37 +242,23 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ conversation, reply: null });
   }
 
-  // An unknown question and an explicit handoff phrase produce the same
-  // escalation; alerting must never fail the visitor's response, and a failed
-  // alert stays visible on the notifications page for retry.
-  async function escalate(target: Conversation): Promise<Response> {
-    const escalated: Conversation = { ...target, state: "awaiting_staff" };
-    await store.updateConversationState(target.id, "awaiting_staff");
-    // First transition out of bot-active is the escalation the analytics
-    // report counts (ticket 17); releases from a claim never pass here.
-    await recordEscalation(db, store, new Date());
-    const hours = await getSupportHours(db);
-    const reply = newMessage(target.id, "bot", handoffReply(hours));
-    await store.appendMessage(reply);
-    try {
-      const { recordEscalationAlert } = await import("@/mail/notifications");
-      await recordEscalationAlert(db, mail, target.id);
-    } catch (error) {
-      console.error("escalation alert recording failed:", error);
-    }
-    return NextResponse.json({ conversation: escalated, reply });
-  }
-
   // Explicit handoff wording wins over every answer rule (ticket 06).
   if (matchesEscalationPhrase(validation.text, await getEscalationPhrases(db))) {
-    return escalate(conversation);
+    return escalateConversation(conversation, service);
   }
 
   const rules = await store.listPublishedAnswerRules();
   const matches = matchAnswerRules(validation.text, rules);
 
   if (matches.length === 0) {
-    return escalate(conversation);
+    const reply = newMessage(
+      conversation.id,
+      "bot",
+      "I don't have knowledge of that. You can chat with a human if you'd like.",
+    );
+    reply.choices = [REQUEST_HUMAN_CHOICE];
+    await store.appendMessage(reply);
+    return NextResponse.json({ conversation, reply });
   }
   if (matches.length === 1) {
     const rule = matches[0]!;

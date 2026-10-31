@@ -59,7 +59,7 @@ beforeAll(async () => {
 describe("escalation alert failure and retry", () => {
   it("records a failed delivery with its reason when the sender fails", async () => {
     const conversation = await startConversation();
-    await ask(conversation, "Can someone call me about my invoice?");
+    await ask(conversation, "Can I speak to a human about my invoice?");
 
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
@@ -124,7 +124,7 @@ describe("escalation alert failure and retry", () => {
     // Any escalation now succeeds on first attempt (the transport only fails
     // once), producing a sent notification whose retry must be refused.
     const conversation = await startConversation();
-    await ask(conversation, "Do you have evening classes for adults?");
+    await ask(conversation, "Can I speak to a human about evening classes for adults?");
 
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);

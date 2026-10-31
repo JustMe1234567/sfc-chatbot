@@ -82,7 +82,7 @@ beforeAll(async () => {
 describe("retrying a failed visitor return notification", () => {
   it("mints a fresh working link on retry; the delivered email is never stale", async () => {
     const conversation = await startConversation();
-    await ask(conversation, "Tell me about campus tours, no rule covers this.");
+    await ask(conversation, "Tell me about campus tours; I need to speak to a human.");
     const emailRoute = await import("../src/app/api/v1/conversations/[id]/email/route");
     const email = await emailRoute.POST(
       new Request(`${TEST_ORIGIN}/api/v1/conversations/${conversation.id}/email`, {

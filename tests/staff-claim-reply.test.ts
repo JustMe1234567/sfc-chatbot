@@ -45,7 +45,7 @@ async function staffPost(
 
 async function escalate(): Promise<{ id: string; token: string }> {
   const conversation = await startConversation();
-  await ask(conversation, "I need help from a person, please.");
+  await ask(conversation, "I need to speak to a human, please.");
   return conversation;
 }
 

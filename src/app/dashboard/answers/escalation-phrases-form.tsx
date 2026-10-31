@@ -8,7 +8,7 @@ import styles from "../dashboard.module.css";
  * Editor configuration of the handoff phrases: any question containing one
  * of these phrases goes straight to staff, even when a rule also matches.
  * Saving applies from the next question; an empty list turns the feature
- * off (unknown questions still escalate).
+ * off (unknown questions still offer a visitor-consented handoff).
  */
 export default function EscalationPhrasesForm({ initialPhrases }: { initialPhrases: string[] }) {
   const router = useRouter();
