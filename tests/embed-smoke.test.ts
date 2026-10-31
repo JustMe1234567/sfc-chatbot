@@ -30,6 +30,18 @@ describe("WordPress embed smoke check", () => {
     expect(script).not.toContain("api/v1");
   });
 
+  it("keeps the launcher available as an honest open and close toggle (ticket 35)", async () => {
+    const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
+    const source = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
+
+    expect(script).toContain('aria-label","Close chat"');
+    expect(script).toContain('aria-expanded","true"');
+    expect(script).toContain('aria-expanded","false"');
+    expect(script).toContain("sfcw-launcher-close");
+    expect(script).toContain('.sfcw-launcher[aria-expanded="true"] img{display:none}');
+    expect(source).not.toContain("launcher.hidden = true");
+  });
+
   it("keeps the visitor credential in iframe-origin session storage", async () => {
     // Storage access moved behind src/widget/visitorSession.ts (shared with
     // the /return landing page); the exposure review covers both files.

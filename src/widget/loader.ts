@@ -22,6 +22,9 @@ const STYLES = `
 .sfcw-launcher[hidden]{display:none}
 /* White plate: the crest's blue shield would vanish on the same-hue button. */
 .sfcw-launcher img{width:24px;height:24px;display:block;background:#fff;border-radius:6px;padding:1px}
+.sfcw-launcher-close{width:26px;height:26px;display:none;align-items:center;justify-content:center;font:400 26px/1 system-ui,sans-serif}
+.sfcw-launcher[aria-expanded="true"] img{display:none}
+.sfcw-launcher[aria-expanded="true"] .sfcw-launcher-close{display:flex}
 .sfcw-frame{position:fixed;right:16px;bottom:76px;z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px));opacity:0;transform:translateY(10px) scale(.98);transition:opacity 180ms cubic-bezier(.2,.8,.2,1),transform 180ms cubic-bezier(.2,.8,.2,1)}
 .sfcw-frame.sfcw-frame-in{opacity:1;transform:none}
 .sfcw-frame[hidden]{display:none}
@@ -55,7 +58,12 @@ function boot(): void {
   crest.alt = "";
   const label = document.createElement("span");
   label.textContent = "Chat";
+  const closeIcon = document.createElement("span");
+  closeIcon.className = "sfcw-launcher-close";
+  closeIcon.textContent = "×";
+  closeIcon.setAttribute("aria-hidden", "true");
   launcher.appendChild(crest);
+  launcher.appendChild(closeIcon);
   launcher.appendChild(label);
   launcher.setAttribute("aria-label", "Chat with Springfield College");
   launcher.setAttribute("aria-expanded", "false");
@@ -76,8 +84,10 @@ function boot(): void {
      toggling correct — reopening cancels it, so the panel always ends in
      the state of the last action. */
   let hideTimer: number | undefined;
+  let isOpen = false;
 
   function openFrame(): void {
+    isOpen = true;
     if (hideTimer !== undefined) {
       window.clearTimeout(hideTimer);
       hideTimer = undefined;
@@ -87,14 +97,20 @@ function boot(): void {
     // before the transition to visible can run.
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        frame.classList.add("sfcw-frame-in");
+        if (isOpen) {
+          frame.classList.add("sfcw-frame-in");
+        }
       });
     });
+    launcher.setAttribute("aria-label", "Close chat");
+    launcher.setAttribute("aria-expanded", "true");
+    frame.contentWindow?.focus();
   }
 
   function close(): void {
+    isOpen = false;
     frame.classList.remove("sfcw-frame-in");
-    launcher.hidden = false;
+    launcher.setAttribute("aria-label", "Chat with Springfield College");
     launcher.setAttribute("aria-expanded", "false");
     launcher.focus();
     if (hideTimer !== undefined) {
@@ -109,12 +125,11 @@ function boot(): void {
   }
 
   launcher.addEventListener("click", () => {
-    openFrame();
-    // The open frame carries the crest in its own header; hiding the launcher
-    // avoids repeating the brand mark while the chat is on screen.
-    launcher.hidden = true;
-    launcher.setAttribute("aria-expanded", "true");
-    frame.contentWindow?.focus();
+    if (isOpen) {
+      close();
+    } else {
+      openFrame();
+    }
   });
 
   // The frame requests its own closure (for example on Escape); only accept
