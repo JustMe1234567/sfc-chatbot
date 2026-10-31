@@ -12,7 +12,7 @@ import {
   MESSAGE_RATE_LIMIT,
   validateVisitorText,
 } from "@/domain/limits";
-import type { Conversation, Message } from "@/domain/types";
+import type { Conversation, Message, Store } from "@/domain/types";
 
 const messageLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
@@ -58,6 +58,49 @@ async function escalateConversation(
     console.error("escalation alert recording failed:", error);
   }
   return NextResponse.json({ conversation: escalated, reply });
+}
+
+async function recordVisitorChoice(
+  conversation: Conversation,
+  store: Store,
+  text: string,
+): Promise<{ recorded: true } | { recorded: false; response: NextResponse }> {
+  if (conversation.state === "closed") {
+    return {
+      recorded: false,
+      response: NextResponse.json(
+        {
+          error: {
+            code: "conversation_closed",
+            message: "This conversation was closed. Ask a new question to start again.",
+          },
+        },
+        { status: 409 },
+      ),
+    };
+  }
+  if (!isConversationActive(conversation)) {
+    return { recorded: false, response: inactiveResponse() };
+  }
+  if (!messageLimiter.check(conversation.id)) {
+    return {
+      recorded: false,
+      response: NextResponse.json(
+        { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
+        { status: 429 },
+      ),
+    };
+  }
+  await store.appendMessage(newMessage(conversation.id, "visitor", text));
+  await store.touchVisitorPresence(conversation.id);
+  await recordVisitorActivity(store, conversation.id, new Date());
+  if (conversation.state !== "bot_active") {
+    return {
+      recorded: false,
+      response: NextResponse.json({ conversation, reply: null }),
+    };
+  }
+  return { recorded: true };
 }
 
 interface RouteContext {
@@ -131,33 +174,13 @@ export async function POST(request: Request, context: RouteContext) {
       if (!offered) {
         return invalidChoice();
       }
-      if (conversation.state === "closed") {
-        return NextResponse.json(
-          {
-            error: {
-              code: "conversation_closed",
-              message: "This conversation was closed. Ask a new question to start again.",
-            },
-          },
-          { status: 409 },
-        );
-      }
-      if (!isConversationActive(conversation)) {
-        return inactiveResponse();
-      }
-      if (!messageLimiter.check(conversation.id)) {
-        return NextResponse.json(
-          { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
-          { status: 429 },
-        );
-      }
-      await store.appendMessage(
-        newMessage(conversation.id, "visitor", REQUEST_HUMAN_CHOICE.topic),
+      const selection = await recordVisitorChoice(
+        conversation,
+        store,
+        REQUEST_HUMAN_CHOICE.topic,
       );
-      await store.touchVisitorPresence(conversation.id);
-      await recordVisitorActivity(store, conversation.id, new Date());
-      if (conversation.state !== "bot_active") {
-        return NextResponse.json({ conversation, reply: null });
+      if (!selection.recorded) {
+        return selection.response;
       }
       return escalateConversation(conversation, service);
     }
@@ -165,33 +188,9 @@ export async function POST(request: Request, context: RouteContext) {
     if (!rule || rule.status !== "published") {
       return invalidChoice();
     }
-    if (conversation.state === "closed") {
-      return NextResponse.json(
-        {
-          error: {
-            code: "conversation_closed",
-            message: "This conversation was closed. Ask a new question to start again.",
-          },
-        },
-        { status: 409 },
-      );
-    }
-    if (!isConversationActive(conversation)) {
-      return inactiveResponse();
-    }
-    if (!messageLimiter.check(conversation.id)) {
-      return NextResponse.json(
-        { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
-        { status: 429 },
-      );
-    }
-    const now = new Date();
-    await store.appendMessage(newMessage(conversation.id, "visitor", rule.topic));
-    await store.touchVisitorPresence(conversation.id);
-    await recordVisitorActivity(store, conversation.id, now);
-    if (conversation.state !== "bot_active") {
-      // Staff help is already requested; bot replies stay paused.
-      return NextResponse.json({ conversation, reply: null });
+    const selection = await recordVisitorChoice(conversation, store, rule.topic);
+    if (!selection.recorded) {
+      return selection.response;
     }
     const reply = newMessage(conversation.id, "bot", rule.response, rule.link);
     await store.appendMessage(reply);
