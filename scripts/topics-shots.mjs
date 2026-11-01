@@ -95,7 +95,16 @@ async function shot(name) {
   console.log("captured", name);
 }
 
-// --- Desktop: seven topics in two rows, horizontal overflow. -------------
+async function waitForSendReady() {
+  const send = frame.getByRole("button", { name: "Send" });
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (await send.isEnabled()) return;
+    await page.waitForTimeout(250);
+  }
+  throw new Error("message send never completed");
+}
+
+// --- Desktop: mixed one/two-line chips in horizontal overflow. ------------
 await openWidget(1280, 800);
 const strip = frame.locator('[aria-label="Suggested questions"]');
 const chips = strip.locator("button");
@@ -103,11 +112,32 @@ console.log("chips rendered:", await chips.count());
 const overflow = await strip.evaluate((el) => ({
   scrollWidth: el.scrollWidth,
   clientWidth: el.clientWidth,
-  rows: getComputedStyle(el).gridTemplateRows.split(" ").length,
 }));
 console.log("strip overflow:", JSON.stringify(overflow));
 if (overflow.clientWidth >= overflow.scrollWidth) throw new Error("strip does not overflow");
-if (overflow.rows !== 2) throw new Error(`expected exactly two rows, got ${overflow.rows}`);
+
+const shortChip = chips.filter({ hasText: "Admissions" });
+const longChip = chips.filter({ hasText: "How do I apply for financial aid" });
+const mixedLayout = await Promise.all([shortChip, longChip].map((chip) => chip.evaluate((button) => {
+  const label = button.querySelector("span");
+  const labelStyle = getComputedStyle(label);
+  const buttonRect = button.getBoundingClientRect();
+  return {
+    top: buttonRect.top,
+    height: buttonRect.height,
+    lines: Math.round(label.getBoundingClientRect().height / Number.parseFloat(labelStyle.lineHeight)),
+  };
+})));
+console.log("mixed chip layout:", JSON.stringify(mixedLayout));
+if (Math.abs(mixedLayout[0].top - mixedLayout[1].top) > 2) {
+  throw new Error("short and long chips are stacked instead of flowing left-to-right");
+}
+if (mixedLayout[0].lines !== 1 || mixedLayout[1].lines !== 2) {
+  throw new Error(`expected one-line and two-line chips, got ${mixedLayout[0].lines}/${mixedLayout[1].lines}`);
+}
+if (mixedLayout[1].height <= mixedLayout[0].height) {
+  throw new Error("long chip did not grow independently of the short chip");
+}
 await shot("after-widget-topics-desktop");
 
 // At the resting position the trailing fade hints at more; scrolling to the
@@ -138,11 +168,12 @@ console.log(
   JSON.stringify((await frame.locator('[role="log"]').innerText()).slice(0, 300)),
 );
 await frame.locator('[role="log"]').getByText(picked).waitFor({ timeout: 10000 });
+await waitForSendReady();
 console.log("picked chip question reached the transcript");
 
-// Unknown question escalates; the strip wording switches to staff phrasing
-// and a later chip sends as a visitor message instead of a bot answer.
-await frame.locator("textarea").fill("zzqx no rule matches this wonderwall");
+// An explicit handoff phrase switches the strip wording to staff phrasing;
+// a later chip sends as a visitor message without a bot answer.
+await frame.locator("textarea").fill("I need to speak to a human");
 await frame.locator("textarea").press("Enter");
 await frame.locator("text=Automated answers are paused").waitFor({ timeout: 10000 });
 const intro = await frame.locator("p").first().textContent();
@@ -154,6 +185,7 @@ await frame
   .locator('[role="log"]')
   .getByText("What are the opening hours", { exact: false })
   .waitFor({ timeout: 10000 });
+await waitForSendReady();
 console.log("chip during takeover sent to staff without a bot reply");
 await shot("after-widget-topics-handoff");
 
@@ -162,6 +194,7 @@ for (const text of ["Screenshot seed follow-up one", "Screenshot seed follow-up 
   await frame.locator("textarea").fill(text);
   await frame.locator("textarea").press("Enter");
   await frame.locator('[role="log"]').getByText(text).waitFor({ timeout: 10000 });
+  await waitForSendReady();
 }
 await shot("after-widget-topics-long-transcript");
 

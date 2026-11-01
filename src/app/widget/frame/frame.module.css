@@ -113,25 +113,19 @@
   font-size: 14px;
 }
 
-/* The suggested-questions strip (ticket 18): exactly two rows of chips that
-   overflow horizontally when there are more than fit, pinned above the
-   composer for the whole conversation. The scrollbar is hidden (touch
-   devices barely show it) and cut-off chips plus the edge fades carry the
-   overflow cue instead. */
+/* The suggested-questions strip (tickets 18/36): chips flow left-to-right
+   and overflow horizontally. Each chip owns its height, so short labels stay
+   one line while a long label can use the strip's two-line height budget. */
 .topicsShell {
   position: relative;
   padding: 6px 16px 0;
 }
 
 .topics {
-  display: grid;
-  grid-auto-flow: column;
-  /* max-content keeps each chip at its natural width (within the button's
-     own cap): auto tracks would shrink chips to squeeze everything in,
-     which would defeat the horizontal overflow. */
-  grid-auto-columns: max-content;
-  grid-template-rows: repeat(2, auto);
-  gap: 6px 8px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   padding-bottom: 4px;
@@ -174,7 +168,11 @@
   /* Long questions wrap to at most two lines instead of clipping or
      stretching the row. The clamp lives on an inner span: buttons' own
      internal layout ignores -webkit-line-clamp in Chromium. */
-  max-width: 200px;
+  max-width: 240px;
+}
+
+.topics .topicButton {
+  flex: none;
 }
 
 .topicLabel {
