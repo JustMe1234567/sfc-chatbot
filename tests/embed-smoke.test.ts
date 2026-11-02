@@ -101,13 +101,41 @@ describe("WordPress embed smoke check", () => {
     // fades as the overflow cue, and motion gated by visitor preference.
     expect(frame).toContain('aria-label="Suggested questions"');
     expect(frame).toContain("scrollIntoView");
-    expect(frame).toContain("Pick a topic to send to staff");
     expect(frameCss).toContain("display: flex");
     expect(frameCss).toContain("flex-wrap: nowrap");
     expect(frameCss).toContain("align-items: flex-start");
     expect(frameCss).not.toContain("grid-auto-flow: column");
     expect(frameCss).toContain("prefers-reduced-motion: no-preference");
     expect(frameCss).toContain("-webkit-line-clamp: 2");
+  });
+
+  it("keeps the handoff state compact and the transcript dominant (ticket 38)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    const frameCss = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/frame.module.css"),
+      "utf8",
+    );
+    // The chips are the affordance once they exist (and the handoff notice
+    // carries the takeover state), so both intro variants are gone; only the
+    // topicless fallback remains.
+    expect(frame).toContain("Ask us your question.");
+    expect(frame).not.toContain("Pick a topic");
+    // The saved/declined email confirmations dismiss themselves after a
+    // fixed stay, with a reduced-motion-gated exit fade (ticket 15 tokens).
+    expect(frame).toContain("EMAIL_NOTE_TTL_MS = 10_000");
+    expect(frame).toContain("clearTimeout(timer)");
+    expect(frame).toContain("noteLeave");
+    expect(frameCss).toContain("sfcw-depart");
+    // The message log keeps its flex growth: it is the widget's primary
+    // surface and absorbs the space the compacted handoff chrome frees.
+    // Pinned on the .log block itself — other rules flex too.
+    expect(frameCss).toMatch(/\.log \{[^}]*flex: 1/s);
+    // The error live region stays mounted for announcements but reserves no
+    // height while empty.
+    expect(frameCss).toMatch(/\.status \{[^}]*min-height: 0/s);
   });
 
   it("keeps service secrets out of the loader bundle", async () => {

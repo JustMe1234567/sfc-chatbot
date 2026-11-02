@@ -1,8 +1,9 @@
-// Ticket 18 verification + screenshots (headless Chromium, one-off).
+// Ticket 18 + 38 verification + screenshots (headless Chromium, one-off).
 // Opens the widget on the demo page against a scratch database, flips the
 // published-topic set by direct SQL while the server runs (many → one →
-// none), and exercises click-through, handoff wording, long transcript, and
-// three viewport widths. Usage: node scripts/topics-shots.mjs <outdir> [port]
+// none), and exercises click-through, handoff state, the self-dismissing
+// email-declined note, transcript dominance, long transcript, and three
+// viewport widths. Usage: node scripts/topics-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -171,14 +172,13 @@ await frame.locator('[role="log"]').getByText(picked).waitFor({ timeout: 10000 }
 await waitForSendReady();
 console.log("picked chip question reached the transcript");
 
-// An explicit handoff phrase switches the strip wording to staff phrasing;
-// a later chip sends as a visitor message without a bot answer.
+// An explicit handoff phrase escalates; the notice appears and the intro
+// line does not (ticket 38: chips are the affordance, the notice the state).
 await frame.locator("textarea").fill("I need to speak to a human");
 await frame.locator("textarea").press("Enter");
 await frame.locator("text=Automated answers are paused").waitFor({ timeout: 10000 });
-const intro = await frame.locator("p").first().textContent();
-if (!intro.includes("Pick a topic to send to staff")) {
-  throw new Error(`takeover intro wording missing: ${intro}`);
+if ((await frame.getByText("Pick a topic").count()) !== 0) {
+  throw new Error("intro line should be gone while topic chips are visible (ticket 38)");
 }
 await chips.filter({ hasText: "Opening hours" }).click();
 await frame
@@ -189,6 +189,38 @@ await waitForSendReady();
 console.log("chip during takeover sent to staff without a bot reply");
 await shot("after-widget-topics-handoff");
 
+// Ticket 38: the transcript is the widget's dominant region, and the
+// declined-email note dismisses itself after ten seconds.
+async function transcriptShare() {
+  const panel = await frame.locator("main").boundingBox();
+  const log = await frame.locator('[role="log"]').boundingBox();
+  if (!panel || !log) throw new Error("could not measure transcript share");
+  return log.height / panel.height;
+}
+console.log("transcript share with full handoff chrome:", (await transcriptShare()).toFixed(3));
+// Full handoff state + long transcript must leave every control visible at
+// once: composer and strip stay inside the panel, nothing clips (ticket 38).
+const panelBox = await frame.locator("main").boundingBox();
+for (const region of ['[role="log"]', '[aria-label="Suggested questions"]', 'form[class$="_form"]']) {
+  const box = await frame.locator(region).boundingBox();
+  if (!panelBox || !box || box.y + box.height > panelBox.y + panelBox.height + 1) {
+    throw new Error(`full handoff state clips ${region}`);
+  }
+}
+await frame.getByText("No thanks").click();
+await frame.getByText("No email saved").waitFor({ timeout: 5000 });
+await shot("after-widget-topics-email-declined");
+await page.waitForTimeout(10_800);
+if ((await frame.getByText("No email saved").count()) !== 0) {
+  throw new Error("declined note did not dismiss itself after ~10s (ticket 38)");
+}
+const share = await transcriptShare();
+console.log("transcript share after note dismissal:", share.toFixed(3));
+if (share < 0.45) {
+  throw new Error(`transcript is not dominant after the note leaves: ${(share * 100).toFixed(1)}%`);
+}
+await shot("after-widget-topics-note-dismissed");
+
 // A long transcript keeps the strip pinned above the composer.
 for (const text of ["Screenshot seed follow-up one", "Screenshot seed follow-up two", "Screenshot seed follow-up three makes this transcript long"]) {
   await frame.locator("textarea").fill(text);
@@ -197,6 +229,11 @@ for (const text of ["Screenshot seed follow-up one", "Screenshot seed follow-up 
   await waitForSendReady();
 }
 await shot("after-widget-topics-long-transcript");
+// The note shows once per declined handoff: later messages never bring it
+// back (ticket 38).
+if ((await frame.getByText("No email saved").count()) !== 0) {
+  throw new Error("declined note returned after subsequent messages");
+}
 
 // Pending-send (ticket 18): while a message POST is in flight — delayed
 // here — every chip disables, so a second click cannot duplicate the send.

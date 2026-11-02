@@ -36,6 +36,11 @@ function isHttpLink(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+/** How long the email saved/declined confirmations stay on screen before
+    removing themselves (ticket 38): one glance is enough, and the transcript
+    reclaims the space for the rest of the conversation. */
+const EMAIL_NOTE_TTL_MS = 10_000;
+
 /**
  * The suggested-questions strip (ticket 18): a two-row, horizontally
  * scrollable rail pinned directly above the composer, visible for the whole
@@ -124,6 +129,12 @@ export default function WidgetFrame() {
   const [emailPrompt, setEmailPrompt] = useState<"asking" | "saved" | "declined">("asking");
   const [emailAddress, setEmailAddress] = useState("");
   const [emailError, setEmailError] = useState("");
+  // Once the saved/declined confirmation has outlived its stay (ticket 38),
+  // it stays gone for the conversation; a fresh chat shows it again. The
+  // leaving flag plays the exit fade before the unmount (one frame of slack
+  // past the 180ms motion, the loader's convention).
+  const [emailNoteExpired, setEmailNoteExpired] = useState(false);
+  const [emailNoteLeaving, setEmailNoteLeaving] = useState(false);
   const sessionRef = useRef<StoredSession | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -224,6 +235,22 @@ export default function WidgetFrame() {
       })
       .catch(() => {});
   }, []);
+
+  // The saved/declined email confirmations leave on their own (ticket 38):
+  // the timer starts when the visitor's choice renders the note, plays the
+  // exit fade, then unmounts; each stage's cleanup cancels it if the note's
+  // reason disappears mid-stay.
+  useEffect(() => {
+    if (emailPrompt === "asking" || emailNoteExpired) {
+      return;
+    }
+    if (emailNoteLeaving) {
+      const unmount = setTimeout(() => setEmailNoteExpired(true), 200);
+      return () => clearTimeout(unmount);
+    }
+    const timer = setTimeout(() => setEmailNoteLeaving(true), EMAIL_NOTE_TTL_MS);
+    return () => clearTimeout(timer);
+  }, [emailPrompt, emailNoteExpired, emailNoteLeaving]);
 
   // Anonymous presence (ticket 17): the embedded page beats while it is
   // actually visible, so staff see browsers on the site — not only visitors
@@ -340,6 +367,14 @@ export default function WidgetFrame() {
     sessionRef.current = null;
   }
 
+  /** A fresh conversation asks about the email again, with the note's
+      lifecycle state reset alongside the prompt (they always travel). */
+  function resetEmailPrompt(): void {
+    setEmailPrompt("asking");
+    setEmailNoteLeaving(false);
+    setEmailNoteExpired(false);
+  }
+
   async function postMessage(
     session: StoredSession | null,
     text: string,
@@ -423,7 +458,7 @@ export default function WidgetFrame() {
           resetArrivals();
           applyConversationState("bot_active", false);
           setError("");
-          setEmailPrompt("asking");
+          resetEmailPrompt();
           const fresh = await ensureSession();
           if (!fresh || generationRef.current !== generation) {
             return;
@@ -552,7 +587,7 @@ export default function WidgetFrame() {
       setMessages([]);
       resetArrivals();
       applyConversationState("bot_active", false);
-      setEmailPrompt("asking");
+      resetEmailPrompt();
       setQuestion("");
       setError("");
     } catch {
@@ -562,6 +597,11 @@ export default function WidgetFrame() {
       inputRef.current?.focus();
     }
   }
+
+  // The confirmations render only while a handoff/claim stands and their
+  // stay has not run out (ticket 38); the leaving flag plays the exit fade.
+  const showEmailNote = (handoff || claimed) && !emailNoteExpired;
+  const emailNoteClass = `${styles.emailNote} ${emailNoteLeaving ? styles.noteLeave : ""}`;
 
   return (
     <main className={styles.panel}>
@@ -580,15 +620,12 @@ export default function WidgetFrame() {
           &times;
         </button>
       </header>
-      <p className={styles.intro}>
-        {topics.length === 0
-          ? "Ask us your question."
-          : handoff || claimed
-            ? // Takeover wording (ticket 18): a picked topic goes to staff,
-              // so the strip must not promise an instant automated answer.
-              "Pick a topic to send to staff, or type your question."
-            : "Pick a topic, or type your question."}
-      </p>
+      {topics.length === 0 ? (
+        // Only the topicless widget needs the guidance line (ticket 38): with
+        // chips visible they are the affordance, and during a handoff the
+        // notice below already says the bot has paused.
+        <p className={styles.intro}>Ask us your question.</p>
+      ) : null}
       {handoff ? (
         <p className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}>
           College staff will reply in this chat. Automated answers are paused.
@@ -635,14 +672,14 @@ export default function WidgetFrame() {
           ) : null}
         </div>
       ) : null}
-      {(handoff || claimed) && emailPrompt === "saved" ? (
-        <p className={styles.emailNote}>
+      {showEmailNote && emailPrompt === "saved" ? (
+        <p className={emailNoteClass}>
           Thanks — if staff reply after you leave, you&apos;ll get an email with a
           one-time link back to this chat.
         </p>
       ) : null}
-      {(handoff || claimed) && emailPrompt === "declined" ? (
-        <p className={styles.emailNote}>
+      {showEmailNote && emailPrompt === "declined" ? (
+        <p className={emailNoteClass}>
           No email saved: staff can reply only while this chat stays open on
           your device. If you leave the page, they cannot follow up with you.
         </p>
@@ -691,6 +728,9 @@ export default function WidgetFrame() {
           </li>
         ))}
       </ol>
+      {/* The live region stays mounted so announcements are reliable; an
+          empty region is zero-height, so it costs the transcript nothing
+          while no error stands (ticket 38). */}
       <p className={styles.status} role="status">
         {error}
       </p>
