@@ -44,6 +44,20 @@ describe("WordPress embed smoke check", () => {
     expect(source).not.toContain("launcher.hidden = true");
   });
 
+  it("ships a square icon-only launcher with an accessible name (ticket 40)", async () => {
+    const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
+    const source = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
+
+    expect(script).toContain("width:56px;height:56px");
+    expect(script).toContain("background:#fff");
+    expect(script).toContain('aria-label","Chat with Springfield College"');
+    expect(source).not.toContain('label.textContent = "Chat"');
+    expect(source).not.toContain("launcher.appendChild(label)");
+    expect(source).toContain(".sfcw-launcher:focus-visible");
+    expect(source).toContain(".sfcw-launcher[hidden]{display:none}");
+    expect(source).toContain("@media (prefers-reduced-motion:reduce)");
+  });
+
   it("keeps the visitor credential in iframe-origin session storage", async () => {
     // Storage access moved behind src/widget/visitorSession.ts (shared with
     // the /return landing page); the exposure review covers both files.

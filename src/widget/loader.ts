@@ -14,15 +14,16 @@ const BOOT_MARKER = "sfc-chatbot-widget-v1";
    160ms ease-out for the panel. Under prefers-reduced-motion the panel
    lands immediately. */
 const STYLES = `
-.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;border:0;border-radius:999px;background:#1d4e89;color:#fff;font:600 15px/1 system-ui,sans-serif;padding:9px 18px 9px 11px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;gap:8px}
-.sfcw-launcher:hover{background:#163c6b}
+.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:56px;height:56px;border:0;border-radius:14px;background:#fff;color:#1d4e89;padding:8px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;justify-content:center}
+.sfcw-launcher:hover{background:#f5f7fa}
 .sfcw-launcher:active{transform:translateY(1px)}
 .sfcw-launcher:focus-visible{outline:2px solid #e3a739;outline-offset:2px}
 /* The display above would override the hidden attribute's UA style. */
 .sfcw-launcher[hidden]{display:none}
-/* White plate: the crest's blue shield would vanish on the same-hue button. */
-.sfcw-launcher img{width:24px;height:24px;display:block;background:#fff;border-radius:6px;padding:1px}
-.sfcw-launcher-close{width:26px;height:26px;display:none;align-items:center;justify-content:center;font:400 26px/1 system-ui,sans-serif}
+/* The launcher's white surface is the plate that keeps the blue crest legible
+   on arbitrary host-page backgrounds (ticket 40). */
+.sfcw-launcher img{width:40px;height:40px;display:block;object-fit:contain}
+.sfcw-launcher-close{width:28px;height:28px;display:none;align-items:center;justify-content:center;font:400 28px/1 system-ui,sans-serif}
 .sfcw-launcher[aria-expanded="true"] img{display:none}
 .sfcw-launcher[data-closing="true"] img{display:none}
 .sfcw-launcher[aria-expanded="true"] .sfcw-launcher-close{display:flex}
@@ -53,20 +54,17 @@ function boot(): void {
   const launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = `sfcw-launcher ${BOOT_MARKER}`;
-  // The compact crest travels with the chatbot origin (ticket 16); the label
-  // text next to it carries the accessible name.
+  // The compact crest travels with the chatbot origin (ticket 16). Ticket 40
+  // makes the launcher icon-only; aria-label below carries its accessible name.
   const crest = document.createElement("img");
   crest.src = `${base}/brand/cropped-SFC-Final-Logo-Single.png`;
   crest.alt = "";
-  const label = document.createElement("span");
-  label.textContent = "Chat";
   const closeIcon = document.createElement("span");
   closeIcon.className = "sfcw-launcher-close";
   closeIcon.textContent = "×";
   closeIcon.setAttribute("aria-hidden", "true");
   launcher.appendChild(crest);
   launcher.appendChild(closeIcon);
-  launcher.appendChild(label);
   launcher.setAttribute("aria-label", "Chat with Springfield College");
   launcher.setAttribute("aria-expanded", "false");
   document.body.appendChild(launcher);
