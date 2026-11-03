@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { clockLabel } from "@/domain/hours";
 import type { SupportHours } from "@/domain/types";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 const DAY_LABELS: [number, string][] = [
@@ -41,17 +42,18 @@ export default function SupportHoursForm({ initialHours }: { initialHours: Suppo
     clockLabel(Math.min(initialHours?.endMinute ?? 17 * 60, 23 * 60 + 59)),
   );
   const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
+  // Which action is in flight, so each button names its own verb (ticket 42).
+  const [pendingAction, setPendingAction] = useState<"save" | "clear" | null>(null);
 
   async function save(hours: SupportHours | null) {
-    setBusy(true);
+    setPendingAction(hours === null ? "clear" : "save");
     setMessage("");
     const response = await fetch("/api/staff/settings/support-hours", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hours }),
     });
-    setBusy(false);
+    setPendingAction(null);
     if (response.ok) {
       setMessage(hours ? "Support hours saved." : "Support hours cleared; visitors get the general message.");
       router.refresh();
@@ -65,7 +67,7 @@ export default function SupportHoursForm({ initialHours }: { initialHours: Suppo
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || timeZone.trim().length === 0 || days.length === 0) {
+    if (pendingAction || timeZone.trim().length === 0 || days.length === 0) {
       return;
     }
     const startMinute = timeToMinutes(start);
@@ -131,17 +133,24 @@ export default function SupportHoursForm({ initialHours }: { initialHours: Suppo
         onChange={(event) => setEnd(event.target.value)}
       />
       <div className={styles.publishBar}>
-        <button type="submit" disabled={busy || timeZone.trim().length === 0 || days.length === 0}>
+        <PendingButton
+          type="submit"
+          pending={pendingAction === "save"}
+          pendingLabel="Saving…"
+          disabled={pendingAction === "clear" || timeZone.trim().length === 0 || days.length === 0}
+        >
           Save hours
-        </button>
-        <button
+        </PendingButton>
+        <PendingButton
           type="button"
           className={styles.secondaryButton}
-          disabled={busy}
+          pending={pendingAction === "clear"}
+          pendingLabel="Clearing…"
+          disabled={pendingAction === "save"}
           onClick={() => void save(null)}
         >
           Clear
-        </button>
+        </PendingButton>
       </div>
       {message ? (
         <p className={styles.hint} role="status">

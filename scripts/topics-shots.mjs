@@ -97,7 +97,9 @@ async function shot(name) {
 }
 
 async function waitForSendReady() {
-  const send = frame.getByRole("button", { name: "Send" });
+  // The accessible name reads "Sending…" while the request runs (ticket 42),
+  // so the locator matches the verb stem rather than the resting label.
+  const send = frame.getByRole("button", { name: /Send/ });
   for (let attempt = 0; attempt < 40; attempt += 1) {
     if (await send.isEnabled()) return;
     await page.waitForTimeout(250);
@@ -325,6 +327,13 @@ const disabledChips = await strip.locator("button:disabled").count();
 const chipCount = await chips.count();
 console.log("disabled chips while pending:", disabledChips, "of", chipCount);
 if (disabledChips !== chipCount) throw new Error("chips not all disabled while a send is pending");
+// Ticket 42: the composer's send names its active verb while the request
+// is held in flight here.
+const sendLabel = await frame.locator('form[class$="_form"] button').textContent();
+if (!sendLabel.includes("Sending…")) {
+  throw new Error(`send button did not show its pending verb: ${sendLabel}`);
+}
+console.log("send button shows Sending… while pending");
 await page.unroute(MESSAGES_URL);
 await frame
   .locator('[role="log"]')

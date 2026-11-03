@@ -922,8 +922,23 @@ export default function WidgetFrame() {
             }
           }}
         />
-        <button type="submit" className={styles.send} disabled={sending}>
-          Send
+        <button
+          type="submit"
+          className={styles.send}
+          disabled={sending}
+          aria-busy={sending || undefined}
+        >
+          {sending ? (
+            // Conversation-first pending feedback (ticket 42): the active
+            // verb plus the shared spinner pattern, locally styled because
+            // the iframe is self-contained (ticket 16).
+            <>
+              <span className={styles.pendingSpinner} aria-hidden="true" />
+              Sending…
+            </>
+          ) : (
+            "Send"
+          )}
         </button>
       </form>
     </main>

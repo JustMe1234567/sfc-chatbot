@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /** Owner-only configuration of the staff alert destination. */
@@ -52,9 +53,9 @@ export default function AlertSettingsForm({ initialRecipients }: { initialRecipi
         value={value}
         onChange={(event) => setValue(event.target.value)}
       />
-      <button type="submit" disabled={busy}>
+      <PendingButton type="submit" pending={busy} pendingLabel="Saving…">
         Save recipients
-      </button>
+      </PendingButton>
       {message ? (
         <p className={styles.hint} role="status">
           {message}

@@ -1088,3 +1088,37 @@ a:focus-visible {
     padding: 8px 10px;
   }
 }
+
+/* The shared pending spinner (ticket 42): a quiet ring beside the active
+   verb on PendingButton. The animation is the only motion — reduced-motion
+   users get the pending text alone, which is the real feedback. */
+.pendingSpinner {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  display: inline-block;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pendingSpinner {
+    animation: pending-spin 700ms linear infinite;
+  }
+}
+
+@keyframes pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* While a PendingButton is pending its verb is longer than its resting
+   label (ticket 42): never wrap inside the tight publish bars. The class
+   rides the pending state, so resting labels wrap as they always did. */
+.pendingButton {
+  white-space: nowrap;
+}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 export default function RetryButton({ notificationId }: { notificationId: string }) {
@@ -11,10 +12,11 @@ export default function RetryButton({ notificationId }: { notificationId: string
 
   return (
     <span>
-      <button
+      <PendingButton
         type="button"
         className={styles.signOut}
-        disabled={busy}
+        pending={busy}
+        pendingLabel="Retrying…"
         onClick={async () => {
           setBusy(true);
           setMessage("");
@@ -33,7 +35,7 @@ export default function RetryButton({ notificationId }: { notificationId: string
         }}
       >
         Retry delivery
-      </button>
+      </PendingButton>
       {message ? <span className={styles.error}> {message}</span> : null}
     </span>
   );

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, isValidRetentionDays } from "@/settings";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 export interface RetentionFormRun {
@@ -26,17 +27,18 @@ export default function RetentionForm({
   const router = useRouter();
   const [days, setDays] = useState(initialDays === null ? "" : String(initialDays));
   const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
+  // Which action is in flight, so each button names its own verb (ticket 42).
+  const [pendingAction, setPendingAction] = useState<"save" | "clear" | null>(null);
 
   async function save(period: number | null) {
-    setBusy(true);
+    setPendingAction(period === null ? "clear" : "save");
     setMessage("");
     const response = await fetch("/api/staff/settings/transcript-retention", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days: period }),
     });
-    setBusy(false);
+    setPendingAction(null);
     if (!response.ok) {
       const failure = (await response.json().catch(() => null)) as {
         error?: { message?: string };
@@ -59,7 +61,7 @@ export default function RetentionForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) {
+    if (pendingAction) {
       return;
     }
     const parsed = Number(days);
@@ -90,17 +92,24 @@ export default function RetentionForm({
         onChange={(event) => setDays(event.target.value)}
       />
       <div className={styles.publishBar}>
-        <button type="submit" disabled={busy}>
+        <PendingButton
+          type="submit"
+          pending={pendingAction === "save"}
+          pendingLabel="Saving…"
+          disabled={pendingAction === "clear"}
+        >
           Save period
-        </button>
-        <button
+        </PendingButton>
+        <PendingButton
           type="button"
           className={styles.secondaryButton}
-          disabled={busy}
+          pending={pendingAction === "clear"}
+          pendingLabel="Clearing…"
+          disabled={pendingAction === "save"}
           onClick={() => void save(null)}
         >
           Clear
-        </button>
+        </PendingButton>
       </div>
       <p className={styles.hint}>
         {lastRun

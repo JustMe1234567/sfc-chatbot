@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /** Owner-side account disable (ticket 08): immediate, with confirmation. */
@@ -12,12 +13,13 @@ export default function DisableButton({ memberId, name }: { memberId: string; na
 
   return (
     <span className={styles.publishBar}>
-      <button
+      <PendingButton
         type="button"
         className={styles.secondaryButton}
-        disabled={busy}
+        pending={busy}
+        pendingLabel="Disabling…"
         onClick={async () => {
-          if (busy || !window.confirm(`Disable ${name}? Their access ends immediately.`)) {
+          if (!window.confirm(`Disable ${name}? Their access ends immediately.`)) {
             return;
           }
           setBusy(true);
@@ -37,7 +39,7 @@ export default function DisableButton({ memberId, name }: { memberId: string; na
         }}
       >
         Disable
-      </button>
+      </PendingButton>
       {error ? (
         <span className={styles.hint} role="alert">
           {error}

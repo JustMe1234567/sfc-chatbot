@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AnswerRuleStatus } from "@/domain/types";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
@@ -45,9 +46,15 @@ export default function PublishControls({
 
   return (
     <div className={styles.publishBar}>
-      <button type="button" className={styles.secondaryButton} disabled={busy} onClick={act}>
+      <PendingButton
+        type="button"
+        className={styles.secondaryButton}
+        pending={busy}
+        pendingLabel={published ? "Unpublishing…" : "Publishing…"}
+        onClick={act}
+      >
         {published ? "Unpublish" : "Publish"}
-      </button>
+      </PendingButton>
       <span className={styles.hint}>
         {published
           ? "Published: answering visitors now."

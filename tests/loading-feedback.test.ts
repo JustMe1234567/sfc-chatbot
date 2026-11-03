@@ -1,0 +1,85 @@
+import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { repoRoot } from "../src/paths";
+
+async function read(rel: string): Promise<string> {
+  return readFile(path.join(repoRoot(), rel), "utf8");
+}
+
+/**
+ * Ticket 42's contract: one shared pending-button pattern with an active
+ * verb while the action runs, synchronous duplicate-click protection, a
+ * reduced-motion-gated spinner, and instant loading states for dashboard
+ * routes. The verb inventory below pins every user-triggered asynchronous
+ * control so a button can never silently fall back to a resting label.
+ */
+describe("shared pending feedback (ticket 42)", () => {
+  it("ships one PendingButton with synchronous duplicate-click protection", async () => {
+    const component = await read("src/app/dashboard/pending-button.tsx");
+    expect(component).toContain("aria-busy");
+    expect(component).toContain("pendingSpinner");
+    // The ref guard closes the click-to-render gap: a second click inside
+    // the same tick is swallowed, not deferred to the async state flip.
+    expect(component).toContain("inFlightRef.current = true");
+    expect(component).toContain("preventDefault()");
+    expect(component).toContain("pendingLabel");
+  });
+
+  it("animates the spinner only under no-preference motion", async () => {
+    const css = await read("src/app/dashboard/dashboard.module.css");
+    expect(css).toContain(".pendingSpinner");
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: no-preference\) \{\s*\.pendingSpinner \{[^}]*animation/s,
+    );
+  });
+
+  it("labels every dashboard conversation action with its active verb", async () => {
+    const actions = await read("src/app/dashboard/conversations/[id]/conversation-actions.tsx");
+    for (const verb of ["Claiming…", "Releasing…", "Transferring…", "Sending…", "Closing…"]) {
+      expect(actions).toContain(verb);
+    }
+    for (const uses of ["ClaimButton", "ReleaseAndTransfer", "ReplyAndClose"]) {
+      expect(actions).toContain("PendingButton");
+    }
+  });
+
+  it("labels publishing, saving, retrying, and staff actions with their verbs", async () => {
+    const cases: Array<[string, string[]]> = [
+      ["src/app/dashboard/answers/publish-controls.tsx", ["Publishing…", "Unpublishing…"]],
+      ["src/app/dashboard/answers/rule-form.tsx", ["Saving…"]],
+      ["src/app/dashboard/answers/escalation-phrases-form.tsx", ["Saving…"]],
+      ["src/app/dashboard/answers/welcome-form.tsx", ["Saving…"]],
+      ["src/app/dashboard/notifications/retry-button.tsx", ["Retrying…"]],
+      ["src/app/dashboard/notifications/support-hours-form.tsx", ["Saving…", "Clearing…"]],
+      ["src/app/dashboard/notifications/retention-form.tsx", ["Saving…", "Clearing…"]],
+      ["src/app/dashboard/notifications/alert-settings-form.tsx", ["Saving…"]],
+      ["src/app/dashboard/analytics/analytics-settings-form.tsx", ["Saving…"]],
+      ["src/app/dashboard/staff/invite-form.tsx", ["Creating…"]],
+      ["src/app/dashboard/staff/disable-button.tsx", ["Disabling…"]],
+    ];
+    for (const [file, verbs] of cases) {
+      const source = await read(file);
+      expect(source, file).toContain("PendingButton");
+      for (const verb of verbs) {
+        expect(source, `${file} → ${verb}`).toContain(verb);
+      }
+    }
+  });
+
+  it("labels authentication and sign-out with their active verbs", async () => {
+    const login = await read("src/app/dashboard/login/page.tsx");
+    expect(login).toContain("Signing in…");
+    expect(login).toContain("Verifying…");
+    const enroll = await read("src/app/dashboard/enroll/page.tsx");
+    expect(enroll).toContain("Verifying…");
+    const signOut = await read("src/app/dashboard/inbox/sign-out-button.tsx");
+    expect(signOut).toContain("Signing out…");
+    expect(signOut).toContain("Revoking sessions…");
+  });
+
+  it("streams an instant dashboard loading shell", async () => {
+    const loading = await read("src/app/dashboard/loading.tsx");
+    expect(loading).toContain("Loading…");
+  });
+});

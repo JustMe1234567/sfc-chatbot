@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { isValidRetentionDays, MAX_RETENTION_DAYS, MIN_RETENTION_DAYS } from "@/settings";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
@@ -88,9 +89,9 @@ export default function AnalyticsSettingsForm({
         onChange={(event) => setDays(event.target.value)}
       />
       <div className={styles.publishBar}>
-        <button type="submit" disabled={busy}>
+        <PendingButton type="submit" pending={busy} pendingLabel="Saving…">
           Save settings
-        </button>
+        </PendingButton>
       </div>
       {message ? (
         <p className={styles.hint} role="status">

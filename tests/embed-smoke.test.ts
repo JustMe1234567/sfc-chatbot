@@ -87,6 +87,27 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain("Your question");
   });
 
+  it("shows an active verb on the visitor's send while it runs (ticket 42)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    const frameCss = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/frame.module.css"),
+      "utf8",
+    );
+    // Conversation-first (ticket 42): the composer's button swaps to
+    // "Sending…" and announces busy while the request settles.
+    expect(frame).toContain("Sending…");
+    expect(frame).toContain("aria-busy");
+    // The widget iframe is self-contained (ticket 16): its pending spinner
+    // CSS is a required local copy of the dashboard's shared pattern.
+    expect(frameCss).toContain(".pendingSpinner");
+    expect(frameCss).toMatch(
+      /@media \(prefers-reduced-motion: no-preference\) \{\s*\.pendingSpinner \{[^}]*animation/s,
+    );
+  });
+
   it("greets a fresh chat without creating a conversation (ticket 41)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),

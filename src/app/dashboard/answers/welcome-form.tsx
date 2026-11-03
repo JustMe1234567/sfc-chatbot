@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_WELCOME_LENGTH } from "@/domain/welcome";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
@@ -57,9 +58,9 @@ export default function WelcomeForm({ initialText }: { initialText: string }) {
         value={value}
         onChange={(event) => setValue(event.target.value)}
       />
-      <button type="submit" disabled={busy}>
+      <PendingButton type="submit" pending={busy} pendingLabel="Saving…">
         Save welcome message
-      </button>
+      </PendingButton>
       {message ? (
         <p className={styles.hint} role="status">
           {message}

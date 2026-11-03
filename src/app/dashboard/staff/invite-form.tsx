@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
@@ -77,9 +78,14 @@ export default function InviteForm() {
         <option value="staff">Staff (inbox, replies)</option>
         <option value="editor">Editor (answers only)</option>
       </select>
-      <button type="submit" disabled={busy || name.trim().length === 0 || email.trim().length === 0}>
+      <PendingButton
+        type="submit"
+        pending={busy}
+        pendingLabel="Creating…"
+        disabled={name.trim().length === 0 || email.trim().length === 0}
+      >
         Create account
-      </button>
+      </PendingButton>
       {initialPassword ? (
         <div className={styles.publishBar} role="status">
           <span className={styles.hint}>Initial password (shown once):</span>

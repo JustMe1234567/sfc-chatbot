@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PendingButton from "../../pending-button";
 import styles from "../../dashboard.module.css";
 
 async function post(action: "claim" | "close", conversationId: string) {
@@ -17,10 +18,11 @@ export function ClaimButton({ conversationId }: { conversationId: string }) {
   const [error, setError] = useState("");
   return (
     <div>
-      <button
+      <PendingButton
         type="button"
         className={styles.primaryButton}
-        disabled={busy}
+        pending={busy}
+        pendingLabel="Claiming…"
         onClick={async () => {
           setBusy(true);
           setError("");
@@ -37,7 +39,7 @@ export function ClaimButton({ conversationId }: { conversationId: string }) {
         }}
       >
         Claim conversation
-      </button>
+      </PendingButton>
       {error ? (
         <span className={styles.error} role="alert">
           {" "}
@@ -57,18 +59,19 @@ export function ReleaseAndTransfer({
 }) {
   const router = useRouter();
   const [target, setTarget] = useState(targets[0]?.id ?? "");
-  const [busy, setBusy] = useState(false);
+  // Which action is in flight, so each button names its own verb (ticket 42).
+  const [pendingAction, setPendingAction] = useState<"release" | "transfer" | null>(null);
   const [error, setError] = useState("");
 
   async function post(action: "release" | "transfer", body?: unknown) {
-    setBusy(true);
+    setPendingAction(action);
     setError("");
     const response = await fetch(`/api/staff/conversations/${conversationId}/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    setBusy(false);
+    setPendingAction(null);
     if (response.ok) {
       router.refresh();
       return true;
@@ -82,14 +85,16 @@ export function ReleaseAndTransfer({
 
   return (
     <div className={styles.publishBar}>
-      <button
+      <PendingButton
         type="button"
         className={styles.secondaryButton}
-        disabled={busy}
+        pending={pendingAction === "release"}
+        pendingLabel="Releasing…"
+        disabled={pendingAction === "transfer"}
         onClick={() => void post("release")}
       >
         Release to inbox
-      </button>
+      </PendingButton>
       {targets.length > 0 ? (
         <>
           <label className={styles.srOnly} htmlFor="transfer-target">
@@ -106,14 +111,16 @@ export function ReleaseAndTransfer({
               </option>
             ))}
           </select>
-          <button
+          <PendingButton
             type="button"
             className={styles.secondaryButton}
-            disabled={busy || target.length === 0}
+            pending={pendingAction === "transfer"}
+            pendingLabel="Transferring…"
+            disabled={pendingAction === "release" || target.length === 0}
             onClick={() => void post("transfer", { to: target })}
           >
             Transfer
-          </button>
+          </PendingButton>
         </>
       ) : null}
       {error ? (
@@ -132,16 +139,16 @@ export function ReplyAndClose({
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"reply" | "close" | null>(null);
   const [error, setError] = useState("");
 
   async function submitReply(event: React.FormEvent) {
     event.preventDefault();
     const trimmed = text.trim();
-    if (trimmed.length === 0 || busy) {
+    if (trimmed.length === 0 || pendingAction) {
       return;
     }
-    setBusy(true);
+    setPendingAction("reply");
     setError("");
     const response = await fetch(`/api/staff/conversations/${conversationId}/reply`, {
       method: "POST",
@@ -157,11 +164,11 @@ export function ReplyAndClose({
       } | null;
       setError(body?.error?.message ?? "Reply failed.");
     }
-    setBusy(false);
+    setPendingAction(null);
   }
 
   async function close() {
-    setBusy(true);
+    setPendingAction("close");
     const response = await post("close", conversationId);
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as {
@@ -170,7 +177,7 @@ export function ReplyAndClose({
       setError(body?.error?.message ?? "Close failed.");
     }
     router.refresh();
-    setBusy(false);
+    setPendingAction(null);
   }
 
   return (
@@ -187,13 +194,25 @@ export function ReplyAndClose({
           value={text}
           onChange={(event) => setText(event.target.value)}
         />
-        <button type="submit" disabled={busy || text.trim().length === 0}>
+        <PendingButton
+          type="submit"
+          pending={pendingAction === "reply"}
+          pendingLabel="Sending…"
+          disabled={(pendingAction !== null && pendingAction !== "reply") || text.trim().length === 0}
+        >
           Send reply
-        </button>
+        </PendingButton>
       </form>
-      <button type="button" className={styles.dangerButton} onClick={close} disabled={busy}>
+      <PendingButton
+        type="button"
+        className={styles.dangerButton}
+        pending={pendingAction === "close"}
+        pendingLabel="Closing…"
+        disabled={pendingAction === "reply"}
+        onClick={close}
+      >
         Close conversation
-      </button>
+      </PendingButton>
       {error ? (
         <span className={styles.error} role="alert">
           {" "}

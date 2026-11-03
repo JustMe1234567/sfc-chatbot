@@ -10,6 +10,7 @@ import {
   parsePhraseLines,
 } from "@/domain/answerRules";
 import type { RuleFormValues } from "./rule-values";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 function optionalLink(value: string): boolean {
@@ -138,9 +139,14 @@ export default function RuleForm({
           placeholder="https://www.springfieldcollege.edu/..."
         />
 
-        <button type="submit" disabled={busy || !contentComplete}>
+        <PendingButton
+          type="submit"
+          pending={busy}
+          pendingLabel="Saving…"
+          disabled={!contentComplete}
+        >
           {mode === "create" ? "Create draft" : "Save changes"}
-        </button>
+        </PendingButton>
         {!contentComplete ? (
           <p className={styles.hint}>
             A topic, response, and at least one phrase or keyword condition are required; a link

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
@@ -87,9 +88,9 @@ export default function EnrollPage() {
               onChange={(event) => setCode(event.target.value)}
               required
             />
-            <button type="submit" disabled={busy}>
+            <PendingButton type="submit" pending={busy} pendingLabel="Verifying…">
               Confirm code and sign out
-            </button>
+            </PendingButton>
           </>
         ) : (
           <>
@@ -102,9 +103,9 @@ export default function EnrollPage() {
               onChange={(event) => setPassword(event.target.value)}
               required
             />
-            <button type="submit" disabled={busy}>
+            <PendingButton type="submit" pending={busy} pendingLabel="Verifying…">
               Begin enrollment
-            </button>
+            </PendingButton>
           </>
         )}
         {error ? (

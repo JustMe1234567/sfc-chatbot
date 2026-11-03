@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
@@ -59,9 +60,9 @@ export default function EscalationPhrasesForm({ initialPhrases }: { initialPhras
         value={value}
         onChange={(event) => setValue(event.target.value)}
       />
-      <button type="submit" disabled={busy}>
+      <PendingButton type="submit" pending={busy} pendingLabel="Saving…">
         Save phrases
-      </button>
+      </PendingButton>
       {message ? (
         <p className={styles.hint} role="status">
           {message}
