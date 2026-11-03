@@ -138,6 +138,34 @@ describe("WordPress embed smoke check", () => {
     expect(frameCss).toMatch(/\.status \{[^}]*min-height: 0/s);
   });
 
+  it("moves Clear conversation into an accessible header menu (ticket 39)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    const frameCss = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/frame.module.css"),
+      "utf8",
+    );
+    const browserProof = await readFile(
+      path.join(repoRoot(), "scripts/topics-shots.mjs"),
+      "utf8",
+    );
+
+    expect(frame).toContain('aria-label="Conversation options"');
+    expect(frame).toContain('aria-haspopup="menu"');
+    expect(frame).toContain('role="menu"');
+    expect(frame).toContain('role="menuitem"');
+    expect(frame).toContain('event.key === "ArrowDown"');
+    expect(frame).toContain('event.key !== "Escape"');
+    expect(frame).not.toContain("styles.clearRow");
+    expect(frameCss).toMatch(/\.menuPanel,\s*\.confirmBox \{[^}]*position: absolute/s);
+    expect(frameCss).toContain("prefers-reduced-motion: no-preference");
+    expect(browserProof).toContain('getByRole("menuitem", { name: "Clear conversation" })');
+    expect(browserProof).toContain("clear did not swap to a fresh successor conversation");
+    expect(browserProof).toContain('assertMenuWithinFrame("360px")');
+  });
+
   it("keeps service secrets out of the loader bundle", async () => {
     const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
     expect(script).not.toMatch(/process\.env/);

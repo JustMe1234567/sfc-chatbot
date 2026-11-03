@@ -105,6 +105,14 @@ async function waitForSendReady() {
   throw new Error("message send never completed");
 }
 
+async function assertMenuWithinFrame(label) {
+  const panel = await frame.getByRole("menu").boundingBox();
+  const widget = await page.locator(".sfcw-frame").boundingBox();
+  if (!panel || !widget || panel.x < widget.x || panel.x + panel.width > widget.x + widget.width) {
+    throw new Error(`conversation menu clips at ${label}`);
+  }
+}
+
 // --- Desktop: mixed one/two-line chips in horizontal overflow. ------------
 await openWidget(1280, 800);
 const strip = frame.locator('[aria-label="Suggested questions"]');
@@ -171,6 +179,50 @@ console.log(
 await frame.locator('[role="log"]').getByText(picked).waitFor({ timeout: 10000 });
 await waitForSendReady();
 console.log("picked chip question reached the transcript");
+
+// Ticket 39: Clear conversation lives in the header menu. Exercise the real
+// focus/Escape layers, successor-session swap, transcript reset, and retained
+// history before continuing the screenshot journey in the fresh chat.
+const oldSession = await frame.locator("body").evaluate(() =>
+  JSON.parse(sessionStorage.getItem("sfc_chatbot_v1_session")),
+);
+const menuButton = frame.getByRole("button", { name: "Conversation options" });
+await menuButton.click();
+const clearItem = frame.getByRole("menuitem", { name: "Clear conversation" });
+if (!(await clearItem.evaluate((button) => document.activeElement === button))) {
+  throw new Error("opening the conversation menu did not focus its item");
+}
+await clearItem.press("Escape");
+if (!(await menuButton.evaluate((button) => document.activeElement === button))) {
+  throw new Error("Escape did not close the menu and return focus to its button");
+}
+await menuButton.click();
+await clearItem.click();
+const clearChat = frame.getByRole("button", { name: "Clear chat" });
+if (!(await clearChat.evaluate((button) => document.activeElement === button))) {
+  throw new Error("clear confirmation did not receive focus");
+}
+await clearChat.press("Escape");
+if (!(await menuButton.evaluate((button) => document.activeElement === button))) {
+  throw new Error("Escape did not cancel confirmation and return focus");
+}
+await menuButton.click();
+await clearItem.click();
+await clearChat.click();
+await frame.locator('[role="log"]').getByText(picked).waitFor({ state: "detached" });
+const newSession = await frame.locator("body").evaluate(() =>
+  JSON.parse(sessionStorage.getItem("sfc_chatbot_v1_session")),
+);
+if (!oldSession?.id || oldSession.id === newSession?.id) {
+  throw new Error("clear did not swap to a fresh successor conversation");
+}
+const retained = await fetch(`${BASE}/api/v1/conversations/${oldSession.id}/messages`, {
+  headers: { Authorization: `Bearer ${oldSession.token}` },
+});
+if (!retained.ok || !JSON.stringify(await retained.json()).includes(picked)) {
+  throw new Error("cleared visitor transcript was not retained for staff");
+}
+console.log("header menu clear flow reset the visitor and retained staff history");
 
 // An explicit handoff phrase escalates; the notice appears and the intro
 // line does not (ticket 38: chips are the affordance, the notice the state).
@@ -259,8 +311,13 @@ console.log("pending chip message landed exactly once");
 
 // --- Narrow widths. -------------------------------------------------------
 await openWidget(390, 760);
+await frame.getByRole("button", { name: "Conversation options" }).click();
+await assertMenuWithinFrame("phone width");
 await shot("after-widget-topics-phone");
+await frame.getByRole("menuitem", { name: "Clear conversation" }).press("Escape");
 await openWidget(360, 740);
+await frame.getByRole("button", { name: "Conversation options" }).click();
+await assertMenuWithinFrame("360px");
 const narrow = await strip.evaluate((el) => ({
   clientWidth: el.clientWidth,
   composerWidth: el.parentElement.clientWidth,

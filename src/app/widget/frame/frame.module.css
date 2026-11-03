@@ -108,14 +108,89 @@
   font-weight: 600;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.menuWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.menuButton {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font: 700 22px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.menuButton:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.menuButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menuPanel,
+.confirmBox {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(230px, calc(100vw - 48px));
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 35 60 / 22%);
+  color: #1f2933;
+}
+
+.menuPanel {
+  padding: 4px;
+}
+
+.menuItem {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1f2933;
+  font: 550 13px/1.3 system-ui, sans-serif;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background: #f2f5f9;
+  color: #a8342a;
+}
+
+.menuItem:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .close {
+  width: 32px;
+  height: 32px;
   border: 0;
   background: transparent;
   color: #fff;
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px;
   border-radius: 6px;
 }
 
@@ -460,28 +535,12 @@
   border: 0;
 }
 
-/* The visitor's Clear conversation control (ticket 14): a quiet row under
-   the composer, with an inline confirmation that says what happens. */
+/* Ticket 39 moves Clear conversation into the header menu. The confirmation
+   stays explicit but shares the menu's anchored surface instead of taking
+   transcript space under the composer. */
 
-.clearRow {
-  padding: 0 16px 8px;
-}
-
-.clearButton {
-  border: 0;
-  background: transparent;
-  color: #52606d;
-  font: 500 12px system-ui, sans-serif;
-  text-decoration: underline;
-  padding: 4px 0;
-  cursor: pointer;
-}
-
-.clearButton:hover {
-  color: #a8342a;
-}
-
-.clearButton:focus-visible,
+.menuButton:focus-visible,
+.menuItem:focus-visible,
 .confirmClear:focus-visible,
 .confirmKeep:focus-visible {
   outline: 2px solid #e3a739;
@@ -489,15 +548,12 @@
 }
 
 .confirmBox {
-  animation: sfcw-arrive var(--motion-fast) var(--ease-out);
-  border: 1px solid #e4e9f1;
-  border-radius: 8px;
-  background: #f8fafc;
   padding: 8px 10px;
 }
 
 .confirmText {
-  margin: 0 0 6px;
+  display: block;
+  margin: 0 0 8px;
   font-size: 12.5px;
   color: #1f2933;
 }
@@ -532,4 +588,11 @@
   padding: 6px 10px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menuPanel,
+  .confirmBox {
+    animation: sfcw-arrive var(--motion-fast) var(--ease-out);
+  }
 }

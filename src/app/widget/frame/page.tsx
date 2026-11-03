@@ -152,6 +152,10 @@ export default function WidgetFrame() {
   const [arrivingIds, setArrivingIds] = useState<Set<string>>(new Set());
   const [noticesArrive, setNoticesArrive] = useState(false);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuItemRef = useRef<HTMLButtonElement>(null);
+  const confirmClearRef = useRef<HTMLButtonElement>(null);
 
   const showError = useCallback(() => {
     setError("The chat is temporarily unavailable. Please try again.");
@@ -322,6 +326,18 @@ export default function WidgetFrame() {
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (menuOpen) {
+      menuItemRef.current?.focus();
+    }
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (clearState === "confirm") {
+      confirmClearRef.current?.focus();
+    }
+  }, [clearState]);
+
   function requestClose(): void {
     // The loader owns the iframe; Escape inside the frame asks it to close.
     if (window.parent !== window) {
@@ -331,13 +347,26 @@ export default function WidgetFrame() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        requestClose();
+      if (event.key !== "Escape") {
+        return;
       }
+      if (menuOpen) {
+        event.preventDefault();
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (clearState === "confirm") {
+        event.preventDefault();
+        setClearState("idle");
+        menuButtonRef.current?.focus();
+        return;
+      }
+      requestClose();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [clearState, menuOpen]);
 
   async function ensureSession(): Promise<StoredSession | null> {
     const existing = sessionRef.current ?? readSession();
@@ -611,14 +640,105 @@ export default function WidgetFrame() {
           <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" className={styles.crest} />
           <span className={styles.title}>Chat with us</span>
         </span>
-        <button
-          type="button"
-          className={styles.close}
-          aria-label="Close chat"
-          onClick={requestClose}
-        >
-          &times;
-        </button>
+        <span className={styles.headerActions}>
+          {messages.length > 0 ? (
+            <span className={styles.menuWrap}>
+              <button
+                ref={menuButtonRef}
+                type="button"
+                className={styles.menuButton}
+                aria-label="Conversation options"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                disabled={sending || clearState === "busy"}
+                onClick={() => {
+                  if (!sendingRef.current && clearState !== "busy") {
+                    setMenuOpen((open) => !open);
+                  }
+                }}
+              >
+                <span aria-hidden="true">⋯</span>
+              </button>
+              {menuOpen ? (
+                <span
+                  className={styles.menuPanel}
+                  role="menu"
+                  aria-label="Conversation options"
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "ArrowDown" ||
+                      event.key === "ArrowUp" ||
+                      event.key === "Home" ||
+                      event.key === "End"
+                    ) {
+                      event.preventDefault();
+                      menuItemRef.current?.focus();
+                    }
+                  }}
+                >
+                  <button
+                    ref={menuItemRef}
+                    type="button"
+                    role="menuitem"
+                    className={styles.menuItem}
+                    disabled={sending || clearState === "busy"}
+                    onClick={() => {
+                      if (sendingRef.current || clearState === "busy") {
+                        return;
+                      }
+                      setMenuOpen(false);
+                      setClearState("confirm");
+                    }}
+                  >
+                    Clear conversation
+                  </button>
+                </span>
+              ) : null}
+              {clearState !== "idle" ? (
+                <span
+                  className={styles.confirmBox}
+                  role="group"
+                  aria-label="Confirm clear conversation"
+                >
+                  <span className={styles.confirmText}>
+                    Staff will keep a record of this chat on their side. You lose
+                    access to it here, and a fresh chat starts.
+                  </span>
+                  <span className={styles.confirmButtons}>
+                    <button
+                      ref={confirmClearRef}
+                      type="button"
+                      className={styles.confirmClear}
+                      disabled={clearState === "busy"}
+                      onClick={() => void confirmClear()}
+                    >
+                      {clearState === "busy" ? "Clearing…" : "Clear chat"}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.confirmKeep}
+                      disabled={clearState === "busy"}
+                      onClick={() => {
+                        setClearState("idle");
+                        menuButtonRef.current?.focus();
+                      }}
+                    >
+                      Keep chatting
+                    </button>
+                  </span>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className={styles.close}
+            aria-label="Close chat"
+            onClick={requestClose}
+          >
+            &times;
+          </button>
+        </span>
       </header>
       {topics.length === 0 ? (
         // Only the topicless widget needs the guidance line (ticket 38): with
@@ -761,44 +881,6 @@ export default function WidgetFrame() {
           Send
         </button>
       </form>
-      {messages.length > 0 ? (
-        <div className={styles.clearRow}>
-          {clearState === "idle" ? (
-            <button
-              type="button"
-              className={styles.clearButton}
-              onClick={() => setClearState("confirm")}
-            >
-              Clear conversation
-            </button>
-          ) : (
-            <div className={styles.confirmBox} role="group" aria-label="Confirm clear conversation">
-              <p className={styles.confirmText}>
-                Staff will keep a record of this chat on their side. You lose
-                access to it here, and a fresh chat starts.
-              </p>
-              <div className={styles.confirmButtons}>
-                <button
-                  type="button"
-                  className={styles.confirmClear}
-                  disabled={clearState === "busy"}
-                  onClick={() => void confirmClear()}
-                >
-                  {clearState === "busy" ? "Clearing…" : "Clear chat"}
-                </button>
-                <button
-                  type="button"
-                  className={styles.confirmKeep}
-                  disabled={clearState === "busy"}
-                  onClick={() => setClearState("idle")}
-                >
-                  Keep chatting
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : null}
     </main>
   );
 }
