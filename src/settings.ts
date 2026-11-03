@@ -1,6 +1,7 @@
 import type { AppDatabase } from "./db/appDatabase";
 import { normalizeText } from "./domain/matcher";
 import type { SupportHours } from "./domain/types";
+import { DEFAULT_WELCOME_MESSAGE, isValidWelcomeMessage } from "./domain/welcome";
 
 export interface SettingRow {
   key: string;
@@ -269,4 +270,21 @@ export async function getAnalyticsRetentionDays(db: AppDatabase): Promise<number
 
 export async function setAnalyticsRetentionDays(db: AppDatabase, days: number): Promise<void> {
   await setSetting(db, ANALYTICS_RETENTION_KEY, String(days));
+}
+
+const WELCOME_MESSAGE_KEY = "welcome_message";
+
+/**
+ * The fresh-chat greeting (ticket 41): a presentation-only line the widget
+ * renders from the published setting, with the domain default standing in
+ * while unconfigured or when a hand-edited row fails validation. Never
+ * stored as a message; opening the widget creates no conversation.
+ */
+export async function getWelcomeMessage(db: AppDatabase): Promise<string> {
+  const raw = await getSetting(db, WELCOME_MESSAGE_KEY);
+  return isValidWelcomeMessage(raw) ? raw : DEFAULT_WELCOME_MESSAGE;
+}
+
+export async function setWelcomeMessage(db: AppDatabase, text: string): Promise<void> {
+  await setSetting(db, WELCOME_MESSAGE_KEY, text.trim());
 }

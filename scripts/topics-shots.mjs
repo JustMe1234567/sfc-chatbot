@@ -115,6 +115,19 @@ async function assertMenuWithinFrame(label) {
 
 // --- Desktop: mixed one/two-line chips in horizontal overflow. ------------
 await openWidget(1280, 800);
+// The first open is a genuinely fresh chat (no stored session): the
+// greeting (ticket 41) leads the transcript.
+await frame.getByText("Hi! How can I help you today?").waitFor({ timeout: 10000 });
+console.log("fresh open greets the visitor");
+// The greeting is presentation-only: opening the widget must not have
+// minted a conversation or visitor credential (ticket 41).
+if (
+  await frame
+    .locator("body")
+    .evaluate(() => sessionStorage.getItem("sfc_chatbot_v1_session") !== null)
+) {
+  throw new Error("the fresh open minted a visitor credential; the greeting must not");
+}
 const strip = frame.locator('[aria-label="Suggested questions"]');
 const chips = strip.locator("button");
 console.log("chips rendered:", await chips.count());
@@ -161,7 +174,9 @@ if (!(await fadeEnd.getAttribute("class")).includes("fadeOn")) throw new Error("
 await strip.evaluate((el) => {
   el.scrollLeft = el.scrollWidth;
 });
-await page.waitForTimeout(400);
+// Smooth scrolling (ticket 18) animates the assignment; give it a generous
+// budget so the check reads the resting position, not the animation.
+await page.waitForTimeout(700);
 const endFadeOff = !(await fadeEnd.getAttribute("class")).includes("fadeOn");
 const startFadeOn = (await fadeStart.getAttribute("class")).includes("fadeOn");
 console.log("fades at scroll end: end off =", endFadeOff, ", start on =", startFadeOn);
@@ -216,13 +231,21 @@ const newSession = await frame.locator("body").evaluate(() =>
 if (!oldSession?.id || oldSession.id === newSession?.id) {
   throw new Error("clear did not swap to a fresh successor conversation");
 }
-const retained = await fetch(`${BASE}/api/v1/conversations/${oldSession.id}/messages`, {
+// The clear revokes the old visitor credential immediately (the glossary's
+// Clear-conversation contract, ticket 14), so the old transcript is checked
+// here only through that revocation: the credential that worked seconds ago
+// must now be dead. That staff history itself survives is proven by
+// tests/conversation-clear.test.ts at the API seam.
+const revoked = await fetch(`${BASE}/api/v1/conversations/${oldSession.id}/messages`, {
   headers: { Authorization: `Bearer ${oldSession.token}` },
 });
-if (!retained.ok || !JSON.stringify(await retained.json()).includes(picked)) {
-  throw new Error("cleared visitor transcript was not retained for staff");
+// A dead credential must unlock nothing: 401 outright, or the deliberate
+// 404 the API returns for unknown credentials so conversation existence
+// never leaks (the widget drops its session on either).
+if (revoked.status !== 401 && revoked.status !== 404) {
+  throw new Error(`cleared conversation's old credential still works (${revoked.status})`);
 }
-console.log("header menu clear flow reset the visitor and retained staff history");
+console.log("header menu clear flow reset the visitor and revoked the old credential");
 
 // An explicit handoff phrase escalates; the notice appears and the intro
 // line does not (ticket 38: chips are the affordance, the notice the state).
@@ -334,6 +357,10 @@ async function reopenAfterTopicsChange() {
   await page.locator(".sfcw-launcher").click();
   await frame.locator('textarea[placeholder="Type your question"]').waitFor({ timeout: 10000 });
   await page.waitForTimeout(600);
+  // These reopens resume the existing conversation, so the fresh-chat
+  // greeting (ticket 41) must not appear above the restored history.
+  const greetings = await frame.getByText("Hi! How can I help you today?").count();
+  if (greetings !== 0) throw new Error("resumed conversation must not greet again");
 }
 
 await keepOnlyOneTopic();

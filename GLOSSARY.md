@@ -31,6 +31,9 @@ The in-dashboard signal that a conversation has something new for staff — a fr
 **Clear conversation**:
 The visitor's action to end the current chat and start a fresh one. Staff keep the old transcript in History under the retention policy; the visitor's credential and any unused return link are revoked immediately.
 
+**Welcome message**:
+The greeting shown at the top of a fresh chat before the visitor asks anything. It is presentation-only — rendered locally, never stored as a message, never part of the staff transcript — and its wording is a staff-published setting with a built-in default; opening the widget creates no conversation.
+
 **Conversation**:
 The message history shared by a visitor, the bot, and any administrator who takes over.
 

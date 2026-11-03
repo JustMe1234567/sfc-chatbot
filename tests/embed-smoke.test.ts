@@ -87,6 +87,26 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain("Your question");
   });
 
+  it("greets a fresh chat without creating a conversation (ticket 41)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    // The greeting comes from the published setting, with the domain default
+    // as the safe fallback, and renders inside the message log.
+    expect(frame).toContain("/api/v1/welcome");
+    expect(frame).toContain("DEFAULT_WELCOME_MESSAGE");
+    // Presentation-only: the greeting path never opens a conversation —
+    // ensureSession stays behind the visitor's first question. The slice
+    // covers the fetch helper and the effect that uses it.
+    const welcomePath = frame.slice(
+      frame.indexOf("The published greeting text, or the default"),
+      frame.indexOf("The saved/declined email confirmations leave on their own"),
+    );
+    expect(welcomePath).not.toContain("ensureSession");
+    expect(welcomePath).toContain("/api/v1/welcome");
+  });
+
   it("ships the suggested-questions strip contract (ticket 18)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),

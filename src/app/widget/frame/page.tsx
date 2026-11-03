@@ -10,6 +10,7 @@ import {
   type StoredSession,
 } from "@/lib/visitorSession";
 import { startPresenceHeartbeat } from "@/widget/presence";
+import { DEFAULT_WELCOME_MESSAGE } from "@/domain/welcome";
 import {
   emptyArrivalState,
   nextArrivalState,
@@ -152,6 +153,9 @@ export default function WidgetFrame() {
   const [arrivingIds, setArrivingIds] = useState<Set<string>>(new Set());
   const [noticesArrive, setNoticesArrive] = useState(false);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
+  // The fresh-chat greeting (ticket 41): null until this mount has decided
+  // the widget is genuinely empty and the published text has settled.
+  const [welcome, setWelcome] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuItemRef = useRef<HTMLButtonElement>(null);
@@ -200,10 +204,14 @@ export default function WidgetFrame() {
   );
 
   // Load the surviving history once on mount: a reload of the WordPress page
-  // reloads this iframe, which re-reads chatbot-origin session storage.
+  // reloads this iframe, which re-reads chatbot-origin session storage. A
+  // mount with no stored session is a genuinely fresh chat, eligible for the
+  // greeting (ticket 41).
+  const welcomeEligibleRef = useRef(false);
   useEffect(() => {
     const session = readSession();
     if (!session) {
+      welcomeEligibleRef.current = true;
       return;
     }
     sessionRef.current = session;
@@ -238,6 +246,32 @@ export default function WidgetFrame() {
         }
       })
       .catch(() => {});
+  }, []);
+
+  /** The published greeting text, or the default when the read fails —
+      ticket 41's safe fallback keeps the chat usable either way. */
+  async function fetchWelcomeText(): Promise<string> {
+    try {
+      const response = await fetch("/api/v1/welcome");
+      if (!response.ok) {
+        return DEFAULT_WELCOME_MESSAGE;
+      }
+      return ((await response.json()) as { text: string }).text ?? DEFAULT_WELCOME_MESSAGE;
+    } catch {
+      return DEFAULT_WELCOME_MESSAGE;
+    }
+  }
+
+  // The fresh-chat greeting (ticket 41): fetched from the published setting
+  // so a dashboard edit reaches the next widget open without a redeploy.
+  // Only a genuinely empty widget greets — an existing conversation restores
+  // its history instead — and the greeting never opens a conversation or
+  // mints a visitor credential; the first question does that.
+  useEffect(() => {
+    if (!welcomeEligibleRef.current) {
+      return;
+    }
+    void fetchWelcomeText().then(setWelcome);
   }, []);
 
   // The saved/declined email confirmations leave on their own (ticket 38):
@@ -619,6 +653,9 @@ export default function WidgetFrame() {
       resetEmailPrompt();
       setQuestion("");
       setError("");
+      // A fresh conversation greets again (ticket 41): fetch the published
+      // wording so the visitor sees the current setting.
+      void fetchWelcomeText().then(setWelcome);
     } catch {
       showError();
     } finally {
@@ -805,6 +842,14 @@ export default function WidgetFrame() {
         </p>
       ) : null}
       <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">
+        {welcome !== null ? (
+          // Presentation-only greeting (ticket 41): a bot-styled bubble that
+          // lives in this mount's view, announced by the log's live region;
+          // it is never sent to the server and never stored.
+          <li key="welcome" className={`${styles.message} ${styles.bot} ${styles.arrive}`}>
+            {welcome}
+          </li>
+        ) : null}
         {messages.map((message, index) => (
           <li
             key={message.id}
