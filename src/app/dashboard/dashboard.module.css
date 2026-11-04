@@ -690,7 +690,7 @@ a:focus-visible {
 .dayChoice span {
   display: grid;
   place-items: center;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid #c4cdda;
   border-radius: var(--radius-s);
   background: var(--surface);
@@ -886,6 +886,30 @@ a:focus-visible {
 .alertRow > button {
   flex: none;
   margin: 0;
+}
+
+/* The delivery row's retry action: a quiet ghost control at the shared
+   touch-target floor (ticket 49 — it previously pointed at a class that
+   did not exist and rendered unstyled). */
+.retryButton {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 13px system-ui, sans-serif;
+  padding: 0 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.retryButton:hover {
+  border-color: var(--sfc-blue);
+  color: var(--sfc-blue-deep);
+}
+
+.retryButton:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
 }
 
 .alertEmpty {
@@ -1456,6 +1480,10 @@ a:focus-visible {
 
   .topIdentity {
     justify-content: space-between;
+    /* The identity row's buttons cannot fit one line beside the name at
+       phone widths; wrapping keeps the stacked header inside the viewport
+       (ticket 49's no-overflow verification caught this). */
+    flex-wrap: wrap;
   }
 
   /* Narrow screens stack the panes; the back link makes switching between

@@ -14,7 +14,7 @@ export default function RetryButton({ notificationId }: { notificationId: string
     <span>
       <PendingButton
         type="button"
-        className={styles.signOut}
+        className={styles.retryButton}
         pending={busy}
         pendingLabel="Retrying…"
         onClick={async () => {

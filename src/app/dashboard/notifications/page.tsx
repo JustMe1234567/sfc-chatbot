@@ -92,7 +92,11 @@ export default async function NotificationsPage() {
             <div>
               <p className={styles.eyebrow}>Activity</p>
               <h2 id="delivery-history-title">Delivery history</h2>
-              <p>Recent staff-alert attempts, newest first.</p>
+              <p>
+                Recent staff-alert attempts, newest first. Delivered means the
+                college&apos;s mail service accepted the message; it cannot
+                confirm the recipient read it.
+              </p>
             </div>
             <div className={styles.deliverySummary} aria-label="Delivery totals">
               <span className={`${styles.deliveryCount} ${styles.deliveryCountSent}`}>
