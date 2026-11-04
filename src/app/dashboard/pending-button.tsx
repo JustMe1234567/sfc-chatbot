@@ -6,7 +6,7 @@ import styles from "./dashboard.module.css";
 type PendingButtonProps = {
   /** True while this button's action is in flight; drives the verb swap. */
   pending: boolean;
-  /** The active-verb label shown while pending ("Saving…", "Claiming…"). */
+  /** The active-verb label shown while pending ("Saving…", "Taking over…"). */
   pendingLabel: string;
   children: ReactNode;
   className?: string;

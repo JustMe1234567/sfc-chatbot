@@ -38,7 +38,7 @@ export async function POST(request: Request, context: RouteContext) {
       {
         error: {
           code: "invalid_state",
-          message: "Claim the conversation before closing it.",
+          message: "Take over the conversation before closing it.",
         },
       },
       { status: 409 },

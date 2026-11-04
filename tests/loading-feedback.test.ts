@@ -36,7 +36,7 @@ describe("shared pending feedback (ticket 42)", () => {
 
   it("labels every dashboard conversation action with its active verb", async () => {
     const actions = await read("src/app/dashboard/conversations/[id]/conversation-actions.tsx");
-    for (const verb of ["Claiming…", "Releasing…", "Transferring…", "Sending…", "Closing…"]) {
+    for (const verb of ["Taking over…", "Releasing…", "Transferring…", "Sending…", "Closing…"]) {
       expect(actions).toContain(verb);
     }
     for (const uses of ["ClaimButton", "ReleaseAndTransfer", "ReplyAndClose"]) {

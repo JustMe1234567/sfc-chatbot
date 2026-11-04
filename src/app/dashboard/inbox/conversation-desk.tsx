@@ -26,7 +26,9 @@ import { TIER_CHIPS } from "./status-classes";
 import styles from "../dashboard.module.css";
 
 const ACTION_LABELS: Record<AuditView["action"], string> = {
-  conversation_claimed: "claimed this conversation",
+  // Display label only (ticket 45): stored audit rows keep the
+  // conversation_claimed action id, so history stays readable either way.
+  conversation_claimed: "took over this conversation",
   conversation_released: "released this conversation to the inbox",
   conversation_transferred: "transferred this conversation",
   conversation_replied: "replied to the visitor",
@@ -233,7 +235,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               <div className={styles.paneBody}>
                 <p className={styles.hint}>
                   {selected.state === "awaiting_staff" && selectedActive &&
-                    "Waiting for a staff member to claim this conversation."}
+                    "Waiting for a staff member to take over this conversation."}
                   {!selectedActive && selected.state !== "closed" &&
                     "This conversation has gone quiet and moved to History. The visitor's next question starts a fresh chat."}
                   {claimedByMe && selected.state === "claimed" && !selectedActive &&
@@ -290,8 +292,9 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               <strong>No conversation selected</strong>
               <p>
                 Choose a conversation from the list. Incoming chats are waiting
-                for a claim; Active chats are already being helped. Conversations
-                that go quiet for a day move to History with their transcripts kept.
+                for a staff member to take over; Active chats are already being
+                helped. Conversations that go quiet for a day move to History
+                with their transcripts kept.
               </p>
             </div>
           )}

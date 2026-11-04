@@ -22,7 +22,7 @@ export function ClaimButton({ conversationId }: { conversationId: string }) {
         type="button"
         className={styles.primaryButton}
         pending={busy}
-        pendingLabel="Claiming…"
+        pendingLabel="Taking over…"
         onClick={async () => {
           setBusy(true);
           setError("");
@@ -33,12 +33,12 @@ export function ClaimButton({ conversationId }: { conversationId: string }) {
             const body = (await response.json().catch(() => null)) as {
               error?: { message?: string };
             } | null;
-            setError(body?.error?.message ?? "Claim failed.");
+            setError(body?.error?.message ?? "Take over failed.");
           }
           setBusy(false);
         }}
       >
-        Claim conversation
+        Take over
       </PendingButton>
       {error ? (
         <span className={styles.error} role="alert">

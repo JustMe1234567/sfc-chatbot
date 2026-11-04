@@ -34,6 +34,9 @@ The conversation desk's three-tier coloring (ticket 44): Needs human (an escalat
 **Notification sound**:
 The desk's optional cue (ticket 44): one short tone when a conversation newly needs staff — at most once per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
 
+**Take over**:
+The staff-facing label for claiming (ticket 45) — the atomic assignment of a waiting conversation to exactly one staff member. Product copy says Take over/Taking over; the domain keeps claim/claimed in state values, API paths, and audit action ids.
+
 **Clear conversation**:
 The visitor's action to end the current chat and start a fresh one. Staff keep the old transcript in History under the retention policy; the visitor's credential and any unused return link are revoked immediately.
 
