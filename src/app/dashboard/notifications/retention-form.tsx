@@ -73,25 +73,30 @@ export default function RetentionForm({
   }
 
   return (
-    <form className={styles.ruleCard} onSubmit={submit}>
+    <form className={`${styles.ruleCard} ${styles.alertSettingsCard}`} onSubmit={submit}>
       <h2>Transcript retention</h2>
       <p className={styles.hint}>
         Closed conversations are removed with their messages and visitor email
         addresses once this many days have passed, and their return links stop
         working. Leave empty to keep closed transcripts indefinitely.
       </p>
-      <label htmlFor="retention-days">Retention period (days)</label>
-      <input
-        id="retention-days"
-        type="number"
-        inputMode="numeric"
-        min={MIN_RETENTION_DAYS}
-        max={MAX_RETENTION_DAYS}
-        step={1}
-        value={days}
-        onChange={(event) => setDays(event.target.value)}
-      />
-      <div className={styles.publishBar}>
+      <div className={styles.formField}>
+        <label htmlFor="retention-days">Retention period</label>
+        <div className={styles.inputSuffix}>
+          <input
+            id="retention-days"
+            type="number"
+            inputMode="numeric"
+            min={MIN_RETENTION_DAYS}
+            max={MAX_RETENTION_DAYS}
+            step={1}
+            value={days}
+            onChange={(event) => setDays(event.target.value)}
+          />
+          <span aria-hidden="true">days</span>
+        </div>
+      </div>
+      <div className={styles.formActions}>
         <PendingButton
           type="submit"
           pending={pendingAction === "save"}

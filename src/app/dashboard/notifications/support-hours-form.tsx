@@ -85,54 +85,71 @@ export default function SupportHoursForm({ initialHours }: { initialHours: Suppo
   }
 
   return (
-    <form className={styles.ruleCard} onSubmit={submit}>
+    <form
+      className={`${styles.ruleCard} ${styles.alertSettingsCard} ${styles.supportHoursCard}`}
+      onSubmit={submit}
+    >
       <h2>Support hours</h2>
       <p className={styles.hint}>
         Visitors are told when staff are on duty at handoff. Leave empty for a
         general follow-up message that promises no response time.
       </p>
-      <label htmlFor="hours-zone">Time zone (IANA, e.g. Europe/London)</label>
-      <input
-        id="hours-zone"
-        type="text"
-        value={timeZone}
-        placeholder="Europe/London"
-        onChange={(event) => setTimeZone(event.target.value)}
-      />
-      <fieldset className={styles.publishBar}>
-        <legend className={styles.hint}>Open days</legend>
-        {DAY_LABELS.map(([value, label]) => (
-          <label key={value} className={styles.hint}>
-            <input
-              type="checkbox"
-              checked={days.includes(value)}
-              onChange={(event) =>
-                setDays((current) =>
-                  event.target.checked
-                    ? [...current, value]
-                    : current.filter((day) => day !== value),
-                )
-              }
-            />{" "}
-            {label}
-          </label>
-        ))}
+      <div className={styles.formField}>
+        <label htmlFor="hours-zone">Time zone</label>
+        <p className={styles.fieldHelp} id="hours-zone-help">
+          Use an IANA name, such as Europe/London.
+        </p>
+        <input
+          id="hours-zone"
+          type="text"
+          value={timeZone}
+          placeholder="Europe/London"
+          aria-describedby="hours-zone-help"
+          onChange={(event) => setTimeZone(event.target.value)}
+        />
+      </div>
+      <fieldset className={styles.dayPicker}>
+        <legend>Open days</legend>
+        <div className={styles.dayPickerOptions}>
+          {DAY_LABELS.map(([value, label]) => (
+            <label key={value} className={styles.dayChoice}>
+              <input
+                type="checkbox"
+                checked={days.includes(value)}
+                onChange={(event) =>
+                  setDays((current) =>
+                    event.target.checked
+                      ? [...current, value]
+                      : current.filter((day) => day !== value),
+                  )
+                }
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
-      <label htmlFor="hours-start">Opening time</label>
-      <input
-        id="hours-start"
-        type="time"
-        value={start}
-        onChange={(event) => setStart(event.target.value)}
-      />
-      <label htmlFor="hours-end">Closing time</label>
-      <input
-        id="hours-end"
-        type="time"
-        value={end}
-        onChange={(event) => setEnd(event.target.value)}
-      />
-      <div className={styles.publishBar}>
+      <div className={styles.timeFields}>
+        <div className={styles.formField}>
+          <label htmlFor="hours-start">Opening time</label>
+          <input
+            id="hours-start"
+            type="time"
+            value={start}
+            onChange={(event) => setStart(event.target.value)}
+          />
+        </div>
+        <div className={styles.formField}>
+          <label htmlFor="hours-end">Closing time</label>
+          <input
+            id="hours-end"
+            type="time"
+            value={end}
+            onChange={(event) => setEnd(event.target.value)}
+          />
+        </div>
+      </div>
+      <div className={styles.formActions}>
         <PendingButton
           type="submit"
           pending={pendingAction === "save"}

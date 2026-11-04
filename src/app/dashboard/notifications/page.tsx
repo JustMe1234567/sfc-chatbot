@@ -30,6 +30,8 @@ export default async function NotificationsPage() {
   const supportHours = await getSupportHours(db);
   const retentionDays = await getTranscriptRetentionDays(db);
   const lastRun = await latestRetentionRun(store);
+  const deliveredCount = notifications.filter((notification) => notification.status === "sent").length;
+  const failedCount = notifications.filter((notification) => notification.status === "failed").length;
 
   return (
     <main className={styles.shell}>
@@ -40,66 +42,116 @@ export default async function NotificationsPage() {
         role={guard.staff.role}
       />
 
-      {guard.staff.role === "owner" ? (
-        <SupportHoursForm initialHours={supportHours} />
-      ) : (
-        <p className={styles.hint}>
-          Support hours:{" "}
-          {supportHours ? scheduleSummary(supportHours) : "not configured (visitors get a general message)"}
-        </p>
-      )}
-
-      {guard.staff.role === "owner" ? (
-        <AlertSettingsForm initialRecipients={recipients} />
-      ) : (
-        <p className={styles.hint}>
-          Alerts currently go to: {recipients.length > 0 ? recipients.join(", ") : "not configured"}
-        </p>
-      )}
-
-      {guard.staff.role === "owner" ? (
-        <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
-      ) : (
-        <p className={styles.hint}>
-          Transcript retention:{" "}
-          {retentionDays !== null
-            ? `${retentionDays} days after closure`
-            : "not configured (closed transcripts are kept)"}
-        </p>
-      )}
-
-      <div className={styles.inbox}>
-        {notifications.length === 0 ? (
-          <p className={styles.empty}>No alerts have been sent yet.</p>
-        ) : (
-          notifications.map((notification) => (
-            <div key={notification.id} className={styles.conversationCard}>
-              <div className={styles.meta}>
-                {notification.status === "sent"
-                  ? "Delivered"
-                  : notification.status === "failed"
-                    ? "Failed"
-                    : "Pending"}
-                {" · "}
-                attempt {notification.attempts}
-                {" · "}
-                {new Date(notification.createdAt).toLocaleString("en-GB")}
-              </div>
-              <div className={styles.preview}>
-                {notification.lastError ? (
-                  <>
-                    {notification.lastError}
-                    {notification.status !== "sent" && (
-                      <RetryButton notificationId={notification.id} />
-                    )}
-                  </>
-                ) : (
-                  <>Alert for a visitor conversation, sent to {notification.recipients.join(", ")}.</>
-                )}
-              </div>
+      <div className={styles.alertsPage}>
+        <section className={styles.alertsSection} aria-labelledby="delivery-settings-title">
+          <div className={styles.sectionHeading}>
+            <div>
+              <p className={styles.eyebrow}>Delivery setup</p>
+              <h2 id="delivery-settings-title">How email alerts work</h2>
+              <p>
+                Choose who receives handoff alerts, when staff are available, and how long closed
+                transcripts are retained.
+              </p>
             </div>
-          ))
-        )}
+          </div>
+
+          {guard.staff.role === "owner" ? (
+            <div className={styles.alertSettingsGrid}>
+              <SupportHoursForm initialHours={supportHours} />
+              <AlertSettingsForm initialRecipients={recipients} />
+              <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
+            </div>
+          ) : (
+            <dl className={styles.alertSummaryGrid}>
+              <div>
+                <dt>Support hours</dt>
+                <dd>
+                  {supportHours
+                    ? scheduleSummary(supportHours)
+                    : "Not configured; visitors receive the general follow-up message."}
+                </dd>
+              </div>
+              <div>
+                <dt>Recipients</dt>
+                <dd>{recipients.length > 0 ? recipients.join(", ") : "Not configured"}</dd>
+              </div>
+              <div>
+                <dt>Transcript retention</dt>
+                <dd>
+                  {retentionDays !== null
+                    ? `${retentionDays} days after closure`
+                    : "Not configured; closed transcripts are kept."}
+                </dd>
+              </div>
+            </dl>
+          )}
+        </section>
+
+        <section className={styles.alertsSection} aria-labelledby="delivery-history-title">
+          <div className={styles.sectionHeading}>
+            <div>
+              <p className={styles.eyebrow}>Activity</p>
+              <h2 id="delivery-history-title">Delivery history</h2>
+              <p>Recent staff-alert attempts, newest first.</p>
+            </div>
+            <div className={styles.deliverySummary} aria-label="Delivery totals">
+              <span className={`${styles.deliveryCount} ${styles.deliveryCountSent}`}>
+                {deliveredCount} delivered
+              </span>
+              {failedCount > 0 ? (
+                <span className={`${styles.deliveryCount} ${styles.deliveryCountFailed}`}>
+                  {failedCount} failed
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {notifications.length === 0 ? (
+            <div className={styles.alertEmpty}>
+              <strong>No email alerts yet</strong>
+              <p>New handoff alerts will appear here with their delivery status.</p>
+            </div>
+          ) : (
+            <ol className={styles.alertList}>
+              {notifications.map((notification) => {
+                const statusLabel =
+                  notification.status === "sent"
+                    ? "Delivered"
+                    : notification.status === "failed"
+                      ? "Failed"
+                      : "Pending";
+                const statusClass =
+                  notification.status === "sent"
+                    ? styles.alertStatusSent
+                    : notification.status === "failed"
+                      ? styles.alertStatusFailed
+                      : styles.alertStatusPending;
+
+                return (
+                  <li key={notification.id} className={styles.alertRow}>
+                    <div className={styles.alertRowMain}>
+                      <div className={styles.alertRowMeta}>
+                        <span className={`${styles.alertStatus} ${statusClass}`}>{statusLabel}</span>
+                        <span>Attempt {notification.attempts}</span>
+                        <time dateTime={notification.createdAt}>
+                          {new Date(notification.createdAt).toLocaleString("en-GB")}
+                        </time>
+                      </div>
+                      <p className={styles.alertMessage}>
+                        {notification.lastError
+                          ? notification.lastError
+                          : `Sent to ${notification.recipients.join(", ")}.`}
+                      </p>
+                    </div>
+                    {notification.lastError && notification.status !== "sent" ? (
+                      <RetryButton notificationId={notification.id} />
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
       </div>
     </main>
   );

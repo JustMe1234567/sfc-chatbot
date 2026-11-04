@@ -14,7 +14,7 @@ export default function AlertSettingsForm({ initialRecipients }: { initialRecipi
 
   return (
     <form
-      className={styles.loginCard}
+      className={`${styles.ruleCard} ${styles.alertSettingsCard}`}
       onSubmit={async (event) => {
         event.preventDefault();
         setBusy(true);
@@ -45,17 +45,23 @@ export default function AlertSettingsForm({ initialRecipients }: { initialRecipi
         Comma-separated email addresses. Each conversation sends one alert to
         every address on this list.
       </p>
-      <label htmlFor="recipients">Alert recipients</label>
-      <input
-        id="recipients"
-        type="text"
-        autoComplete="off"
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-      />
-      <PendingButton type="submit" pending={busy} pendingLabel="Saving…">
-        Save recipients
-      </PendingButton>
+      <div className={styles.formField}>
+        <label htmlFor="recipients">Email addresses</label>
+        <input
+          id="recipients"
+          type="text"
+          inputMode="email"
+          autoComplete="off"
+          placeholder="front-desk@example.edu"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </div>
+      <div className={styles.formActions}>
+        <PendingButton type="submit" pending={busy} pendingLabel="Saving…">
+          Save recipients
+        </PendingButton>
+      </div>
       {message ? (
         <p className={styles.hint} role="status">
           {message}
