@@ -16,6 +16,10 @@ export interface DeskItem {
   active: boolean;
   /** The in-dashboard alert: something new for staff to read. */
   attention: boolean;
+  /** When the current attention episode began, or null once viewed (ticket
+   *  44): the stable identity of the "something new" event, since attention
+   *  never re-stamps while standing. */
+  attentionAt: string | null;
   createdAt: string;
   lastActivityAt: string;
   messageCount: number;
@@ -33,6 +37,7 @@ async function toDeskItem(
     state: conversation.state,
     active: isConversationActive(conversation),
     attention: conversation.attentionAt !== null,
+    attentionAt: conversation.attentionAt,
     createdAt: conversation.createdAt,
     lastActivityAt: conversation.lastActivityAt,
     messageCount: messages.length,
@@ -88,3 +93,40 @@ export const DESK_STATE_LABELS: Record<string, string> = {
   claimed: "claimed",
   closed: "closed",
 };
+
+/**
+ * The three-tier status every live desk surface shares (ticket 44): the
+ * strongest tier wins, and each tier always pairs its color with visible
+ * text or an icon carrying an accessible name.
+ */
+export type DeskStatus = "needs_human" | "attention" | "active";
+
+export const DESK_STATUS_LABELS: Record<DeskStatus, string> = {
+  needs_human: "Needs human",
+  attention: "New message",
+  active: "Active",
+};
+
+export function deskStatus(item: { state: string; attention: boolean }): DeskStatus {
+  if (item.state === "awaiting_staff") return "needs_human";
+  if (item.attention) return "attention";
+  return "active";
+}
+
+/** One "something new for staff" occurrence, as heard by the notification
+ *  sound (ticket 44). The id anchors the attention episode's start instant,
+ *  so polling, navigation, and a second view all read the same identity and
+ *  sound at most once per staff browser. */
+export interface AttentionEvent {
+  conversationId: string;
+  id: string;
+}
+
+export function deskAttentionEvents(items: DeskItem[]): AttentionEvent[] {
+  return items
+    .filter((item) => item.attentionAt !== null)
+    .map((item) => ({
+      conversationId: item.id,
+      id: `${item.id}:${item.attentionAt}`,
+    }));
+}

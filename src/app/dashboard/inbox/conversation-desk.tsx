@@ -5,6 +5,9 @@ import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import {
   DESK_STATE_LABELS,
+  DESK_STATUS_LABELS,
+  deskAttentionEvents,
+  deskStatus,
   roleLabel,
   summarizeConversationDesk,
   summarizeConversationHistory,
@@ -18,6 +21,8 @@ import DashboardHeader from "../header";
 import AutoRefresh from "../conversations/[id]/auto-refresh";
 import { ClaimButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
 import DeskEntry from "./desk-entry";
+import AttentionSounds from "./attention-sounds";
+import { TIER_CHIPS } from "./status-classes";
 import styles from "../dashboard.module.css";
 
 const ACTION_LABELS: Record<AuditView["action"], string> = {
@@ -87,6 +92,25 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
     ? ((await staffName(db, selected.claimedBy)) ?? "another staff member")
     : null;
   const claimedByMe = selected?.claimedBy === guard.staff.userId;
+  // The sound cue's event feed (ticket 44): every standing attention episode
+  // on the live desk, each anchored at the instant its episode began. The
+  // conversation being read right now is excluded — the staff member is
+  // already looking at it, and viewing clears its alert.
+  const attentionEvents = desk
+    ? deskAttentionEvents([...desk.incoming, ...desk.active]).filter(
+        (event) => event.conversationId !== selectedId,
+      )
+    : [];
+  // The selected header chip shares the rows' tier mapping while the
+  // conversation is live; closed and quiet conversations keep their state chip.
+  const selectedTier =
+    selected && selectedActive
+      ? deskStatus({ state: selected.state, attention: selected.attentionAt !== null })
+      : null;
+  // The tab's gold count is the attention tier alone (ticket 44): escalated
+  // conversations are counted by Incoming's needs-human pill instead, so
+  // each tier's count wears its own color.
+  const attentionTierCount = desk ? desk.active.filter((item) => item.attention).length : 0;
   const mayReassign =
     selected?.state === "claimed" && (claimedByMe || guard.staff.role === "owner");
   // Transfer targets mirror the API's eligibility exactly: active, verified,
@@ -118,7 +142,9 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
           <div className={styles.deskTabs}>
             <Link href="/dashboard/inbox" aria-current={view === "active" ? "page" : undefined}>
               Conversations
-              {desk && desk.attentionCount > 0 ? ` (${desk.attentionCount} new)` : ""}
+              {attentionTierCount > 0 ? (
+                <span className={styles.countAttention}>{attentionTierCount} new</span>
+              ) : null}
             </Link>
             <Link
               href="/dashboard/inbox?view=history"
@@ -127,9 +153,15 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               History
             </Link>
           </div>
+          <AttentionSounds events={attentionEvents} />
           {desk ? (
             <>
-              <h2>Incoming</h2>
+              <h2>
+                Incoming
+                {desk.incoming.length > 0 ? (
+                  <span className={styles.countNeedsHuman}>{desk.incoming.length} waiting</span>
+                ) : null}
+              </h2>
               {desk.incoming.length === 0 ? (
                 <p className={styles.deskEmpty}>Nothing is waiting for staff.</p>
               ) : (
@@ -165,9 +197,17 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               <div className={styles.paneHead}>
                 <h2>Conversation</h2>
                 <span className={styles.paneHeadMeta}>
-                  <span className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}>
-                    {DESK_STATE_LABELS[selected.state] ?? selected.state}
-                  </span>
+                  {selectedTier ? (
+                    <span className={`${styles.chip} ${TIER_CHIPS[selectedTier]}`}>
+                      {DESK_STATUS_LABELS[selectedTier]}
+                    </span>
+                  ) : (
+                    <span
+                      className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}
+                    >
+                      {DESK_STATE_LABELS[selected.state] ?? selected.state}
+                    </span>
+                  )}
                   <span>
                     {selected.state === "claimed" && selectedActive
                       ? claimedByMe

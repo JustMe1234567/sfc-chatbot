@@ -27,6 +27,12 @@
   --danger-soft: #f9e9e7;
   --ok: #1c6b3c;
   --ok-soft: #e7f4ec;
+  /* Brighter graphic variants of the status colors (ticket 44): the desk
+     rail is a dark surface, and status dots are non-text graphics that
+     still need 3:1 against it — the text-grade colors above do not get
+     there. */
+  --danger-bright: #e2574a;
+  --ok-bright: #4caf7d;
 
   --radius-s: 8px;
   --radius-m: 12px;
@@ -451,6 +457,20 @@ a:focus-visible {
 .chipAttention {
   background: var(--sfc-gold);
   color: #241a05;
+}
+
+/* The shared three-tier status treatment (ticket 44): one mapping used by
+   the desk rows, the badges, the counts, and the selected header chip.
+   Needs human is the strongest tier; every tier also carries visible text
+   or an icon with an accessible name, so color never works alone. */
+.chipNeedsHuman {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.chipActive {
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
 .badge {
@@ -1187,6 +1207,101 @@ a:focus-visible {
   border-radius: var(--radius-pill);
   font: 600 11.5px/1.7 system-ui, sans-serif;
   padding: 0 8px;
+}
+
+/* Ticket 44 row treatment: a status dot per tier (color + accessible name;
+   the row's state text and tier badge carry the words), tier-colored left
+   borders, and the needs-human badge in the strongest tier color. The dot
+   colors are the bright graphic variants because the rail is dark. */
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.dotNeedsHuman {
+  background: var(--danger-bright);
+}
+
+.dotAttention {
+  background: var(--sfc-gold);
+}
+
+.dotActive {
+  background: var(--ok-bright);
+}
+
+.needsHumanBadge {
+  align-self: flex-start;
+  background: var(--danger);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  font: 600 11.5px/1.7 system-ui, sans-serif;
+  padding: 0 8px;
+}
+
+.deskItem[data-status="needs_human"] {
+  border-left-color: var(--danger-bright);
+}
+
+.deskItem[data-status="attention"] {
+  border-left-color: var(--sfc-gold);
+}
+
+/* The desk's sound control (ticket 44): a quiet full-width button under the
+   view tabs, in the rail's own language. */
+.soundToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-start;
+  background: transparent;
+  color: var(--rail-muted);
+  border: 1px solid var(--rail-line);
+  border-radius: var(--radius-s);
+  font: 600 12px system-ui, sans-serif;
+  padding: 7px 10px;
+  margin: 2px 0 4px;
+  cursor: pointer;
+}
+
+.soundToggle:hover {
+  color: var(--rail-ink);
+  border-color: var(--rail-muted);
+}
+
+.soundToggle[aria-pressed="true"] {
+  color: var(--rail-ink);
+}
+
+/* The counts share the tier mapping: the tab's "new" count is the attention
+   tier, Incoming's "waiting" count the needs-human tier. Both are text, so
+   color never works alone. */
+.countAttention {
+  display: inline-block;
+  background: var(--sfc-gold);
+  color: #241a05;
+  border-radius: var(--radius-pill);
+  font: 600 11px/1.7 system-ui, sans-serif;
+  padding: 0 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.countNeedsHuman {
+  display: inline-block;
+  background: var(--danger);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  font: 600 11px/1.7 system-ui, sans-serif;
+  padding: 0 7px;
+  margin-left: 8px;
+  vertical-align: middle;
+  letter-spacing: normal;
 }
 
 .deskEmpty {

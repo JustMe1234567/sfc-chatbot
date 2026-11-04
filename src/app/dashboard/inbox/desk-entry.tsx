@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useLinkStatus } from "next/link";
-import { DESK_STATE_LABELS, roleLabel, type DeskItem } from "@/domain/inbox";
+import {
+  DESK_STATE_LABELS,
+  DESK_STATUS_LABELS,
+  deskStatus,
+  roleLabel,
+  type DeskItem,
+  type DeskStatus,
+} from "@/domain/inbox";
+import { STATUS_DOTS } from "./status-classes";
 import styles from "../dashboard.module.css";
 
 /**
@@ -13,31 +21,54 @@ import styles from "../dashboard.module.css";
  * dashboard deliberately ships no route-level loading shell above the desk.
  * Quick successive clicks supersede cleanly: the framework shows only the
  * last-clicked link's pending state.
+ *
+ * Ticket 44 adds the shared status treatment for live rows: a tier-colored
+ * left border and a status dot with an accessible name, and the two
+ * attention-worthy tiers also say it in visible text. Color never works
+ * alone. History rows are the archive, not live work: they keep their state
+ * text and carry no status treatment at all.
  */
 export default function DeskEntry({ item, selected }: { item: DeskItem; selected: boolean }) {
   // The CSS line-clamp trims the preview with an ellipsis; no JS slicing.
   const preview = item.lastMessage
     ? `${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text}`
     : "No messages";
+  const status: DeskStatus | null = item.active ? deskStatus(item) : null;
   return (
     <Link
       href={`/dashboard/inbox/${item.id}`}
       className={styles.deskItem}
       data-selected={selected || undefined}
+      data-status={status ?? undefined}
       aria-current={selected ? "true" : undefined}
     >
-      <RowBody item={item} preview={preview} />
+      <RowBody item={item} status={status} preview={preview} />
     </Link>
   );
 }
 
 /** Lives inside the Link so useLinkStatus can report this row's navigation. */
-function RowBody({ item, preview }: { item: DeskItem; preview: string }) {
+function RowBody({
+  item,
+  status,
+  preview,
+}: {
+  item: DeskItem;
+  status: DeskStatus | null;
+  preview: string;
+}) {
   const { pending } = useLinkStatus();
   return (
     <span aria-busy={pending || undefined} className={styles.deskItemBody}>
       <span className={styles.deskItemTop}>
         <span className={styles.deskItemState}>
+          {status ? (
+            <span
+              className={`${styles.statusDot} ${STATUS_DOTS[status]}`}
+              role="img"
+              aria-label={DESK_STATUS_LABELS[status]}
+            />
+          ) : null}
           {DESK_STATE_LABELS[item.state] ?? item.state}
         </span>
         <time dateTime={item.lastActivityAt}>
@@ -49,7 +80,10 @@ function RowBody({ item, preview }: { item: DeskItem; preview: string }) {
         </time>
       </span>
       <span className={styles.deskItemPreview}>{preview}</span>
-      {item.attention ? <span className={styles.attentionBadge}>New message</span> : null}
+      {status === "needs_human" ? (
+        <span className={styles.needsHumanBadge}>Needs human</span>
+      ) : null}
+      {status === "attention" ? <span className={styles.attentionBadge}>New message</span> : null}
       <span className={styles.rowPending} aria-hidden="true">
         Loading…
       </span>

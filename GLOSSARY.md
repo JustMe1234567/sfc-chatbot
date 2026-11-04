@@ -28,6 +28,12 @@ Whether a conversation is still live on the desk, judged from its latest meaning
 **Attention**:
 The in-dashboard signal that a conversation has something new for staff — a fresh escalation or a visitor message while staff help is active. Viewing, replying, or claiming clears it; it never duplicates while standing.
 
+**Status treatment**:
+The conversation desk's three-tier coloring (ticket 44): Needs human (an escalation waiting for a claim) outranks New message (standing attention) outranks Active (live, nothing unread). Every tier pairs its color with visible text or a dot carrying an accessible name, applied consistently to list rows, badges, counts, and the selected conversation's header. History rows are the archive and carry no treatment.
+
+**Notification sound**:
+The desk's optional cue (ticket 44): one short tone when a conversation newly needs staff — at most once per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
+
 **Clear conversation**:
 The visitor's action to end the current chat and start a fresh one. Staff keep the old transcript in History under the retention policy; the visitor's credential and any unused return link are revoked immediately.
 
