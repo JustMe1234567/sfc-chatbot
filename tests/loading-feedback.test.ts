@@ -78,8 +78,33 @@ describe("shared pending feedback (ticket 42)", () => {
     expect(signOut).toContain("Revoking sessions…");
   });
 
-  it("streams an instant dashboard loading shell", async () => {
-    const loading = await read("src/app/dashboard/loading.tsx");
-    expect(loading).toContain("Loading…");
+  it("keeps the desk mounted with row-level pending on conversation clicks", async () => {
+    // The reopened acceptance supersedes the instant shell for conversation
+    // clicks: a route-level loading.tsx above the desk would blank the
+    // transcript the moment a row is clicked, so none may exist on the
+    // dashboard segment (initial loads are server-rendered regardless).
+    const loadingExists = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/loading.tsx"),
+      "utf8",
+    ).then(
+      () => true,
+      () => false,
+    );
+    expect(loadingExists).toBe(false);
+
+    const row = await read("src/app/dashboard/inbox/desk-entry.tsx");
+    expect(row).toContain("useLinkStatus");
+    expect(row).toContain('aria-busy={pending || undefined}');
+    expect(row).toContain("Loading…");
+    // The hint is always rendered and fades in — no layout shift (the
+    // useLinkStatus doc's own guidance).
+    expect(row).toContain("rowPending");
+
+    // The busy attribute lives on the row body (the hook's descendant-of-
+    // Link contract); the stylesheet must bridge it onto the row with
+    // :has(), or the pending styles can never match.
+    const css = await read("src/app/dashboard/dashboard.module.css");
+    expect(css).toMatch(/\.deskItem:has\(\.deskItemBody\[aria-busy="true"\]\)/);
+    expect(css).not.toContain("button[aria-busy");
   });
 });

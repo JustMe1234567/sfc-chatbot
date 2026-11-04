@@ -79,3 +79,12 @@ export async function summarizeConversationHistory(store: Store): Promise<DeskIt
   const items = await Promise.all(conversations.map((c) => toDeskItem(store, c)));
   return items.filter((item) => !item.active).sort(byNewestActivity);
 }
+
+/** The desk rows' short state names (ticket 12), shared by the server desk
+ *  pane and the client row entries. */
+export const DESK_STATE_LABELS: Record<string, string> = {
+  bot_active: "bot",
+  awaiting_staff: "waiting",
+  claimed: "claimed",
+  closed: "closed",
+};

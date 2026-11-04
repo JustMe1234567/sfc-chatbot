@@ -3,7 +3,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
-import { roleLabel, summarizeConversationDesk, summarizeConversationHistory, type DeskItem } from "@/domain/inbox";
+import {
+  DESK_STATE_LABELS,
+  roleLabel,
+  summarizeConversationDesk,
+  summarizeConversationHistory,
+} from "@/domain/inbox";
 import { isConversationActive } from "@/domain/activity";
 import { staffName } from "@/api/staffConversations";
 import { auditWithNames, type AuditView } from "@/api/audit";
@@ -12,6 +17,7 @@ import { getChatbotService } from "@/db/service";
 import DashboardHeader from "../header";
 import AutoRefresh from "../conversations/[id]/auto-refresh";
 import { ClaimButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
+import DeskEntry from "./desk-entry";
 import styles from "../dashboard.module.css";
 
 const ACTION_LABELS: Record<AuditView["action"], string> = {
@@ -33,41 +39,6 @@ const STATE_CHIPS: Record<string, string | undefined> = {
   claimed: styles.chipClaimed,
   closed: styles.chipClosed,
 };
-
-const STATE_LABELS: Record<string, string> = {
-  bot_active: "bot",
-  awaiting_staff: "waiting",
-  claimed: "claimed",
-  closed: "closed",
-};
-
-function DeskEntry({ item, selected }: { item: DeskItem; selected: boolean }) {
-  // The CSS line-clamp trims the preview with an ellipsis; no JS slicing.
-  const preview = item.lastMessage
-    ? `${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text}`
-    : "No messages";
-  return (
-    <Link
-      href={`/dashboard/inbox/${item.id}`}
-      className={styles.deskItem}
-      data-selected={selected || undefined}
-      aria-current={selected ? "true" : undefined}
-    >
-      <span className={styles.deskItemTop}>
-        <span className={styles.deskItemState}>{STATE_LABELS[item.state] ?? item.state}</span>
-        <time dateTime={item.lastActivityAt}>
-          {new Date(item.lastActivityAt).toLocaleString("en-GB", {
-            weekday: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </time>
-      </span>
-      <span className={styles.deskItemPreview}>{preview}</span>
-      {item.attention ? <span className={styles.attentionBadge}>New message</span> : null}
-    </Link>
-  );
-}
 
 function bubbleClass(role: string): string {
   if (role === "staff") return `${styles.bubble} ${styles.bubbleStaff}`;
@@ -195,7 +166,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 <h2>Conversation</h2>
                 <span className={styles.paneHeadMeta}>
                   <span className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}>
-                    {STATE_LABELS[selected.state] ?? selected.state}
+                    {DESK_STATE_LABELS[selected.state] ?? selected.state}
                   </span>
                   <span>
                     {selected.state === "claimed" && selectedActive

@@ -1122,3 +1122,37 @@ a:focus-visible {
 .pendingButton {
   white-space: nowrap;
 }
+
+/* Row-level pending on the desk (ticket 42, reopened): a busy row dims and
+   its fixed-size "Loading…" hint fades in — the hint is always rendered so
+   the swap cannot shift the rail's layout, and the busy row ignores further
+   clicks while the framework supersedes onto any other row that is clicked.
+   The busy attribute lives on the row body inside the Link (the
+   useLinkStatus hook's descendant-of-Link contract), so :has() lifts the
+   pending state onto the row itself. */
+.deskItem:has(.deskItemBody[aria-busy="true"]) {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.deskItem:has(.deskItemBody[aria-busy="true"]) .rowPending {
+  opacity: 1;
+}
+
+.deskItemBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rowPending {
+  position: absolute;
+  right: 11px;
+  bottom: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sfc-gold);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
