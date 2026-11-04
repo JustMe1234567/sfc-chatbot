@@ -44,10 +44,11 @@ const EMAIL_NOTE_TTL_MS = 10_000;
 
 /**
  * The suggested-questions strip (ticket 18): a two-row, horizontally
- * scrollable rail pinned directly above the composer, visible for the whole
- * conversation — not only before the first message. Tracks where the
- * horizontal overflow stands so a soft edge fade can hint at more content
- * without relying on a scrollbar that touch devices hide.
+ * scrollable rail pinned directly above the composer, rendered once the
+ * conversation exists — the fresh state stacks its own suggestions instead
+ * (ticket 46). Tracks where the horizontal overflow stands so a soft edge
+ * fade can hint at more content without relying on a scrollbar that touch
+ * devices hide.
  */
 function TopicsStrip({
   topics,
@@ -154,8 +155,9 @@ export default function WidgetFrame() {
   const [noticesArrive, setNoticesArrive] = useState(false);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
   // The fresh-chat greeting (ticket 41): null until this mount has decided
-  // the widget is genuinely empty and the published text has settled.
-  const [welcome, setWelcome] = useState<string | null>(null);
+  // the widget is genuinely empty and the published text has settled. The
+  // timestamp rides along (ticket 46) so the pair stays atomic.
+  const [welcome, setWelcome] = useState<{ text: string; at: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuItemRef = useRef<HTMLButtonElement>(null);
@@ -262,6 +264,18 @@ export default function WidgetFrame() {
     }
   }
 
+  /** Shows the greeting with its captured-at local timestamp (ticket 46):
+      the stamp is presentation-only and captured once per fresh cycle so
+      re-renders never shift it. */
+  function greet(): void {
+    void fetchWelcomeText().then((text) => {
+      setWelcome({
+        text,
+        at: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      });
+    });
+  }
+
   // The fresh-chat greeting (ticket 41): fetched from the published setting
   // so a dashboard edit reaches the next widget open without a redeploy.
   // Only a genuinely empty widget greets — an existing conversation restores
@@ -271,7 +285,7 @@ export default function WidgetFrame() {
     if (!welcomeEligibleRef.current) {
       return;
     }
-    void fetchWelcomeText().then(setWelcome);
+    greet();
   }, []);
 
   // The saved/declined email confirmations leave on their own (ticket 38):
@@ -682,8 +696,9 @@ export default function WidgetFrame() {
       setQuestion("");
       setError("");
       // A fresh conversation greets again (ticket 41): fetch the published
-      // wording so the visitor sees the current setting.
-      void fetchWelcomeText().then(setWelcome);
+      // wording so the visitor sees the current setting, timestamp fresh
+      // with it (ticket 46).
+      greet();
     } catch {
       showError();
     } finally {
@@ -700,114 +715,223 @@ export default function WidgetFrame() {
   // 43). Claiming — or a fresh conversation after Clear — re-enables it.
   const composerLocked = handoff && !claimed;
 
-  return (
-    <main className={styles.panel}>
-      <header className={styles.header}>
-        <span className={styles.brand}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" className={styles.crest} />
-          <span className={styles.title}>Chat with us</span>
-        </span>
-        <span className={styles.headerActions}>
-          {messages.length > 0 ? (
-            <span className={styles.menuWrap}>
-              <button
-                ref={menuButtonRef}
-                type="button"
-                className={styles.menuButton}
-                aria-label="Conversation options"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                disabled={sending || clearState === "busy"}
-                onClick={() => {
-                  if (!sendingRef.current && clearState !== "busy") {
-                    setMenuOpen((open) => !open);
-                  }
-                }}
-              >
-                <span aria-hidden="true">⋯</span>
-              </button>
-              {menuOpen ? (
-                <span
-                  className={styles.menuPanel}
-                  role="menu"
-                  aria-label="Conversation options"
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "ArrowDown" ||
-                      event.key === "ArrowUp" ||
-                      event.key === "Home" ||
-                      event.key === "End"
-                    ) {
-                      event.preventDefault();
-                      menuItemRef.current?.focus();
-                    }
-                  }}
-                >
-                  <button
-                    ref={menuItemRef}
-                    type="button"
-                    role="menuitem"
-                    className={styles.menuItem}
-                    disabled={sending || clearState === "busy"}
-                    onClick={() => {
-                      if (sendingRef.current || clearState === "busy") {
-                        return;
-                      }
-                      setMenuOpen(false);
-                      setClearState("confirm");
-                    }}
-                  >
-                    Clear conversation
-                  </button>
-                </span>
-              ) : null}
-              {clearState !== "idle" ? (
-                <span
-                  className={styles.confirmBox}
-                  role="group"
-                  aria-label="Confirm clear conversation"
-                >
-                  <span className={styles.confirmText}>
-                    Staff will keep a record of this chat on their side. You lose
-                    access to it here, and a fresh chat starts.
-                  </span>
-                  <span className={styles.confirmButtons}>
-                    <button
-                      ref={confirmClearRef}
-                      type="button"
-                      className={styles.confirmClear}
-                      disabled={clearState === "busy"}
-                      onClick={() => void confirmClear()}
-                    >
-                      {clearState === "busy" ? "Clearing…" : "Clear chat"}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.confirmKeep}
-                      disabled={clearState === "busy"}
-                      onClick={() => {
-                        setClearState("idle");
-                        menuButtonRef.current?.focus();
-                      }}
-                    >
-                      Keep chatting
-                    </button>
-                  </span>
-                </span>
-              ) : null}
-            </span>
-          ) : null}
+  // The fresh state (ticket 46): no transcript yet. It gets the reference's
+  // composed layout — substantial header, greeting with avatar and
+  // timestamp, stacked suggestions — and flips to the normal conversation
+  // layout the moment the first visitor message exists.
+  const freshStart = messages.length === 0;
+
+  // The ticket-39 overflow menu, shared by both header compositions. Its
+  // gating (only with messages) and behavior are unchanged; a genuinely
+  // fresh chat has nothing to clear yet.
+  const headerMenu = (
+    <span className={styles.menuWrap}>
+      <button
+        ref={menuButtonRef}
+        type="button"
+        className={styles.menuButton}
+        aria-label="Conversation options"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        disabled={sending || clearState === "busy"}
+        onClick={() => {
+          if (!sendingRef.current && clearState !== "busy") {
+            setMenuOpen((open) => !open);
+          }
+        }}
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      {menuOpen ? (
+        <span
+          className={styles.menuPanel}
+          role="menu"
+          aria-label="Conversation options"
+          onKeyDown={(event) => {
+            if (
+              event.key === "ArrowDown" ||
+              event.key === "ArrowUp" ||
+              event.key === "Home" ||
+              event.key === "End"
+            ) {
+              event.preventDefault();
+              menuItemRef.current?.focus();
+            }
+          }}
+        >
           <button
+            ref={menuItemRef}
             type="button"
-            className={styles.close}
-            aria-label="Close chat"
-            onClick={requestClose}
+            role="menuitem"
+            className={styles.menuItem}
+            disabled={sending || clearState === "busy"}
+            onClick={() => {
+              if (sendingRef.current || clearState === "busy") {
+                return;
+              }
+              setMenuOpen(false);
+              setClearState("confirm");
+            }}
           >
-            &times;
+            Clear conversation
           </button>
         </span>
-      </header>
+      ) : null}
+      {clearState !== "idle" ? (
+        <span
+          className={styles.confirmBox}
+          role="group"
+          aria-label="Confirm clear conversation"
+        >
+          <span className={styles.confirmText}>
+            Staff will keep a record of this chat on their side. You lose
+            access to it here, and a fresh chat starts.
+          </span>
+          <span className={styles.confirmButtons}>
+            <button
+              ref={confirmClearRef}
+              type="button"
+              className={styles.confirmClear}
+              disabled={clearState === "busy"}
+              onClick={() => void confirmClear()}
+            >
+              {clearState === "busy" ? "Clearing…" : "Clear chat"}
+            </button>
+            <button
+              type="button"
+              className={styles.confirmKeep}
+              disabled={clearState === "busy"}
+              onClick={() => {
+                setClearState("idle");
+                menuButtonRef.current?.focus();
+              }}
+            >
+              Keep chatting
+            </button>
+          </span>
+        </span>
+      ) : null}
+    </span>
+  );
+
+  // The transcript's children, shared by the fresh and conversation layouts.
+  // The greeting row (ticket 46) composes the reference's hierarchy: crest
+  // avatar left, the bot bubble, then the subtle local timestamp. Still
+  // presentation-only — announced by the log's live region, never stored.
+  const logContent = (
+    <>
+      {welcome !== null ? (
+        <li key="welcome" className={`${styles.messageFresh} ${styles.arrive}`}>
+          <span className={styles.botAvatar} aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/cropped-SFC-Final-Logo-Single.png"
+              alt=""
+              className={styles.botAvatarImg}
+            />
+          </span>
+          <span className={`${styles.message} ${styles.bot} ${styles.welcomeBubble}`}>
+            {welcome.text}
+          </span>
+          <time className={styles.welcomeTime} aria-hidden="true">
+            {welcome.at}
+          </time>
+        </li>
+      ) : null}
+      {messages.map((message, index) => (
+        <li
+          key={message.id}
+          className={`${styles.message} ${styles[message.role]}`}
+          data-arrive={arrivingIds.has(message.id) ? "" : undefined}
+          onAnimationEnd={
+            arrivingIds.has(message.id)
+              ? () =>
+                  setArrivingIds((current) => {
+                    if (!current.has(message.id)) {
+                      return current;
+                    }
+                    const next = new Set(current);
+                    next.delete(message.id);
+                    return next;
+                  })
+              : undefined
+          }
+        >
+          {message.text}
+          {message.link && isHttpLink(message.link) && (
+            <a href={message.link} target="_blank" rel="noopener noreferrer">
+              Visit the college page
+            </a>
+          )}
+          {index === messages.length - 1 && message.choices ? (
+            <div className={styles.choices}>
+              {message.choices.map((choice) => (
+                <button
+                  key={choice.id}
+                  type="button"
+                  className={styles.topicButton}
+                  disabled={sending || composerLocked}
+                  onClick={() => void send(choice.topic, choice.id)}
+                >
+                  {choice.topic}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </li>
+      ))}
+    </>
+  );
+
+  return (
+    <main className={styles.panel}>
+      {freshStart ? (
+        // The reference's substantial header (ticket 46): the college identity
+        // centered on its white plate, the close control at the corner. The
+        // ticket-39 overflow menu appears with the conversation chrome — a
+        // genuinely fresh chat has nothing to clear yet, and the menu's one
+        // action needs a conversation to act on.
+        <header className={`${styles.header} ${styles.headerFresh}`}>
+          <span className={styles.headerFreshTop}>
+            <button
+              type="button"
+              className={styles.close}
+              aria-label="Close chat"
+              onClick={requestClose}
+            >
+              &times;
+            </button>
+          </span>
+          <span className={styles.brandPlate} aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/cropped-SFC-Final-Logo-Single.png"
+              alt=""
+              className={styles.brandPlateImg}
+            />
+          </span>
+          <span className={styles.brandNameFresh}>Springfield College</span>
+        </header>
+      ) : (
+        <header className={styles.header}>
+          <span className={styles.brand}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" className={styles.crest} />
+            <span className={styles.title}>Chat with us</span>
+          </span>
+          <span className={styles.headerActions}>
+            {messages.length > 0 ? headerMenu : null}
+            <button
+              type="button"
+              className={styles.close}
+              aria-label="Close chat"
+              onClick={requestClose}
+            >
+              &times;
+            </button>
+          </span>
+        </header>
+      )}
       {topics.length === 0 ? (
         // Only the topicless widget needs the guidance line (ticket 38): with
         // chips visible they are the affordance, and during a handoff the
@@ -877,58 +1001,44 @@ export default function WidgetFrame() {
           your device. If you leave the page, they cannot follow up with you.
         </p>
       ) : null}
-      <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">
-        {welcome !== null ? (
-          // Presentation-only greeting (ticket 41): a bot-styled bubble that
-          // lives in this mount's view, announced by the log's live region;
-          // it is never sent to the server and never stored.
-          <li key="welcome" className={`${styles.message} ${styles.bot} ${styles.arrive}`}>
-            {welcome}
-          </li>
-        ) : null}
-        {messages.map((message, index) => (
-          <li
-            key={message.id}
-            className={`${styles.message} ${styles[message.role]}`}
-            data-arrive={arrivingIds.has(message.id) ? "" : undefined}
-            onAnimationEnd={
-              arrivingIds.has(message.id)
-                ? () =>
-                    setArrivingIds((current) => {
-                      if (!current.has(message.id)) {
-                        return current;
-                      }
-                      const next = new Set(current);
-                      next.delete(message.id);
-                      return next;
-                    })
-                : undefined
-            }
+      {freshStart ? (
+        // The fresh start area (ticket 46): greeting and stacked suggestions
+        // scroll together while the composer stays put below.
+        <div className={styles.startArea}>
+          <ol
+            className={`${styles.log} ${styles.logFresh}`}
+            ref={logRef}
+            role="log"
+            aria-label="Messages"
+            aria-live="polite"
           >
-            {message.text}
-            {message.link && isHttpLink(message.link) && (
-              <a href={message.link} target="_blank" rel="noopener noreferrer">
-                Visit the college page
-              </a>
-            )}
-            {index === messages.length - 1 && message.choices ? (
-              <div className={styles.choices}>
-                {message.choices.map((choice) => (
-                  <button
-                    key={choice.id}
-                    type="button"
-                    className={styles.topicButton}
-                    disabled={sending || composerLocked}
-                    onClick={() => void send(choice.topic, choice.id)}
-                  >
-                    {choice.topic}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </li>
-        ))}
-      </ol>
+            {logContent}
+          </ol>
+          {topics.length > 0 ? (
+            <div
+              className={`${styles.freshSuggestions} ${styles.arrive}`}
+              role="group"
+              aria-label="Suggested questions"
+            >
+              {topics.map((topic) => (
+                <button
+                  key={topic.id}
+                  type="button"
+                  className={styles.freshSuggest}
+                  disabled={sending || composerLocked}
+                  onClick={() => void send(topic.question)}
+                >
+                  {topic.topic}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <ol className={styles.log} ref={logRef} role="log" aria-label="Messages" aria-live="polite">
+          {logContent}
+        </ol>
+      )}
       {/* The live region stays mounted so announcements are reliable; an
           empty region is zero-height, so it costs the transcript nothing
           while no error stands (ticket 38). */}
@@ -942,7 +1052,9 @@ export default function WidgetFrame() {
           Waiting for a staff member to take over…
         </p>
       ) : null}
-      {topics.length > 0 ? (
+      {!freshStart && topics.length > 0 ? (
+        // The compact persistent strip is the conversation's suggestion rail
+        // (ticket 18); the fresh state stacks its own instead (ticket 46).
         <TopicsStrip
           topics={topics}
           disabled={sending || composerLocked}

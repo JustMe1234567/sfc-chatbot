@@ -115,10 +115,10 @@ async function assertMenuWithinFrame(label) {
   }
 }
 
-// --- Desktop: mixed one/two-line chips in horizontal overflow. ------------
+// --- Fresh state (ticket 46): the reference-led start layout. --------------
 await openWidget(1280, 800);
 // The first open is a genuinely fresh chat (no stored session): the
-// greeting (ticket 41) leads the transcript.
+// greeting (ticket 41) leads the transcript as a composed row.
 await frame.getByText("Hi! How can I help you today?").waitFor({ timeout: 10000 });
 console.log("fresh open greets the visitor");
 // The greeting is presentation-only: opening the widget must not have
@@ -130,6 +130,73 @@ if (
 ) {
   throw new Error("the fresh open minted a visitor credential; the greeting must not");
 }
+// The reference hierarchy: the greeting row carries its crest avatar and a
+// local timestamp, then suggestions stack toward the visitor.
+if ((await frame.locator('[aria-label="Messages"] time').count()) !== 1) {
+  throw new Error("the fresh greeting lacks its timestamp");
+}
+const fresh = frame.locator('[aria-label="Suggested questions"]');
+const freshButtons = fresh.locator("button");
+const freshCount = await freshButtons.count();
+console.log("fresh suggestions rendered:", freshCount);
+if (freshCount < 4) {
+  throw new Error(`expected the seeded suggestions stacked, got ${freshCount}`);
+}
+const freshGroup = await fresh.boundingBox();
+const freshBoxes = await Promise.all(
+  Array.from({ length: freshCount }, (_, index) => freshButtons.nth(index).boundingBox()),
+);
+if (!freshGroup) throw new Error("fresh suggestions group has no box");
+for (let index = 1; index < freshBoxes.length; index += 1) {
+  if (freshBoxes[index].top <= freshBoxes[index - 1].top) {
+    throw new Error("fresh suggestions are not stacked vertically");
+  }
+}
+for (const box of freshBoxes) {
+  // The reference stacks the pills flush with each other on the right (the
+  // group's own padding is not part of the alignment).
+  const rightGap = Math.abs(
+    freshBoxes[0].x + freshBoxes[0].width - (box.x + box.width),
+  );
+  if (rightGap > 2) {
+    throw new Error(`fresh suggestions are not right-aligned (gap ${rightGap}px)`);
+  }
+  if (box.x + box.width < freshGroup.x + freshGroup.width / 2) {
+    throw new Error("fresh suggestions do not lean toward the visitor side");
+  }
+}
+console.log("ok: fresh suggestions stack right-aligned like the reference");
+await shot("after-widget-fresh-desktop");
+
+// Narrow embed: long labels wrap, nothing scrolls the page sideways.
+await page.setViewportSize({ width: 360, height: 720 });
+await page.waitForTimeout(400);
+const freshOverflow = await fresh.evaluate((el) => ({
+  scrollWidth: el.scrollWidth,
+  clientWidth: el.clientWidth,
+}));
+if (freshOverflow.scrollWidth > freshOverflow.clientWidth + 1) {
+  throw new Error("fresh suggestions force horizontal scrolling at 360px");
+}
+await shot("after-widget-fresh-360");
+await page.setViewportSize({ width: 1280, height: 800 });
+await page.waitForTimeout(400);
+
+// A picked suggestion follows the existing topic flow: the question text
+// lands in the transcript once, and the layout flips to the conversation
+// view (ticket 46).
+const picked = "What are the admission requirements";
+await freshButtons.filter({ hasText: "Admissions" }).click();
+await page.waitForTimeout(1500);
+console.log(
+  "transcript after suggestion click:",
+  JSON.stringify((await frame.locator('[role="log"]').innerText()).slice(0, 300)),
+);
+await frame.locator('[role="log"]').getByText(picked).waitFor({ timeout: 10000 });
+await waitForSendReady();
+console.log("picked suggestion question reached the transcript");
+
+// --- The compact strip (ticket 18) takes over for the conversation. -------
 const strip = frame.locator('[aria-label="Suggested questions"]');
 const chips = strip.locator("button");
 console.log("chips rendered:", await chips.count());
@@ -183,19 +250,6 @@ const endFadeOff = !(await fadeEnd.getAttribute("class")).includes("fadeOn");
 const startFadeOn = (await fadeStart.getAttribute("class")).includes("fadeOn");
 console.log("fades at scroll end: end off =", endFadeOff, ", start on =", startFadeOn);
 if (!endFadeOff || !startFadeOn) throw new Error("edge fades did not track the scroll position");
-
-// A picked chip follows the existing topic flow: the chip's question text
-// lands in the transcript once.
-const picked = "What are the admission requirements";
-await chips.filter({ hasText: "Admissions" }).click();
-await page.waitForTimeout(1500);
-console.log(
-  "transcript after chip click:",
-  JSON.stringify((await frame.locator('[role="log"]').innerText()).slice(0, 300)),
-);
-await frame.locator('[role="log"]').getByText(picked).waitFor({ timeout: 10000 });
-await waitForSendReady();
-console.log("picked chip question reached the transcript");
 
 // Ticket 39: Clear conversation lives in the header menu. Exercise the real
 // focus/Escape layers, successor-session swap, transcript reset, and retained

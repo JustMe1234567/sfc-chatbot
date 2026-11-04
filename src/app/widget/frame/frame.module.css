@@ -441,6 +441,144 @@
   gap: 8px;
 }
 
+/* The fresh state's substantial header (ticket 46): the reference's
+   composition — identity centered on a plate, controls at the corners —
+   in the established brand blue. Conversation chrome reverts to the slim
+   header above. */
+.headerFresh {
+  flex-direction: column;
+  padding: 6px 12px 14px;
+}
+
+.headerFreshTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+}
+
+.brandPlate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-top: 4px;
+  background: #fff;
+  border-radius: 14px;
+}
+
+.brandPlateImg {
+  width: 42px;
+  height: 42px;
+  display: block;
+}
+
+.brandNameFresh {
+  margin-top: 7px;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* The greeting row (ticket 46): crest avatar left, bot bubble, then the
+   subtle local timestamp. The bubble styling moves onto an inner span so
+   the avatar can sit outside it like the reference. */
+.messageFresh {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.botAvatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  background: #fff;
+  border: 1px solid #dfe5ee;
+  border-radius: 50%;
+  align-self: flex-start;
+}
+
+.botAvatarImg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.welcomeBubble {
+  display: inline-block;
+}
+
+.welcomeTime {
+  flex: none;
+  font-size: 11px;
+  color: #8a97a8;
+  padding-bottom: 2px;
+}
+
+/* The fresh start area: greeting and stacked suggestions scroll together
+   while the composer stays put; the conversation layout keeps .log as the
+   sole scroller. */
+.startArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.logFresh {
+  flex: none;
+  overflow: visible;
+  padding-bottom: 4px;
+}
+
+/* Stacked suggested questions (ticket 46): outlined, content-width actions
+   aligned toward the visitor like their message choices, wrapping long
+   labels instead of scrolling the page. */
+.freshSuggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 6px 14px 14px;
+}
+
+.freshSuggest {
+  max-width: 85%;
+  background: #fff;
+  border: 1.5px solid #1d4e89;
+  color: #1f2933;
+  border-radius: 999px;
+  font: 500 14px/1.4 system-ui, sans-serif;
+  padding: 9px 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.freshSuggest:hover {
+  background: #e8eef7;
+}
+
+.freshSuggest:focus-visible {
+  outline: 2px solid #e3a739;
+  outline-offset: 2px;
+}
+
+.freshSuggest:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .message {
   max-width: 85%;
   padding: 8px 12px;

@@ -143,6 +143,40 @@ describe("WordPress embed smoke check", () => {
     expect(welcomePath).toContain("/api/v1/welcome");
   });
 
+  it("composes the fresh state like the supplied reference (ticket 46)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    const frameCss = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/frame.module.css"),
+      "utf8",
+    );
+    // The fresh chat leads with the substantial branded header: the crest on
+    // its white plate and the college name centered, with the existing close
+    // control and (once a conversation exists) the ticket-39 menu keeping
+    // their behavior and accessible names.
+    expect(frame).toContain("headerFresh");
+    expect(frame).toContain("brandPlate");
+    expect(frame).toContain("Springfield College");
+    expect(frame).toContain('aria-label="Close chat"');
+    expect(frame).toContain('aria-label="Conversation options"');
+    // The greeting renders as a real chat bubble with a decorative crest
+    // avatar and a subtle local timestamp, presentation-only as in 41.
+    expect(frame).toContain("botAvatar");
+    expect(frame).toMatch(/<time[^>]*aria-hidden="true"/);
+    // Suggested questions stack as right-aligned outlined actions on the
+    // fresh state only; the compact two-row strip remains for conversations.
+    expect(frame).toContain("freshStart");
+    expect(frame).toContain("startArea");
+    expect(frame).toContain("freshSuggestions");
+    expect(frame).toContain("<TopicsStrip");
+    expect(frameCss).toContain(".logFresh");
+    expect(frameCss).toMatch(/\.freshSuggestions \{[^}]*align-items: flex-end/s);
+    // Labels wrap instead of truncating or scrolling the page.
+    expect(frameCss).toMatch(/\.freshSuggest \{[^}]*max-width: 85%/s);
+  });
+
   it("ships the suggested-questions strip contract (ticket 18)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
