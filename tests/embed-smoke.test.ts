@@ -87,6 +87,21 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain("Your question");
   });
 
+  it("locks visitor input while staff help is requested (ticket 43)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    // The composer locks while staff help is requested but unclaimed, with
+    // an inline explanation; claiming re-enables it through the normal
+    // state application, and the API rejects anything posted directly.
+    expect(frame).toContain("Waiting for a staff member to take over…");
+    expect(frame).toContain("composerLocked");
+    expect(frame).toContain('code === "awaiting_staff"');
+    // The lock's start and the takeover are each announced once.
+    expect(frame).toContain('role="status"');
+  });
+
   it("shows an active verb on the visitor's send while it runs (ticket 42)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),

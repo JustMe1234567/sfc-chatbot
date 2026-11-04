@@ -193,12 +193,14 @@ describe("attention signals for new visitor messages", () => {
     const afterView = [...desk.incoming, ...desk.active].filter((entry) => entry.attention).length;
     expect(desk.attentionCount).toBe(afterView);
 
-    // A new visitor message raises it again; a staff reply clears it.
+    // After staff claim (the visitor's input is locked until then, ticket
+    // 43), a new visitor message raises attention again; a staff reply
+    // clears it.
+    expect((await staffAction(await staffJar(), conversation.id, "claim")).status).toBe(200);
     await ask(conversation, "Desk test: one more thing about the parking permit.");
     desk = await deskBody(await staffJar());
     expect([...desk.incoming, ...desk.active].find((entry) => entry.id === conversation.id)?.attention).toBe(true);
 
-    expect((await staffAction(await staffJar(), conversation.id, "claim")).status).toBe(200);
     expect((await staffAction(await staffJar(), conversation.id, "reply", { text: "Dana here, checking." })).status).toBe(200);
     desk = await deskBody(await staffJar());
     expect([...desk.incoming, ...desk.active].find((entry) => entry.id === conversation.id)?.attention).toBe(false);
@@ -304,7 +306,9 @@ describe("the exact 24-hour inactivity boundary", () => {
     await loadHistory(conversation);
     expect(await lastActivityOf(conversation.id)).toBe(before);
 
-    // A new meaningful message resets the clock.
+    // A new meaningful message resets the clock. Visitor input is locked
+    // while staff help is requested (ticket 43), so staff claim first.
+    expect((await staffAction(await staffJar(), conversation.id, "claim")).status).toBe(200);
     await ask(conversation, "Desk test: and the scholarship interview dates?");
     const after = await lastActivityOf(conversation.id);
     expect(new Date(after).getTime()).toBeGreaterThan(new Date(before).getTime());
@@ -314,6 +318,10 @@ describe("the exact 24-hour inactivity boundary", () => {
     const conversation = await escalatedConversation("Desk test: graduation gown sizes, nothing covers this.");
     const expiryAfterEscalation = await sessionExpiryOf(conversation.id);
 
+    // Visitor input is locked while staff help is requested (ticket 43):
+    // claim first so the message can land.
+    const jar = await staffJar();
+    expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
     await ask(conversation, "Desk test: and the cap measurements?");
     const expiryAfterVisitorMessage = await sessionExpiryOf(conversation.id);
     expect(new Date(expiryAfterVisitorMessage).getTime()).toBeGreaterThan(
@@ -322,8 +330,6 @@ describe("the exact 24-hour inactivity boundary", () => {
 
     // A staff reply keeps the visitor's credential alive too, so they can
     // poll the answer.
-    const jar = await staffJar();
-    expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
     expect((await staffAction(jar, conversation.id, "reply", { text: "Riley will post sizes shortly." })).status).toBe(200);
     const expiryAfterStaffReply = await sessionExpiryOf(conversation.id);
     expect(new Date(expiryAfterStaffReply).getTime()).toBeGreaterThan(

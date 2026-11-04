@@ -168,10 +168,12 @@ describe("staff replies", () => {
 describe("reconnect and reload recovery", () => {
   it("serves the full stored history to both sides after a fresh read", async () => {
     const conversation = await escalate();
-    await ask(conversation, "Second question after the handoff.");
     const jar = new CookieJar();
     await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    // The visitor's input is locked while staff help is requested (ticket
+    // 43): Alice claims, and the visitor's follow-up lands under the claim.
     await staffPost(jar, conversation.id, "claim");
+    await ask(conversation, "Second question after the handoff.");
     await staffPost(jar, conversation.id, "reply", { text: "Answering your second question now." });
 
     // A fresh visitor read (page reload / reconnect) recovers everything.

@@ -249,21 +249,69 @@ if (revoked.status !== 401 && revoked.status !== 404) {
 }
 console.log("header menu clear flow reset the visitor and revoked the old credential");
 
+// A long transcript keeps the strip pinned above the composer. This runs
+// before the handoff section: once staff help is requested the composer
+// locks (ticket 43), so all free typing happens while the chat is bot-active.
+for (const text of ["Screenshot seed follow-up one", "Screenshot seed follow-up two", "Screenshot seed follow-up three makes this transcript long"]) {
+  await frame.locator("textarea").fill(text);
+  await frame.locator("textarea").press("Enter");
+  await frame.locator('[role="log"]').getByText(text).waitFor({ timeout: 10000 });
+  await waitForSendReady();
+}
+await shot("after-widget-topics-long-transcript");
+
+// Pending-send (ticket 18): while a message POST is in flight — delayed
+// here — every chip disables, so a second click cannot duplicate the send.
+const MESSAGES_URL = /\/api\/v1\/conversations\/[a-f0-9-]+\/messages$/;
+await page.route(MESSAGES_URL, async (route) => {
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  // Unrouting mid-flight marks the held route handled; a stale continue is
+  // harmless then.
+  await route.continue().catch(() => {});
+});
+await chips.filter({ hasText: "Parking" }).click();
+await page.waitForTimeout(300);
+const disabledChips = await strip.locator("button:disabled").count();
+const chipCount = await chips.count();
+console.log("disabled chips while pending:", disabledChips, "of", chipCount);
+if (disabledChips !== chipCount) throw new Error("chips not all disabled while a send is pending");
+// Ticket 42: the composer's send names its active verb while the request
+// is held in flight here.
+const sendLabel = await frame.locator('form[class$="_form"] button').textContent();
+if (!sendLabel.includes("Sending…")) {
+  throw new Error(`send button did not show its pending verb: ${sendLabel}`);
+}
+console.log("send button shows Sending… while pending");
+await page.unroute(MESSAGES_URL);
+await frame
+  .locator('[role="log"]')
+  .getByText("Where can visitors park", { exact: false })
+  .waitFor({ timeout: 10000 });
+console.log("pending chip message landed exactly once");
+
 // An explicit handoff phrase escalates; the notice appears and the intro
 // line does not (ticket 38: chips are the affordance, the notice the state).
+// This is the journey's last interactive section: from here the composer
+// locks (ticket 43), so nothing after it types.
 await frame.locator("textarea").fill("I need to speak to a human");
 await frame.locator("textarea").press("Enter");
 await frame.locator("text=Automated answers are paused").waitFor({ timeout: 10000 });
 if ((await frame.getByText("Pick a topic").count()) !== 0) {
   throw new Error("intro line should be gone while topic chips are visible (ticket 38)");
 }
-await chips.filter({ hasText: "Opening hours" }).click();
-await frame
-  .locator('[role="log"]')
-  .getByText("What are the opening hours", { exact: false })
-  .waitFor({ timeout: 10000 });
-await waitForSendReady();
-console.log("chip during takeover sent to staff without a bot reply");
+// Ticket 43: the composer locks while staff help is requested but
+// unclaimed — the textarea disables, the waiting line explains, and the
+// chips lock with it (superseding ticket 18's send-to-staff-during-takeover
+// behavior for the waiting period).
+await frame.getByText("Waiting for a staff member to take over…").waitFor({ timeout: 10000 });
+if (!(await frame.locator('form[class$="_form"] textarea').isDisabled())) {
+  throw new Error("composer did not lock while waiting for staff (ticket 43)");
+}
+const waitingChips = await strip.locator("button").count();
+if ((await strip.locator("button:disabled").count()) !== waitingChips) {
+  throw new Error("chips not locked while waiting for staff (ticket 43)");
+}
+console.log("composer and chips locked while waiting for staff");
 await shot("after-widget-topics-handoff");
 
 // Ticket 38: the transcript is the widget's dominant region, and the
@@ -297,49 +345,6 @@ if (share < 0.45) {
   throw new Error(`transcript is not dominant after the note leaves: ${(share * 100).toFixed(1)}%`);
 }
 await shot("after-widget-topics-note-dismissed");
-
-// A long transcript keeps the strip pinned above the composer.
-for (const text of ["Screenshot seed follow-up one", "Screenshot seed follow-up two", "Screenshot seed follow-up three makes this transcript long"]) {
-  await frame.locator("textarea").fill(text);
-  await frame.locator("textarea").press("Enter");
-  await frame.locator('[role="log"]').getByText(text).waitFor({ timeout: 10000 });
-  await waitForSendReady();
-}
-await shot("after-widget-topics-long-transcript");
-// The note shows once per declined handoff: later messages never bring it
-// back (ticket 38).
-if ((await frame.getByText("No email saved").count()) !== 0) {
-  throw new Error("declined note returned after subsequent messages");
-}
-
-// Pending-send (ticket 18): while a message POST is in flight — delayed
-// here — every chip disables, so a second click cannot duplicate the send.
-const MESSAGES_URL = /\/api\/v1\/conversations\/[a-f0-9-]+\/messages$/;
-await page.route(MESSAGES_URL, async (route) => {
-  await new Promise((resolve) => setTimeout(resolve, 1200));
-  // Unrouting mid-flight marks the held route handled; a stale continue is
-  // harmless then.
-  await route.continue().catch(() => {});
-});
-await chips.filter({ hasText: "Parking" }).click();
-await page.waitForTimeout(300);
-const disabledChips = await strip.locator("button:disabled").count();
-const chipCount = await chips.count();
-console.log("disabled chips while pending:", disabledChips, "of", chipCount);
-if (disabledChips !== chipCount) throw new Error("chips not all disabled while a send is pending");
-// Ticket 42: the composer's send names its active verb while the request
-// is held in flight here.
-const sendLabel = await frame.locator('form[class$="_form"] button').textContent();
-if (!sendLabel.includes("Sending…")) {
-  throw new Error(`send button did not show its pending verb: ${sendLabel}`);
-}
-console.log("send button shows Sending… while pending");
-await page.unroute(MESSAGES_URL);
-await frame
-  .locator('[role="log"]')
-  .getByText("Where can visitors park", { exact: false })
-  .waitFor({ timeout: 10000 });
-console.log("pending chip message landed exactly once");
 
 // --- Narrow widths. -------------------------------------------------------
 await openWidget(390, 760);

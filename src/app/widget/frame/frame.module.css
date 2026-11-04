@@ -630,3 +630,12 @@
     transform: rotate(360deg);
   }
 }
+
+/* The waiting line (ticket 43): shown above the composer while staff help
+   is requested but unclaimed — the composer is locked and this explains
+   why, leaving the transcript and the handoff notice to tell the story. */
+.waiting {
+  margin: 6px 16px 0;
+  font-size: 13px;
+  color: #52606d;
+}

@@ -149,7 +149,11 @@ describe("the visitor's selected choice answers", () => {
     const conversation = await startConversation();
     await ask(conversation, "Something no rule covers at all, escalate me");
     await askWithChoice(conversation, "request-human", "Chat with a human");
-    await askWithChoice(conversation, "fees-overview", "Fees");
+    // Ticket 43 locks visitor input while staff help is requested but
+    // unclaimed: a stale selection is rejected outright, so nothing is
+    // recorded and no bot answer could fire either way.
+    const stalePick = await askWithChoice(conversation, "fees-overview", "Fees");
+    expect(stalePick.status).toBe(409);
 
     const history = await loadHistory(conversation);
     const body = (await history.json()) as {
@@ -157,7 +161,7 @@ describe("the visitor's selected choice answers", () => {
       messages: { role: string }[];
     };
     expect(body.conversation.state).toBe("awaiting_staff");
-    expect(body.messages.at(-1)?.role).toBe("visitor");
+    expect(body.messages.at(-1)?.role).toBe("bot");
   });
 });
 

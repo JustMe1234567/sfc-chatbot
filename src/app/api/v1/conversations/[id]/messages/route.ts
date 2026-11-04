@@ -68,14 +68,9 @@ async function recordVisitorChoice(
   if (conversation.state === "closed") {
     return {
       recorded: false,
-      response: NextResponse.json(
-        {
-          error: {
-            code: "conversation_closed",
-            message: "This conversation was closed. Ask a new question to start again.",
-          },
-        },
-        { status: 409 },
+      response: conflictResponse(
+        "conversation_closed",
+        "This conversation was closed. Ask a new question to start again.",
       ),
     };
   }
@@ -107,16 +102,27 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+/** The shared 409 shape for visitor conflicts: a stable code and a
+ *  visitor-appropriate sentence. */
+function conflictResponse(code: string, message: string): NextResponse {
+  return NextResponse.json({ error: { code, message } }, { status: 409 });
+}
+
 /** The visitor is told when their chat has gone quiet (ticket 12). */
 function inactiveResponse(): NextResponse {
-  return NextResponse.json(
-    {
-      error: {
-        code: "conversation_inactive",
-        message: "This conversation has gone quiet. Ask a new question to start again.",
-      },
-    },
-    { status: 409 },
+  return conflictResponse(
+    "conversation_inactive",
+    "This conversation has gone quiet. Ask a new question to start again.",
+  );
+}
+
+/** While staff help is requested but not yet claimed (ticket 43), visitor
+ *  input is locked: the widget disables its composer, and the API rejects
+ *  anything that slips past it with this stable error. */
+function awaitingStaffResponse(): NextResponse {
+  return conflictResponse(
+    "awaiting_staff",
+    "Waiting for a staff member to take over. You can reply once they join.",
   );
 }
 
@@ -156,6 +162,13 @@ export async function POST(request: Request, context: RouteContext) {
   // never re-ambiguate the visitor's own choice. The transcript records the
   // picked topic as the visitor's words; no free text rides along.
   if (body?.choice !== undefined) {
+    // The waiting period locks visitor input (ticket 43): any choice posted
+    // while staff help is requested but unclaimed is rejected, whatever the
+    // offer state. Under an active claim a pick still lands as the visitor's
+    // words to staff.
+    if (conversation.state === "awaiting_staff") {
+      return awaitingStaffResponse();
+    }
     const invalidChoice = (): NextResponse =>
       NextResponse.json(
         { error: { code: "invalid_choice", message: "Pick one of the offered topics." } },
@@ -207,20 +220,21 @@ export async function POST(request: Request, context: RouteContext) {
   if (conversation.state === "closed") {
     // The staff side closed this conversation; the visitor's next question
     // starts a fresh one with a new credential.
-    return NextResponse.json(
-      {
-        error: {
-          code: "conversation_closed",
-          message: "This conversation was closed. Ask a new question to start again.",
-        },
-      },
-      { status: 409 },
+    return conflictResponse(
+      "conversation_closed",
+      "This conversation was closed. Ask a new question to start again.",
     );
   }
   // Quiet for a day: the conversation is history now. The widget treats this
   // exactly like a closure — fresh conversation, question carried over.
   if (!isConversationActive(conversation)) {
     return inactiveResponse();
+  }
+  // The waiting period locks visitor input (ticket 43): the widget disables
+  // its composer, and anything posted directly is rejected here so the lock
+  // cannot be bypassed.
+  if (conversation.state === "awaiting_staff") {
+    return awaitingStaffResponse();
   }
   if (!messageLimiter.check(conversation.id)) {
     return NextResponse.json(

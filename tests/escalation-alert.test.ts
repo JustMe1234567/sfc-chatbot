@@ -159,14 +159,18 @@ describe("one escalation alert per conversation", () => {
     expect(mails[0]!.body).not.toContain(conversation.token);
   });
 
-  it("does not alert again when the visitor keeps chatting after handoff", async () => {
+  it("does not alert again when further visitor input is rejected while waiting", async () => {
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
 
     const conversation = await startConversation();
     await ask(conversation, "Can I speak to a human about parking validation?");
-    await ask(conversation, "Also, what are your opening hours?");
-    await ask(conversation, "Hello?");
+    // Ticket 43: input is locked while staff help is requested but unclaimed
+    // — further messages are rejected, so nothing can re-trigger the alert.
+    const second = await ask(conversation, "Also, what are your opening hours?");
+    expect(second.status).toBe(409);
+    const third = await ask(conversation, "Hello?");
+    expect(third.status).toBe(409);
 
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();

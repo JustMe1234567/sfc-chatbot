@@ -480,9 +480,16 @@ export default function WidgetFrame() {
     applyArrivals([localMessage], true);
     setMessages((current) => [...current, localMessage]);
     setQuestion("");
+    // A failed send must not leave a ghost bubble (ticket 43's failure
+    // recovery): the optimistic entry is removed on every final failure
+    // path, and the poller restores the truth if the request actually
+    // landed. The carried-over paths (closure, inactive) keep it on purpose.
+    const dropOptimistic = () =>
+      setMessages((current) => current.filter((message) => message.id !== localMessage.id));
     try {
       const session = await ensureSession();
       if (!session) {
+        dropOptimistic();
         return;
       }
       let response = await postMessage(session, text, choice);
@@ -506,7 +513,9 @@ export default function WidgetFrame() {
         }
       }
       if (response.status === 409) {
-        const conflict = (await response.json()) as { error?: { code?: string } };
+        const conflict = (await response.json()) as {
+          error?: { code?: string; message?: string };
+        };
         if (
           conflict.error?.code === "conversation_closed" ||
           // Quiet for a day: the old conversation is history; the visitor's
@@ -534,12 +543,30 @@ export default function WidgetFrame() {
             showError();
             return;
           }
+        } else if (conflict.error?.code === "awaiting_staff") {
+          // The waiting lock (ticket 43): the escalation landed while this
+          // message was in flight. Drop the bubble and hand the words back.
+          dropOptimistic();
+          if (!choice) {
+            setQuestion(text);
+          }
+          setError(
+            conflict.error.message ?? "Waiting for a staff member to take over.",
+          );
+          return;
         } else {
+          dropOptimistic();
           showError();
           return;
         }
       } else if (!response.ok) {
-        showError();
+        dropOptimistic();
+        const failure = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(
+          failure?.error?.message ?? "The chat is temporarily unavailable. Please try again.",
+        );
         return;
       }
       const body = (await response.json()) as {
@@ -558,6 +585,7 @@ export default function WidgetFrame() {
         setMessages((current) => [...current, reply]);
       }
     } catch {
+      dropOptimistic();
       showError();
     } finally {
       sendingRef.current = false;
@@ -668,6 +696,9 @@ export default function WidgetFrame() {
   // stay has not run out (ticket 38); the leaving flag plays the exit fade.
   const showEmailNote = (handoff || claimed) && !emailNoteExpired;
   const emailNoteClass = `${styles.emailNote} ${emailNoteLeaving ? styles.noteLeave : ""}`;
+  // Staff help requested but nobody claimed yet: the composer locks (ticket
+  // 43). Claiming — or a fresh conversation after Clear — re-enables it.
+  const composerLocked = handoff && !claimed;
 
   return (
     <main className={styles.panel}>
@@ -789,7 +820,12 @@ export default function WidgetFrame() {
         </p>
       ) : null}
       {claimed ? (
-        <p className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}>
+        // Announced once when staff take over (ticket 43) — the moment the
+        // composer unlocks.
+        <p
+          className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}
+          role="status"
+        >
           A college staff member has joined the conversation and will reply here.
         </p>
       ) : null}
@@ -882,7 +918,7 @@ export default function WidgetFrame() {
                     key={choice.id}
                     type="button"
                     className={styles.topicButton}
-                    disabled={sending}
+                    disabled={sending || composerLocked}
                     onClick={() => void send(choice.topic, choice.id)}
                   >
                     {choice.topic}
@@ -899,8 +935,19 @@ export default function WidgetFrame() {
       <p className={styles.status} role="status">
         {error}
       </p>
+      {composerLocked ? (
+        // Announced once when the lock begins (ticket 43); it leaves the
+        // stage to the claimed notice when staff take over.
+        <p className={styles.waiting} role="status">
+          Waiting for a staff member to take over…
+        </p>
+      ) : null}
       {topics.length > 0 ? (
-        <TopicsStrip topics={topics} disabled={sending} onPick={(question) => void send(question)} />
+        <TopicsStrip
+          topics={topics}
+          disabled={sending || composerLocked}
+          onPick={(question) => void send(question)}
+        />
       ) : null}
       <form className={styles.form} onSubmit={submit}>
         <label className={styles.srOnly} htmlFor="sfcw-question">
@@ -914,6 +961,7 @@ export default function WidgetFrame() {
           maxLength={MAX_MESSAGE_LENGTH}
           placeholder="Type your question"
           value={question}
+          disabled={composerLocked}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -925,7 +973,7 @@ export default function WidgetFrame() {
         <button
           type="submit"
           className={styles.send}
-          disabled={sending}
+          disabled={sending || composerLocked}
           aria-busy={sending || undefined}
         >
           {sending ? (
