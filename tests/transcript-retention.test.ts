@@ -265,7 +265,7 @@ describe("cleanup removes only closed conversations past the period", () => {
   });
 });
 
-describe("the retention boundary is the configured period", () => {
+describe("the retention boundary", () => {
   it("removes only past the period, keeps the boundary instant", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { runRetentionSweep } = await import("../src/domain/retention");
@@ -289,7 +289,77 @@ describe("the retention boundary is the configured period", () => {
     expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE id = ?", atBoundary.id)).n).toBe(1);
   });
 
-  it("does nothing while retention is unconfigured", async () => {
+  it("sweeps at the 30-day default while unconfigured, with no grandfathering", async () => {
+    const { getChatbotService } = await import("../src/db/service");
+    const { runRetentionSweep } = await import("../src/domain/retention");
+    const { db, store } = await getChatbotService();
+
+    await db.run("DELETE FROM settings WHERE key = 'transcript_retention_days'");
+
+    // The upgrade decision (ticket 47, recorded 2026-11-05): an install that
+    // never configured retention starts sweeping at the default immediately.
+    // The clock runs from closure, so a backlog closed long ago is already
+    // past its 30 days and is not grandfathered.
+    const ancient = await closedConversation("ancient@example.net");
+    await setClosedAt(ancient.id, daysAgo(365));
+    const withinDefault = await closedConversation();
+    await setClosedAt(withinDefault.id, daysAgo(29));
+
+    // Active conversations are never deleted merely because they are old:
+    // only closed rows are ever eligible, whatever their age.
+    const awaiting = await startConversation();
+    await ask(awaiting, "An old question that still needs a human.");
+    await setCreatedAt(awaiting.id, daysAgo(60));
+    const claimed = await claimedConversation();
+    await setCreatedAt(claimed.id, daysAgo(60));
+    const botActive = await startConversation();
+    await setCreatedAt(botActive.id, daysAgo(60));
+
+    const before = await sql<{ n: number }>("SELECT COUNT(*) AS n FROM retention_runs");
+    const result = await runRetentionSweep(db, store, new Date());
+    // Leftover fixtures from earlier tests may legitimately expire in the
+    // same pass; this test's own fixtures are asserted exactly below.
+    expect(result?.removedConversations).toBeGreaterThanOrEqual(1);
+    expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE id = ?", ancient.id)).n).toBe(0);
+    expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?", ancient.id)).n).toBe(0);
+    for (const survivor of [withinDefault, awaiting, claimed, botActive]) {
+      expect(
+        (await sql<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE id = ?", survivor.id)).n,
+      ).toBe(1);
+    }
+    // The recorded cleanup carries the effective period, not a null.
+    const run = await sql<{ retention_days: number }>(
+      "SELECT retention_days FROM retention_runs ORDER BY ran_at DESC LIMIT 1",
+    );
+    expect(run.retention_days).toBe(30);
+    expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM retention_runs")).n).toBe(before.n + 1);
+  });
+
+  it("applies the exact boundary at the default while unconfigured", async () => {
+    const { getChatbotService } = await import("../src/db/service");
+    const { runRetentionSweep } = await import("../src/domain/retention");
+    const { db, store } = await getChatbotService();
+
+    await db.run("DELETE FROM settings WHERE key = 'transcript_retention_days'");
+    const now = new Date();
+    const periodMs = 30 * 24 * 60 * 60 * 1000;
+    const justBefore = await closedConversation();
+    await setClosedAt(justBefore.id, new Date(now.getTime() - periodMs - 60_000).toISOString());
+    const atBoundary = await closedConversation();
+    await setClosedAt(atBoundary.id, new Date(now.getTime() - periodMs).toISOString());
+
+    // Runs on this file's shared database in file order: the preceding test
+    // has already purged that file's older leftovers, so this sweep sees
+    // exactly these two fixtures past 29 days.
+    const result = await runRetentionSweep(db, store, now);
+    expect(result?.removedConversations).toBe(1);
+    expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE id = ?", justBefore.id)).n).toBe(0);
+    // At exactly the boundary the period has not quite passed; the transcript
+    // lasts one moment longer.
+    expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM conversations WHERE id = ?", atBoundary.id)).n).toBe(1);
+  });
+
+  it("refuses to sweep while the stored period is corrupt", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { runRetentionSweep } = await import("../src/domain/retention");
     const { db, store } = await getChatbotService();
@@ -297,6 +367,12 @@ describe("the retention boundary is the configured period", () => {
     await db.run("DELETE FROM settings WHERE key = 'transcript_retention_days'");
     const oldClosed = await closedConversation();
     await setClosedAt(oldClosed.id, daysAgo(365));
+    // A hand-edited or corrupted row must never cause a deletion: the sweep
+    // refuses and the transcript survives (the pre-47 guarantee, preserved).
+    await db.run(
+      "INSERT INTO settings (key, value, updated_at) VALUES ('transcript_retention_days', 'not-a-number', ?)",
+      new Date().toISOString(),
+    );
 
     const before = await sql<{ n: number }>("SELECT COUNT(*) AS n FROM retention_runs");
     const result = await runRetentionSweep(db, store, new Date());

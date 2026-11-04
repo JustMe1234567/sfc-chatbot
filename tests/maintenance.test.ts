@@ -35,9 +35,10 @@ describe("maintenance endpoint authorization", () => {
       removedConversations: number | null;
     };
     expect(body.ok).toBe(true);
-    // Unconfigured retention disables the transcript sweep (null), the same
-    // contract as the staff-traffic trigger (ticket 10).
-    expect(body.removedConversations).toBeNull();
+    // With no period configured the sweep runs at the 30-day default
+    // (ticket 47); on a fresh database nothing has expired yet, so the run
+    // reports zero removals where the pre-47 contract reported "disabled".
+    expect(body.removedConversations).toBe(0);
     delete process.env.CRON_SECRET;
   });
 

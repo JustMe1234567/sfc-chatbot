@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
-import { getTranscriptRetentionDays, isValidRetentionDays, setTranscriptRetentionDays } from "@/settings";
+import {
+  DEFAULT_RETENTION_DAYS,
+  getTranscriptRetentionDays,
+  isValidRetentionDays,
+  setTranscriptRetentionDays,
+} from "@/settings";
 import { sweepTranscripts } from "@/domain/retention";
 import { getChatbotService } from "@/db/service";
 
 /**
- * The owner's transcript retention period (ticket 10): how many days a closed
- * conversation's transcript and visitor contact details are kept before the
- * automated cleanup removes them. While unconfigured, closed transcripts are
- * kept indefinitely. Saving runs the cleanup immediately so a newly set (or
- * shortened) period takes effect without waiting for staff traffic.
+ * The owner's transcript retention period (ticket 10, amended by ticket 47):
+ * how many days a closed conversation's transcript and visitor contact
+ * details are kept before the automated cleanup removes them. While no
+ * period is configured, the 30-day default applies; null resets to it.
+ * Saving runs the cleanup immediately so a newly set (or shortened) period
+ * takes effect without waiting for staff traffic.
  */
 export async function GET(request: Request) {
   const guard = await requireStaff(request.headers, { roles: ["owner"] });
@@ -32,7 +38,7 @@ export async function PUT(request: Request) {
   const body = (await request.json().catch(() => null)) as { days?: unknown } | null;
   if (body === null || !("days" in body)) {
     return NextResponse.json(
-      { error: { code: "invalid_retention", message: "Provide the retention period in days, or null to keep transcripts indefinitely." } },
+        { error: { code: "invalid_retention", message: `Provide the retention period in days, or null to reset to the ${DEFAULT_RETENTION_DAYS}-day default.` } },
       { status: 400 },
     );
   }

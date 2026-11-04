@@ -103,21 +103,47 @@ export const MIN_RETENTION_DAYS = 1;
 export const MAX_RETENTION_DAYS = 3650;
 
 /**
- * The configured transcript retention period in days, or null while the
- * college has not set one (closed transcripts are then kept indefinitely).
- * A corrupt or hand-edited row reads as unconfigured, mirroring support
- * hours: retention must never delete on the strength of a bad value.
+ * The retention period in effect while the college has not set one (ticket
+ * 47): closed transcripts expire 30 days after closure. An explicit owner
+ * setting always wins; the wire format keeps reporting null for "no explicit
+ * period" so the dashboard can say which value is the default.
  */
-export async function getTranscriptRetentionDays(db: AppDatabase): Promise<number | null> {
+export const DEFAULT_RETENTION_DAYS = 30;
+
+/**
+ * The stored transcript-retention setting, read as one of three states: no
+ * owner period exists (the 30-day default applies), the stored value is not
+ * a valid period (the sweep must refuse to run — retention must never delete
+ * on the strength of a bad value), or an explicit period in days that wins
+ * over the default.
+ */
+export type TranscriptRetentionSetting =
+  | { kind: "absent" }
+  | { kind: "invalid"; raw: string }
+  | { kind: "set"; days: number };
+
+export async function readTranscriptRetention(db: AppDatabase): Promise<TranscriptRetentionSetting> {
   const raw = await getSetting(db, TRANSCRIPT_RETENTION_KEY);
   if (raw === null) {
-    return null;
+    return { kind: "absent" };
   }
   const parsed = Number(raw);
-  return isValidRetentionDays(parsed) ? parsed : null;
+  return isValidRetentionDays(parsed) ? { kind: "set", days: parsed } : { kind: "invalid", raw };
 }
 
-/** Sets the period; null clears it back to keeping closed transcripts. */
+/**
+ * The configured transcript retention period in days, or null while the
+ * college has not set one (the 30-day default then applies, ticket 47). A
+ * corrupt or hand-edited row also reads as null here, mirroring support
+ * hours — but the sweep additionally refuses to run on it, so a bad value
+ * can still never cause a deletion.
+ */
+export async function getTranscriptRetentionDays(db: AppDatabase): Promise<number | null> {
+  const setting = await readTranscriptRetention(db);
+  return setting.kind === "set" ? setting.days : null;
+}
+
+/** Sets the period; null resets it to the 30-day default. */
 export async function setTranscriptRetentionDays(db: AppDatabase, days: number | null): Promise<void> {
   if (days === null) {
     await db.run("DELETE FROM settings WHERE key = ?", TRANSCRIPT_RETENTION_KEY);
@@ -253,9 +279,10 @@ const ANALYTICS_RETENTION_KEY = "analytics_retention_days";
  * How many days of analytics rows (anonymous presence and daily rollups)
  * are kept before expiry removes them (ticket 17). Defined separately from
  * transcript retention: purging a transcript must never change reported
- * totals, and keeping transcripts forever must not keep visitor identifiers.
- * Like reporting above, expiry is always on — an unset or corrupt value
- * reads as the default, never as "keep indefinitely".
+ * totals, and shedding analytics rows must not delete visitor transcripts.
+ * Expiry is always on — an unset or corrupt value reads as the default,
+ * never as "keep indefinitely"; transcript retention works the same way
+ * since its 30-day default (ticket 47).
  */
 export async function getAnalyticsRetentionDays(db: AppDatabase): Promise<number> {
   const raw = await getSetting(db, ANALYTICS_RETENTION_KEY);

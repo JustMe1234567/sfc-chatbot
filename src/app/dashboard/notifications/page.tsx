@@ -3,7 +3,12 @@ import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
 import { listNotifications } from "@/mail/notifications";
-import { getAlertRecipients, getSupportHours, getTranscriptRetentionDays } from "@/settings";
+import {
+  DEFAULT_RETENTION_DAYS,
+  getAlertRecipients,
+  getSupportHours,
+  getTranscriptRetentionDays,
+} from "@/settings";
 import { scheduleSummary } from "@/domain/hours";
 import { latestRetentionRun } from "@/domain/retention";
 import { getChatbotService } from "@/db/service";
@@ -80,7 +85,7 @@ export default async function NotificationsPage() {
                 <dd>
                   {retentionDays !== null
                     ? `${retentionDays} days after closure`
-                    : "Not configured; closed transcripts are kept."}
+                    : `${DEFAULT_RETENTION_DAYS} days after closure (the default)`}
                 </dd>
               </div>
             </dl>

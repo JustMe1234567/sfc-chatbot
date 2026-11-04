@@ -1,5 +1,5 @@
 import type { AppDatabase } from "../db/appDatabase";
-import { getTranscriptRetentionDays } from "../settings";
+import { DEFAULT_RETENTION_DAYS, readTranscriptRetention } from "../settings";
 import type { RetentionRun, Store } from "./types";
 
 export interface RetentionSweepResult {
@@ -8,21 +8,30 @@ export interface RetentionSweepResult {
 
 /**
  * Removes every closed conversation whose retention period has passed, along
- * with its transcript and visitor contact details (ticket 10). Unconfigured
- * retention disables the sweep entirely: null comes back and nothing is
- * touched, so a missing setting can never delete a transcript. A run that
- * removes nothing records nothing — the operator's cleanup history lists
- * actual removals, and reruns stay free.
+ * with its transcript and visitor contact details (ticket 10, amended by
+ * ticket 47). The clock runs from a conversation's closure — active
+ * conversations are never eligible — and while no owner period is configured
+ * the default of 30 days applies, so an installation that never configured
+ * anything still sheds transcripts older than that (the recorded upgrade
+ * decision: no grandfathering). A corrupt stored value refuses the sweep
+ * entirely and returns null: retention must never delete on the strength of
+ * a bad value. A run that removes nothing records nothing — the operator's
+ * cleanup history lists actual removals, and reruns stay free.
  */
 export async function runRetentionSweep(
   db: AppDatabase,
   store: Store,
   now: Date = new Date(),
 ): Promise<RetentionSweepResult | null> {
-  const retentionDays = await getTranscriptRetentionDays(db);
-  if (retentionDays === null) {
+  const setting = await readTranscriptRetention(db);
+  if (setting.kind === "invalid") {
+    console.error(
+      "transcript retention setting is not a valid period; sweep skipped:",
+      setting.raw.slice(0, 64),
+    );
     return null;
   }
+  const retentionDays = setting.kind === "set" ? setting.days : DEFAULT_RETENTION_DAYS;
   const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
   const expired = await store.listConversationsClosedBefore(cutoff);
   let removedConversations = 0;

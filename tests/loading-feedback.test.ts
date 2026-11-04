@@ -52,7 +52,7 @@ describe("shared pending feedback (ticket 42)", () => {
       ["src/app/dashboard/answers/welcome-form.tsx", ["Saving…"]],
       ["src/app/dashboard/notifications/retry-button.tsx", ["Retrying…"]],
       ["src/app/dashboard/notifications/support-hours-form.tsx", ["Saving…", "Clearing…"]],
-      ["src/app/dashboard/notifications/retention-form.tsx", ["Saving…", "Clearing…"]],
+      ["src/app/dashboard/notifications/retention-form.tsx", ["Saving…", "Resetting…"]],
       ["src/app/dashboard/notifications/alert-settings-form.tsx", ["Saving…"]],
       ["src/app/dashboard/analytics/analytics-settings-form.tsx", ["Saving…"]],
       ["src/app/dashboard/staff/invite-form.tsx", ["Creating…"]],

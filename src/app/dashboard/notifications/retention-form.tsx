@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, isValidRetentionDays } from "@/settings";
+import {
+  DEFAULT_RETENTION_DAYS,
+  MAX_RETENTION_DAYS,
+  MIN_RETENTION_DAYS,
+  isValidRetentionDays,
+} from "@/settings";
 import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
@@ -11,11 +16,17 @@ export interface RetentionFormRun {
   removedConversations: number;
 }
 
+/** "1 conversation" / "3 conversations", for the sweep-result lines. */
+function removedConversationsLabel(count: number): string {
+  return `${count} conversation${count === 1 ? "" : "s"}`;
+}
+
 /**
- * Owner configuration of the transcript retention period (ticket 10). A
- * closed conversation's transcript and visitor contact details are removed
- * once this many days pass; while unconfigured they are kept indefinitely.
- * Saving runs the cleanup immediately.
+ * Owner configuration of the transcript retention period (ticket 10,
+ * amended by ticket 47). A closed conversation's transcript and visitor
+ * contact details are removed permanently once this many days pass; while
+ * no period is set, the default of 30 days applies. Saving runs the cleanup
+ * immediately.
  */
 export default function RetentionForm({
   initialDays,
@@ -47,12 +58,19 @@ export default function RetentionForm({
       return;
     }
     const result = (await response.json()) as { days: number | null; removed: number };
+    // The input reflects the saved state: a reset returns the field to the
+    // empty "default applies" state instead of lingering at the typed value.
+    setDays(period === null ? "" : String(period));
     if (period === null) {
-      setMessage("Retention cleared; closed transcripts are kept indefinitely.");
+      setMessage(
+        result.removed > 0
+          ? `Reset to the ${DEFAULT_RETENTION_DAYS}-day default. ${removedConversationsLabel(result.removed)} removed now.`
+          : `Retention reset to the ${DEFAULT_RETENTION_DAYS}-day default.`,
+      );
     } else {
       setMessage(
         result.removed > 0
-          ? `Saved. ${result.removed} expired conversation${result.removed === 1 ? "" : "s"} removed now.`
+          ? `Saved. ${removedConversationsLabel(result.removed)} removed now.`
           : "Retention period saved.",
       );
     }
@@ -76,9 +94,9 @@ export default function RetentionForm({
     <form className={`${styles.ruleCard} ${styles.alertSettingsCard}`} onSubmit={submit}>
       <h2>Transcript retention</h2>
       <p className={styles.hint}>
-        Closed conversations are removed with their messages and visitor email
-        addresses once this many days have passed, and their return links stop
-        working. Leave empty to keep closed transcripts indefinitely.
+        Closed conversations are removed permanently — with their messages,
+        visitor email addresses, and return links — once this many days have
+        passed. Leave empty to use the default of {DEFAULT_RETENTION_DAYS} days.
       </p>
       <div className={styles.formField}>
         <label htmlFor="retention-days">Retention period</label>
@@ -90,6 +108,7 @@ export default function RetentionForm({
             min={MIN_RETENTION_DAYS}
             max={MAX_RETENTION_DAYS}
             step={1}
+            placeholder={String(DEFAULT_RETENTION_DAYS)}
             value={days}
             onChange={(event) => setDays(event.target.value)}
           />
@@ -109,18 +128,16 @@ export default function RetentionForm({
           type="button"
           className={styles.secondaryButton}
           pending={pendingAction === "clear"}
-          pendingLabel="Clearing…"
+          pendingLabel="Resetting…"
           disabled={pendingAction === "save"}
           onClick={() => void save(null)}
         >
-          Clear
+          Reset to default
         </PendingButton>
       </div>
       <p className={styles.hint}>
         {lastRun
-          ? `Last cleanup removed ${lastRun.removedConversations} conversation${
-              lastRun.removedConversations === 1 ? "" : "s"
-            } on ${new Date(lastRun.ranAt).toLocaleString("en-GB")}.`
+          ? `Last cleanup removed ${removedConversationsLabel(lastRun.removedConversations)} on ${new Date(lastRun.ranAt).toLocaleString("en-GB")}.`
           : "No cleanup has removed anything yet."}
       </p>
       {message ? (

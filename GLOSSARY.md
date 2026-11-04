@@ -65,7 +65,7 @@ A random UUID the widget generates in its own storage on the chatbot origin — 
 The calendar day an analytics event belongs to, drawn in the site's configured reporting time zone (default Asia/Singapore). Chat and escalation rollups, daily visitor counts, and period boundaries all use it.
 
 **Analytics retention period**:
-The owner-configured number of days analytics rows (anonymous presence and daily rollups) are kept before expiry removes them; separate from the retention period that governs transcripts, and always on — a college that keeps transcripts forever still expires visitor identifiers.
+The owner-configured number of days analytics rows (anonymous presence and daily rollups) are kept before expiry removes them; separate from the retention period that governs transcripts. Always on, like transcript cleanup since its 30-day default (ticket 47): expiring visitor identifiers never waits on a configuration that may never come.
 
 **Return link**:
 A short-lived, single-use link mailed to a visitor so they can resume their own conversation after leaving. Only its hash is stored; redeeming it grants a fresh visitor session.
@@ -74,7 +74,7 @@ A short-lived, single-use link mailed to a visitor so they can resume their own 
 The staff desk's open days and times, expressed in the college's own time zone. Handoff wording reflects them; while unconfigured, visitors get a general follow-up message that promises no response time.
 
 **Retention period**:
-The owner-configured number of days a closed conversation's transcript and visitor contact details are kept. Once the period passes, cleanup removes the conversation, its messages, and every way back into it; while unconfigured, closed transcripts are kept indefinitely.
+The number of days a closed conversation's transcript and visitor contact details are kept. Once the period passes, cleanup removes the conversation, its messages, and every way back into it. While no owner period is configured, a default of 30 days after closure applies (ticket 47); an explicit owner setting always wins, and the clock runs only from closure — active conversations are never removed for age.
 
 **Retention run**:
 The operator-visible record of one cleanup pass that removed expired conversations. It carries counts only — never message text or contact details.
