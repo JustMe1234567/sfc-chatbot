@@ -282,8 +282,13 @@ await page.screenshot({ path: join(OUT, "desk-status-list.png"), fullPage: true 
   db.prepare("UPDATE conversations SET last_activity_at = ? WHERE state = 'bot_active'").run(aged);
   db.close();
 }
-await page.goto(`${BASE}/dashboard/inbox/history`);
+// The History TAB must reach the archive (ticket 48): clicking it shows the
+// History heading and rows, not the live desk again.
+await page.goto(`${BASE}/dashboard/inbox`);
+await list.waitFor({ timeout: 10000 });
+await page.getByRole("link", { name: "History" }).click();
 await page.getByRole("heading", { name: "History" }).waitFor({ timeout: 10000 });
+console.log("ok: the History tab reaches the archive");
 const historyDots = await page.getByRole("img").count();
 const historyBadges =
   (await page.getByText("Needs human", { exact: true }).count()) +
@@ -293,6 +298,17 @@ if (historyDots !== 0 || historyBadges !== 0) {
     `history rows must carry no status treatment, got dots=${historyDots} badges=${historyBadges}`,
   );
 }
+// A history conversation's back link targets the archive (ticket 48). The
+// back link is a mobile-only affordance (hidden at desktop widths), so its
+// href is asserted rather than clicked. Rows are the links that contain a
+// timestamp; the two tabs do not.
+await list.locator("a:has(time)").first().click();
+const backLink = page.locator('[class*="deskBack"]');
+await backLink.waitFor({ state: "attached", timeout: 10000 });
+if ((await backLink.getAttribute("href")) !== "/dashboard/inbox/history") {
+  throw new Error("a history conversation's back link must return to the archive");
+}
+console.log("ok: a history conversation's back link targets the archive");
 console.log("ok: history rows keep their state text and no tier treatment");
 await page.screenshot({ path: join(OUT, "desk-status-history.png"), fullPage: true });
 await page.goto(`${BASE}/dashboard/inbox`);

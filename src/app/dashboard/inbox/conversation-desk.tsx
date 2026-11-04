@@ -149,7 +149,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               ) : null}
             </Link>
             <Link
-              href="/dashboard/inbox?view=history"
+              href="/dashboard/inbox/history"
               aria-current={view === "history" ? "page" : undefined}
             >
               History
@@ -228,7 +228,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               </div>
               <Link
                 className={styles.deskBack}
-                href={view === "history" ? "/dashboard/inbox?view=history" : "/dashboard/inbox"}
+                href={view === "history" ? "/dashboard/inbox/history" : "/dashboard/inbox"}
               >
                 ← All conversations
               </Link>
