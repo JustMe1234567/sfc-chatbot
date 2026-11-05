@@ -387,10 +387,30 @@ a:focus-visible {
   display: none;
 }
 
-/* The expand/collapse control sits at the rail's bottom, under the
-   navigation and over the identity divider (ticket 58), so the reference's
-   crest/divider/navigation hierarchy reads untouched. A quiet full-width
-   row; the compact rail shows it as the chevron alone. */
+/* Collapsed rows are true squares (ticket 60): 44px on both axes, centered
+   in the rail, contents centered in the tile. The base row stretches to the
+   rail's inner width and insets its mark by the horizontal padding — a 48×44
+   rectangle with the icon pushed off-center — so width, padding, and
+   justification all stand down here. (The label is display:none in this
+   state; gap: 0 keeps the single-mark centering true regardless.) */
+.sidebar[data-collapsed] .sideItem {
+  width: 44px;
+  align-self: center;
+  gap: 0;
+  padding: 0;
+  justify-content: center;
+}
+
+/* The relocated control shares the nav rows' collapsed square (ticket 60),
+   standing down its expanded full-width stretch. */
+.sidebar[data-collapsed] .sideToggle {
+  width: 44px;
+  align-self: center;
+}
+
+/* The expand/collapse control leads the icon stack (ticket 60, superseding
+   ticket 58's bottom slot): first row under the crest. A quiet full-width
+   row when expanded; the compact rail shows it as the chevron tile alone. */
 .sideToggle {
   display: grid;
   place-items: center;
@@ -425,7 +445,9 @@ a:focus-visible {
 .sideNav {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* Ticket 60: a tight icon stack — the rows' own 44px floors set the
+     rhythm, so the gap only separates the tiles. */
+  gap: 2px;
   /* The identity stays pinned at the rail's bottom even on short viewports:
      the nav gives up its space and scrolls instead of pushing it out. */
   flex: 1;
@@ -439,7 +461,9 @@ a:focus-visible {
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  padding: 8px 10px;
+  /* Horizontal-only padding (ticket 60): the 44px floor and center
+     alignment own the vertical geometry, so block padding just added air. */
+  padding: 0 10px;
   border-radius: var(--radius-s);
   color: var(--rail-muted);
   font: 550 14px system-ui, sans-serif;

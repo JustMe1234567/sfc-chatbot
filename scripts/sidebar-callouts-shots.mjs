@@ -5,8 +5,12 @@
 // replaces it, leaving dismisses it, expanding hides it for good), keyboard
 // focus parity, the active row staying highlighted, Sign out's own callout,
 // persistence across reload, the drawer keeping visible labels, and no
-// overflow at 1280/760/390/360. In before mode it only signs in and captures
-// the ticket-52 rail as it ships today.
+// overflow at 1280/760/390/360. Ticket 60 adds geometry checks: collapsed
+// rows are centered 44px squares with centered marks, the expand/collapse
+// control leads the icon stack (expanded and collapsed) with its own
+// callout, and the stack reads tight. In before mode it only signs in and
+// captures the rail's expanded and collapsed states as the build ships
+// them (era-agnostic: pre-57 defaults expanded, 57+ defaults compact).
 // Usage: node scripts/sidebar-callouts-shots.mjs <outdir> [port] [before]
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
@@ -137,6 +141,13 @@ if (BEFORE) {
   await gotoAndWait();
   await page.evaluate(() => window.localStorage.removeItem("dashboard.sidebar.collapsed"));
   await gotoAndWait();
+  // Era-agnostic: builds before ticket 57 default expanded, 57+ default
+  // compact — normalize to expanded so both states get shot either way.
+  const expand = rail.getByRole("button", { name: "Expand navigation" });
+  if (await expand.count()) {
+    await expand.click();
+    await page.waitForTimeout(400);
+  }
   await shotAt(1280, 900, "before-sidebar-1280");
   // Collapse and hover a row to capture the current tooltip treatment.
   await rail.getByRole("button", { name: "Collapse navigation" }).click();
@@ -162,6 +173,67 @@ if (railWidth > 100) {
   throw new Error(`the default rail is not the compact icon rail (width ${railWidth})`);
 }
 console.log("ok: compact icon rail is the desktop default");
+
+// --- Ticket 60: square centered tiles, the control first, tight rhythm. -----
+// Geometry helpers: read computed boxes straight from the laid-out rail.
+function boxCenter(box) {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+const toggle = rail.getByRole("button", { name: "Expand navigation" });
+if ((await toggle.count()) !== 1) {
+  throw new Error("the collapsed rail does not show the expand control");
+}
+const toggleBox = await toggle.boundingBox();
+const firstBox = await navLinks.first().boundingBox();
+const railBox = await rail.boundingBox();
+// The control leads: above the first nav row, below the crest divider.
+if (toggleBox.y + toggleBox.height > firstBox.y) {
+  throw new Error("the collapse control is not the first row of the icon stack");
+}
+// Every nav row is a true 44px square, centered in the rail, mark centered
+// in the tile.
+for (const [index, link] of (await navLinks.all()).entries()) {
+  const tile = await link.boundingBox();
+  if (Math.abs(tile.width - 44) > 1 || Math.abs(tile.height - 44) > 1) {
+    throw new Error(`row ${index} is not a 44px square: ${JSON.stringify(tile)}`);
+  }
+  const tileCenter = boxCenter(tile);
+  const railCenter = boxCenter(railBox).x;
+  if (Math.abs(tileCenter.x - railCenter) > 1.5) {
+    throw new Error(`row ${index} is not centered in the rail (${tileCenter.x} vs ${railCenter})`);
+  }
+  const icon = await link.locator("svg").first().boundingBox();
+  const iconCenter = boxCenter(icon);
+  if (Math.abs(iconCenter.x - tileCenter.x) > 1.5 || Math.abs(iconCenter.y - tileCenter.y) > 1.5) {
+    throw new Error(`row ${index}'s mark sits off-center (${iconCenter.x - tileCenter.x}, ${iconCenter.y - tileCenter.y})`);
+  }
+}
+console.log("ok: every collapsed row is a centered 44px square with a centered mark");
+// The control shares the square treatment.
+if (Math.abs(toggleBox.width - 44) > 1 || Math.abs(toggleBox.height - 44) > 1) {
+  throw new Error(`the collapsed control is not square: ${JSON.stringify(toggleBox)}`);
+}
+// Tight rhythm: consecutive tiles sit ~2px apart.
+for (let i = 0; i < (await navLinks.count()) - 1; i++) {
+  const a = await navLinks.nth(i).boundingBox();
+  const b = await navLinks.nth(i + 1).boundingBox();
+  const gap = b.y - (a.y + a.height);
+  if (Math.abs(gap - 2) > 1) {
+    throw new Error(`nav rows ${i}/${i + 1} sit ${gap}px apart, expected ~2px`);
+  }
+}
+console.log("ok: the icon stack reads tight (~2px between tiles)");
+// The relocated control joins the callout system like the other icon rows.
+await toggle.hover();
+await openCallout().waitFor({ timeout: 5000 });
+if ((await calloutText()) !== "Expand navigation") {
+  throw new Error(`the control's callout is missing or mislabelled: "${await calloutText()}"`);
+}
+await assertCalloutWithinViewport("toggle callout");
+await page.getByRole("heading").first().hover();
+await page.waitForTimeout(250);
+console.log("ok: the leading control shows its own callout on hover");
 
 // --- Hover one row: exactly one callout, with that row's label. -------------
 await navLinks.first().hover();
@@ -237,6 +309,16 @@ if (!(await navLinks.first().innerText()).includes("Conversations")) {
   throw new Error("the expanded rail does not show visible labels");
 }
 console.log("ok: expanded rail shows labels, no callouts");
+
+// --- Ticket 60: the control keeps its leading slot when expanded too. -------
+const expandedToggle = rail.getByRole("button", { name: "Collapse navigation" });
+const expandedToggleBox = await expandedToggle.boundingBox();
+const expandedFirstBox = await navLinks.first().boundingBox();
+if (expandedToggleBox.y + expandedToggleBox.height > expandedFirstBox.y) {
+  throw new Error("the expanded rail no longer leads with the control");
+}
+await shotAt(1280, 900, "after-sidebar-expanded-1280");
+console.log("ok: the expanded rail also leads with the control");
 
 // --- The choice persists across reload. --------------------------------------
 await gotoAndWait();

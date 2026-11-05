@@ -133,14 +133,18 @@ describe("the reference rail (ticket 58)", () => {
     expect(css).toMatch(/\.sideIdentity \.secondaryButton \{[^}]*min-height: 44px/s);
   });
 
-  it("keeps the toggle control at the rail's bottom without breaking ticket 57", async () => {
+  it("keeps the toggle control leading the rail without breaking ticket 57", async () => {
     const header = await read(HEADER);
 
-    // Rendered after the nav, before the identity block.
-    expect(header.indexOf("styles.sideNav")).toBeLessThan(header.indexOf("styles.sideToggle"));
-    expect(header.indexOf("styles.sideToggle")).toBeLessThan(header.indexOf("styles.sideIdentity"));
-    // The aria contract and persistence survive from tickets 52/57.
-    expect(header).toContain('aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}');
+    // Ticket 60 supersedes ticket 58's bottom slot: the control renders
+    // first — under the crest, before the nav — and the identity stays last.
+    expect(header.indexOf("styles.sideToggle")).toBeLessThan(header.indexOf("styles.sideNav"));
+    expect(header.indexOf("styles.sideNav")).toBeLessThan(header.indexOf("styles.sideIdentity"));
+    // The aria contract and persistence survive from tickets 52/57. (Ticket
+    // 60 hoisted the swapped name into toggleLabel, shared with the rail's
+    // callout so the two can never drift.)
+    expect(header).toMatch(/const toggleLabel = collapsed \? "Expand navigation" : "Collapse navigation";/);
+    expect(header).toContain("aria-label={toggleLabel}");
     expect(header).toContain("COLLAPSED_KEY");
     // Compact-by-default with one-at-a-time callouts is untouched.
     expect(header).toContain("useState(true)");

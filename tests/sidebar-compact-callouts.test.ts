@@ -25,7 +25,10 @@ describe("the compact-by-default rail (ticket 57)", () => {
     expect(header).toMatch(/getItem\([^)]*\) === "0"/);
     expect(header).not.toMatch(/getItem\([^)]*\) === "1"/);
     // The expand control and persisted preference survive from ticket 52.
-    expect(header).toContain('aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}');
+    // (Ticket 60 hoisted the swapped name into toggleLabel, shared with the
+    // rail's callout so the two can never drift.)
+    expect(header).toMatch(/const toggleLabel = collapsed \? "Expand navigation" : "Collapse navigation";/);
+    expect(header).toContain("aria-label={toggleLabel}");
     expect(header).toContain("COLLAPSED_KEY");
   });
 });

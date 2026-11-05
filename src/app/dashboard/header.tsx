@@ -125,10 +125,12 @@ const MENU_MARK = (
 );
 
 /**
- * The sidebar rail: brand, the role-filtered nav, and the identity pinned
- * at the bottom. `data-collapsed` shrinks it to an icon rail and turns on
- * the hover/focus tooltips; the width and labels animate through the
- * shared motion tokens, which reduce to instant under the OS preference.
+ * The sidebar rail: brand, the expand/collapse control, the role-filtered
+ * nav, and the identity pinned at the bottom (ticket 60 moved the control
+ * to the top of the icon stack). `data-collapsed` shrinks it to an icon
+ * rail and turns on the hover/focus tooltips; the width and labels animate
+ * through the shared motion tokens, which reduce to instant under the OS
+ * preference.
  */
 function SidebarChrome({
   area,
@@ -146,6 +148,9 @@ function SidebarChrome({
   onNavigate?: () => void;
 }) {
   const navItems = NAV.filter((item) => item.roles.includes(role));
+  // The toggle's swapped name, computed once: the accessible label and the
+  // compact rail's callout must never drift apart.
+  const toggleLabel = collapsed ? "Expand navigation" : "Collapse navigation";
   // The compact rail's one callout (ticket 57): hovering or focusing a row
   // shows only that row's label, anchored beside the rail. One state means
   // one callout — moving to another row replaces it, leaving dismisses it.
@@ -192,6 +197,23 @@ function SidebarChrome({
           className={styles.brandMark}
         />
       </div>
+      {onToggle ? (
+        // The expand/collapse control leads the icon stack (ticket 60,
+        // superseding ticket 58's bottom slot): the first row under the
+        // crest. Sitting among the icon-only rows, it joins ticket 57's
+        // one-callout system — hover or focus names it like every other
+        // mark in the compact rail.
+        <button
+          type="button"
+          className={styles.sideToggle}
+          aria-label={toggleLabel}
+          aria-expanded={!collapsed}
+          onClick={onToggle}
+          {...calloutProps(toggleLabel)}
+        >
+          {CHEVRON}
+        </button>
+      ) : null}
       <nav
         className={styles.sideNav}
         aria-label="Dashboard"
@@ -219,20 +241,6 @@ function SidebarChrome({
           </Link>
         ))}
       </nav>
-      {onToggle ? (
-        // The expand/collapse control lives at the rail's bottom, under the
-        // navigation and over the identity divider (ticket 58) — the top of
-        // the rail stays the reference's crest/divider/navigation stack.
-        <button
-          type="button"
-          className={styles.sideToggle}
-          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-          aria-expanded={!collapsed}
-          onClick={onToggle}
-        >
-          {CHEVRON}
-        </button>
-      ) : null}
       <div className={styles.sideIdentity}>
         <span className={styles.whoText}>
           {name} · {ROLE_LABELS[role] ?? role}
