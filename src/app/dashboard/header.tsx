@@ -20,7 +20,8 @@ const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] 
 ];
 
 /**
- * The shared dashboard chrome (ticket 13, sidebar shell from ticket 52).
+ * The shared dashboard chrome (ticket 13, sidebar shell from ticket 52,
+ * compact icon rail and one-at-a-time hover callouts from ticket 57).
  * Links respect the caller's role exactly as the per-page headers did —
  * editors see only Answers, staff see Conversations and Email alerts,
  * owners see everything.
@@ -145,6 +146,38 @@ function SidebarChrome({
   onNavigate?: () => void;
 }) {
   const navItems = NAV.filter((item) => item.roles.includes(role));
+  // The compact rail's one callout (ticket 57): hovering or focusing a row
+  // shows only that row's label, anchored beside the rail. One state means
+  // one callout — moving to another row replaces it, leaving dismisses it.
+  const [callout, setCallout] = useState<{ label: string; top: number } | null>(null);
+  useEffect(() => {
+    // Expanding the rail hides the callout for good — labels are visible.
+    setCallout(null);
+  }, [collapsed]);
+  function showCallout(target: HTMLElement, label: string) {
+    if (!collapsed) {
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    // Keep the callout inside the viewport, including the first and last
+    // rows (12px edge margin; 48px ≈ the callout's half-height plus the
+    // same margin); the element is position:fixed, so no rail or nav scroll
+    // clip can hide it.
+    const top = Math.max(12, Math.min(mid, window.innerHeight - 48));
+    setCallout({ label, top });
+  }
+  const calloutProps = (label: string) =>
+    collapsed
+      ? {
+          onMouseEnter: (event: React.MouseEvent<HTMLElement>) =>
+            showCallout(event.currentTarget, label),
+          onMouseLeave: () => setCallout(null),
+          onFocus: (event: React.FocusEvent<HTMLElement>) =>
+            showCallout(event.currentTarget, label),
+          onBlur: () => setCallout(null),
+        }
+      : {};
   return (
     <>
       <div className={styles.sideBrand}>
@@ -168,7 +201,14 @@ function SidebarChrome({
           {CHEVRON}
         </button>
       ) : null}
-      <nav className={styles.sideNav} aria-label="Dashboard">
+      <nav
+        className={styles.sideNav}
+        aria-label="Dashboard"
+        // The nav scrolls internally on short viewports; a scroll under a
+        // stationary pointer would leave the callout detached from its row,
+        // so any scroll dismisses it.
+        onScroll={() => setCallout(null)}
+      >
         {navItems.map((item) => (
           <Link
             key={item.area}
@@ -176,15 +216,13 @@ function SidebarChrome({
             className={styles.sideItem}
             aria-current={item.area === area ? "page" : undefined}
             onClick={onNavigate}
-            // The collapsed rail hides the visible label and the tooltip is
+            // The collapsed rail hides the visible label and the callout is
             // decorative, so the link carries its own accessible name.
             aria-label={item.label}
+            {...calloutProps(item.label)}
           >
             {ICONS[item.area]}
             <span className={styles.sideLabel} aria-hidden="true">
-              {item.label}
-            </span>
-            <span className={styles.sideTip} aria-hidden="true">
               {item.label}
             </span>
           </Link>
@@ -194,8 +232,24 @@ function SidebarChrome({
         <span className={styles.whoText}>
           {name} · {ROLE_LABELS[role] ?? role}
         </span>
-        <SignOutButton icon={SIGN_OUT_MARK} />
+        <span className={styles.sideSignOutWrap} {...calloutProps("Sign out")}>
+          <SignOutButton icon={SIGN_OUT_MARK} />
+        </span>
       </div>
+      {collapsed && callout ? (
+        // Decorative duplication of the accessible name: aria-hidden keeps
+        // it out of the accessibility tree, pointer-events keeps hover from
+        // re-triggering, and position:fixed (with the clamped top) keeps it
+        // clear of the rail, the page, and the viewport edges.
+        <span
+          className={styles.sideTip}
+          data-open=""
+          aria-hidden="true"
+          style={{ top: callout.top }}
+        >
+          {callout.label}
+        </span>
+      ) : null}
     </>
   );
 }
@@ -218,21 +272,25 @@ export default function DashboardHeader({
   name: string;
   role: string;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  // The desktop default is the compact icon rail (ticket 57): the server
+  // render and the hydration pass agree on collapsed, so default staff see
+  // no flash. A stored explicit preference re-expands after mount.
+  const [collapsed, setCollapsed] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    // Restored after mount: the server render and the hydration pass agree
-    // on expanded, then a stored marker re-collapses. Any value other than
-    // the exact marker — missing, "0", stale junk — reads as expanded.
+    // Restored after mount: only the exact "0" marker — written when a staff
+    // member expands the rail — reads as expanded; missing, "1", or stale
+    // junk stays on the compact default. (Ticket 52 stored "1" for collapsed;
+    // under the new default that reading is unchanged for those staff.)
     try {
-      if (window.localStorage.getItem(COLLAPSED_KEY) === "1") {
-        setCollapsed(true);
+      if (window.localStorage.getItem(COLLAPSED_KEY) === "0") {
+        setCollapsed(false);
       }
     } catch {
-      // Storage unavailable (private mode); stay expanded.
+      // Storage unavailable (private mode); stay compact.
     }
   }, []);
 

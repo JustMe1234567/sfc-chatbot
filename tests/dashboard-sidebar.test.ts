@@ -56,12 +56,14 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
     expect(header).toContain("SIGN_OUT_MARK");
   });
 
-  it("persists the collapse choice and falls back to expanded", async () => {
+  it("persists the collapse choice and falls back to compact (ticket 57)", async () => {
     const header = await readHeader();
     expect(header).toContain("dashboard.sidebar.collapsed");
-    // Only the exact collapsed marker restores the collapsed rail; anything
-    // else — missing, "0", or a stale junk value — reads as expanded.
-    expect(header).toMatch(/getItem\([^)]*\) === "1"/);
+    // Ticket 57 makes the compact rail the desktop default: only the exact
+    // expanded marker ("0", written on expand) restores labels; anything
+    // else — missing, "1", or a stale junk value — stays compact. (Ticket
+    // 52 stored "1" for collapsed; those staff keep the same rail.)
+    expect(header).toMatch(/getItem\([^)]*\) === "0"/);
     expect(header).toMatch(/catch/);
   });
 
@@ -103,13 +105,14 @@ describe("the sidebar styles stay in the dashboard token system (ticket 52)", ()
     expect(css).toMatch(/\.sideItem \{[^}]*min-height: 44px/s);
   });
 
-  it("shows tooltips only while collapsed, and never on the active label", async () => {
+  it("shows the callout only while collapsed, driven by state (ticket 57)", async () => {
     const css = await readFile(path.join(repoRoot(), CSS), "utf8");
-    // Hidden by default (the expanded rail shows real labels)...
+    // Hidden unless the component's data-open marker is present: hover and
+    // focus are handled in the component (ticket 57), so the CSS keeps no
+    // per-row hover selectors — one callout, never several.
     expect(css).toMatch(/\.sideTip \{[^}]*display: none/s);
-    // ...revealed from the collapsed rail on hover or keyboard focus.
-    expect(css).toMatch(/\.sidebar\[data-collapsed\] \.sideItem:hover \.sideTip/);
-    expect(css).toMatch(/\.sidebar\[data-collapsed\] \.sideItem:focus-visible \.sideTip/);
+    expect(css).toMatch(/\.sideTip\[data-open\]/);
+    expect(css).not.toMatch(/\.sideItem:hover \.sideTip/);
   });
 
   it("swaps the rail for the drawer at narrow widths", async () => {

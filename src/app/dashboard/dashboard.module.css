@@ -457,14 +457,16 @@ a:focus-visible {
   opacity: 0;
 }
 
-/* Collapse tooltips: hidden while expanded — the label is already visible —
-   and shown from the icon rail on hover or keyboard focus, floating to the
-   right of the rail so they never cover the active row's highlight. */
+/* The compact rail's callout (ticket 57): one element, state-driven — the
+   component renders it only while a row is hovered or keyboard-focused, so
+   exactly one label shows at a time. position: fixed anchors it beside the
+   rail and escapes the rail's and nav's overflow clipping (the component
+   supplies the clamped viewport top; translate centers the bubble on it).
+   Hidden while the rail is expanded — the labels are already visible. */
 .sideTip {
   display: none;
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
+  position: fixed;
+  left: calc(var(--sidebar-width) + 10px);
   translate: 0 -50%;
   background: var(--rail-bg);
   border: 1px solid var(--rail-line);
@@ -475,13 +477,29 @@ a:focus-visible {
   white-space: nowrap;
   box-shadow: 0 8px 22px rgba(9, 14, 20, 0.35);
   pointer-events: none;
-  /* Above the rail and its overflow clip; below the drawer layers. */
+  /* Above the rail and the page; below the drawer layers. */
   z-index: 65;
 }
 
-.sidebar[data-collapsed] .sideItem:hover .sideTip,
-.sidebar[data-collapsed] .sideItem:focus-visible .sideTip,
-.sidebar[data-collapsed] .sideItem:focus-within .sideTip {
+/* The pointer toward the rail, in the border color so it reads with the
+   bubble outline. */
+.sideTip::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  translate: 0 -50%;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 5px solid var(--rail-line);
+}
+
+.sideTip[data-open] {
+  display: block;
+}
+
+/* The sign-out row's wrapper: a block so its hover area is the row itself. */
+.sideSignOutWrap {
   display: block;
 }
 

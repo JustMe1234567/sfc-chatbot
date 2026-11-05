@@ -1,0 +1,296 @@
+// Ticket 57 verification (headless Chromium): the compact icon sidebar with
+// one-at-a-time hover callouts. Signs the owner in through the real UI, then
+// asserts the rail defaults to compact (no stored preference), that hovering
+// or focusing a row shows exactly one callout with that row's label (moving
+// replaces it, leaving dismisses it, expanding hides it for good), keyboard
+// focus parity, the active row staying highlighted, Sign out's own callout,
+// persistence across reload, the drawer keeping visible labels, and no
+// overflow at 1280/760/390/360. In before mode it only signs in and captures
+// the ticket-52 rail as it ships today.
+// Usage: node scripts/sidebar-callouts-shots.mjs <outdir> [port] [before]
+import { chromium } from "playwright";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { TOTP, URI } from "otpauth";
+import process from "node:process";
+
+const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-sidebar-57";
+const PORT = process.argv[3] ?? "3216";
+const BEFORE = process.argv[4] === "before";
+const BASE = `http://127.0.0.1:${PORT}`;
+const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/sidebar57.db";
+const EMAIL = "owner@example.edu";
+const PASSWORD = "Springfield2026!";
+
+for (let attempt = 0; ; attempt++) {
+  try {
+    await fetch(`${BASE}/api/healthz`);
+    break;
+  } catch {
+    if (attempt > 40) throw new Error("server never came up");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
+// Light slate: wipe only the enrollment; chrome assertions never touch data.
+const db = new DatabaseSync(DB_PATH);
+const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
+if (owner) {
+  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
+  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
+  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
+}
+db.prepare("DELETE FROM answer_rules").run();
+db.close();
+
+const warm = await fetch(`${BASE}/api/v1/topics`);
+if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
+
+const browser = await chromium.launch();
+const context = await browser.newContext();
+const page = await context.newPage();
+const pageErrors = [];
+page.on("pageerror", (error) => {
+  pageErrors.push(String(error).slice(0, 300));
+  console.log("PAGE ERROR:", String(error).slice(0, 300));
+});
+await page.setViewportSize({ width: 1280, height: 900 });
+
+// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
+await page.goto(`${BASE}/dashboard/login`);
+await page.waitForLoadState("domcontentloaded");
+await page.fill("#email", EMAIL);
+await page.fill("#password", PASSWORD);
+await page.click("button[type=submit]");
+await page.waitForTimeout(3000);
+await page.goto(`${BASE}/dashboard/enroll`);
+await page.waitForLoadState("domcontentloaded");
+await page.fill("#password", PASSWORD);
+await page.click("button[type=submit]");
+await page.waitForSelector("code", { timeout: 15000 });
+const secret = (await page.textContent("code")).trim();
+const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
+await page.fill("#totp", totp.generate());
+await page.click("button[type=submit]");
+await page.waitForURL("**/dashboard/login", { timeout: 15000 });
+await page.fill("#email", EMAIL);
+await page.fill("#password", PASSWORD);
+await page.click("button[type=submit]");
+await page.waitForSelector("#totp", { timeout: 15000 });
+await page.fill("#totp", totp.generate());
+await page.click("button[type=submit]");
+await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+console.log("signed in; enrollment complete");
+mkdirSync(OUT, { recursive: true });
+
+const rail = page.locator("aside").first();
+const navLinks = rail.getByRole("navigation", { name: "Dashboard" }).getByRole("link");
+
+async function gotoAndWait() {
+  await page.goto(`${BASE}/dashboard/inbox`);
+  await page.waitForLoadState("domcontentloaded");
+  await rail.waitFor({ timeout: 10000 });
+}
+
+async function shotAt(width, height, name) {
+  await page.setViewportSize({ width, height });
+  await page.waitForTimeout(350);
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.scrollingElement.scrollWidth,
+    clientWidth: document.scrollingElement.clientWidth,
+  }));
+  if (overflow.scrollWidth > overflow.clientWidth + 1) {
+    throw new Error(`horizontal overflow at ${width}px on ${name}`);
+  }
+  await page.screenshot({ path: join(OUT, `${name}.png`), fullPage: true });
+  console.log("captured", name);
+}
+
+// One callout helper: the open callout element, if any.
+function openCallout() {
+  return page.locator('[class*="sideTip"][data-open]');
+}
+
+async function calloutText() {
+  return (await openCallout().innerText()).trim();
+}
+
+async function assertCalloutWithinViewport(name) {
+  const box = await openCallout().boundingBox();
+  if (!box) throw new Error(`${name}: callout has no box`);
+  const viewport = page.viewportSize();
+  if (
+    box.x < 0 ||
+    box.y < 0 ||
+    box.x + box.width > viewport.width ||
+    box.y + box.height > viewport.height
+  ) {
+    throw new Error(`${name}: callout escapes the viewport at ${JSON.stringify(box)}`);
+  }
+  if (box.x < 60) {
+    throw new Error(`${name}: callout is not anchored beside the rail (x=${box.x})`);
+  }
+}
+
+if (BEFORE) {
+  await gotoAndWait();
+  await page.evaluate(() => window.localStorage.removeItem("dashboard.sidebar.collapsed"));
+  await gotoAndWait();
+  await shotAt(1280, 900, "before-sidebar-1280");
+  // Collapse and hover a row to capture the current tooltip treatment.
+  await rail.getByRole("button", { name: "Collapse navigation" }).click();
+  await page.waitForTimeout(400);
+  await shotAt(1280, 900, "before-sidebar-collapsed-1280");
+  await navLinks.first().hover();
+  await page.waitForTimeout(300);
+  await shotAt(1280, 900, "before-sidebar-hover-1280");
+  if (pageErrors.length > 0) throw new Error(`page errors: ${pageErrors.join(" | ")}`);
+  await browser.close();
+  console.log("before shots captured in", OUT);
+  process.exit(0);
+}
+
+// --- Compact by default on desktop. -----------------------------------------
+await page.evaluate(() => window.localStorage.removeItem("dashboard.sidebar.collapsed"));
+await gotoAndWait();
+if ((await rail.getAttribute("data-collapsed")) === null) {
+  throw new Error("the rail does not default to compact without a saved preference");
+}
+const railWidth = (await rail.boundingBox()).width;
+if (railWidth > 100) {
+  throw new Error(`the default rail is not the compact icon rail (width ${railWidth})`);
+}
+console.log("ok: compact icon rail is the desktop default");
+
+// --- Hover one row: exactly one callout, with that row's label. -------------
+await navLinks.first().hover();
+await openCallout().waitFor({ timeout: 5000 });
+if ((await openCallout().count()) !== 1) {
+  throw new Error("more than one callout is visible");
+}
+const firstName = await navLinks.first().getAttribute("aria-label");
+if ((await calloutText()) !== firstName) {
+  throw new Error(`the callout does not name the hovered row: "${await calloutText()}"`);
+}
+await assertCalloutWithinViewport("hover first row");
+console.log("ok: hovering the first row shows exactly its own callout");
+
+// --- Moving to another row replaces the callout; the old one is gone. -------
+await navLinks.nth(3).hover();
+await page.waitForTimeout(250);
+const replaced = await calloutText();
+if (replaced === firstName) {
+  throw new Error("moving rows did not replace the callout");
+}
+if ((await openCallout().count()) !== 1) {
+  throw new Error("moving rows left more than one callout");
+}
+// The active row keeps its highlight while another row is hovered.
+const currentLink = rail.locator('[aria-current="page"]');
+if ((await currentLink.count()) !== 1) {
+  throw new Error("the active row lost its aria-current during hover");
+}
+console.log("ok: moving replaces the callout; the active row stays highlighted");
+
+// --- Leaving dismisses it. ---------------------------------------------------
+await page.getByRole("heading").first().hover();
+await page.waitForTimeout(250);
+if ((await openCallout().count()) !== 0) {
+  throw new Error("the callout did not dismiss on leave");
+}
+console.log("ok: leaving the rail dismisses the callout");
+
+// --- Keyboard focus shows the same individual callout. -----------------------
+await navLinks.nth(1).focus();
+await openCallout().waitFor({ timeout: 5000 });
+const focusedName = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+if ((await calloutText()) !== focusedName) {
+  throw new Error(`focus callout does not name the focused row: ${focusedName}`);
+}
+await assertCalloutWithinViewport("keyboard focus");
+await page.keyboard.press("Tab");
+await page.waitForTimeout(200);
+console.log("ok: keyboard focus shows the same individual callout");
+
+// --- Sign out carries the same callout, visible at the rail's bottom. -------
+await rail.getByRole("button", { name: "Sign out" }).hover();
+await openCallout().waitFor({ timeout: 5000 });
+if ((await calloutText()) !== "Sign out") {
+  throw new Error("Sign out's callout is missing or mislabelled");
+}
+await assertCalloutWithinViewport("sign out");
+console.log("ok: Sign out shows its own callout at the rail's bottom");
+
+// --- The expanded rail shows labels and never callouts. ---------------------
+await rail.getByRole("button", { name: "Expand navigation" }).click();
+await page.waitForTimeout(400);
+if ((await rail.getAttribute("data-collapsed")) !== null) {
+  throw new Error("the expand control did not expand the rail");
+}
+await navLinks.first().hover();
+await page.waitForTimeout(250);
+if ((await openCallout().count()) !== 0) {
+  throw new Error("the expanded rail must not show callouts");
+}
+if (!(await navLinks.first().innerText()).includes("Conversations")) {
+  throw new Error("the expanded rail does not show visible labels");
+}
+console.log("ok: expanded rail shows labels, no callouts");
+
+// --- The choice persists across reload. --------------------------------------
+await gotoAndWait();
+if ((await rail.getAttribute("data-collapsed")) !== null) {
+  throw new Error("the expanded choice did not persist across reload");
+}
+await rail.getByRole("button", { name: "Collapse navigation" }).click();
+await page.waitForTimeout(400);
+await gotoAndWait();
+if ((await rail.getAttribute("data-collapsed")) === null) {
+  throw new Error("the collapsed choice did not persist across reload");
+}
+console.log("ok: the rail choice persists across reload");
+
+// --- Responsive pass. --------------------------------------------------------
+await shotAt(1280, 900, "after-sidebar-compact-1280");
+await navLinks.first().hover();
+await page.waitForTimeout(250);
+await page.screenshot({ path: join(OUT, "after-sidebar-callout-1280.png"), fullPage: true });
+console.log("captured after-sidebar-callout-1280");
+await rail.getByRole("button", { name: "Sign out" }).hover();
+await page.waitForTimeout(250);
+await page.screenshot({ path: join(OUT, "after-sidebar-callout-signout-1280.png"), fullPage: true });
+console.log("captured after-sidebar-callout-signout-1280");
+
+await shotAt(760, 900, "after-sidebar-760");
+// Narrow widths use the drawer with visible labels.
+for (const width of [390, 360]) {
+  await page.setViewportSize({ width, height: 800 });
+  await page.goto(`${BASE}/dashboard/inbox`);
+  await page.waitForLoadState("domcontentloaded");
+  const menu = page.getByRole("button", { name: "Menu" });
+  await menu.click();
+  const drawer = page.locator('[aria-label="Dashboard menu"]');
+  await drawer.waitFor({ timeout: 5000 });
+  if ((await drawer.getByRole("link", { name: "Conversations" }).count()) !== 1) {
+    throw new Error(`drawer at ${width}px lacks labelled navigation`);
+  }
+  await page.keyboard.press("Escape");
+  await drawer.waitFor({ state: "hidden", timeout: 5000 });
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.scrollingElement.scrollWidth,
+    clientWidth: document.scrollingElement.clientWidth,
+  }));
+  if (overflow.scrollWidth > overflow.clientWidth + 1) {
+    throw new Error(`horizontal overflow at ${width}px`);
+  }
+  console.log(`ok: drawer labelled + Escape closes at ${width}px`);
+}
+await page.setViewportSize({ width: 1280, height: 900 });
+await shotAt(390, 800, "after-sidebar-drawer-390");
+
+if (pageErrors.length > 0) {
+  throw new Error(`page errors during the run: ${pageErrors.join(" | ")}`);
+}
+await browser.close();
+console.log("ticket 57 checks passed; screenshots in", OUT);
