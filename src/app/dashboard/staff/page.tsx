@@ -26,30 +26,32 @@ export default async function StaffPage() {
     <main className={styles.shell}>
       <DashboardHeader area="staff" title="Staff" name={guard.staff.name} role={guard.staff.role} />
 
-      <div className={styles.inbox}>
-        <InviteForm />
-      </div>
+      <div className={styles.contentArea}>
+        <div className={styles.inbox}>
+          <InviteForm />
+        </div>
 
-      <div className={styles.inbox}>
-        {members.map((member) => (
-          <div key={member.id} className={styles.conversationCard}>
-            <div className={styles.meta}>
-              {member.name} · {member.role}
-              {member.banned ? (
-                <span className={styles.badge}>disabled</span>
-              ) : (
-                <span className={styles.publishedBadge}>active</span>
-              )}
+        <div className={styles.inbox}>
+          {members.map((member) => (
+            <div key={member.id} className={styles.conversationCard}>
+              <div className={styles.meta}>
+                {member.name} · {member.role}
+                {member.banned ? (
+                  <span className={styles.badge}>disabled</span>
+                ) : (
+                  <span className={styles.publishedBadge}>active</span>
+                )}
+              </div>
+              <div className={styles.preview}>{member.email}</div>
+              <div className={styles.meta}>
+                {member.twoFactorEnabled ? "second factor enrolled" : "second factor not enrolled"}
+              </div>
+              {!member.banned && member.role !== "owner" && member.id !== guard.staff.userId ? (
+                <DisableButton memberId={member.id} name={member.name} />
+              ) : null}
             </div>
-            <div className={styles.preview}>{member.email}</div>
-            <div className={styles.meta}>
-              {member.twoFactorEnabled ? "second factor enrolled" : "second factor not enrolled"}
-            </div>
-            {!member.banned && member.role !== "owner" && member.id !== guard.staff.userId ? (
-              <DisableButton memberId={member.id} name={member.name} />
-            ) : null}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </main>
   );

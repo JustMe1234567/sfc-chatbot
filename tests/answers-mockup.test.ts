@@ -91,6 +91,7 @@ describe("search, status filter, and the count/order line (ticket 56)", () => {
       updatedAt: baseTime,
       publishedBy: null,
       reviewedAt: null,
+      trashedAt: null,
       publishedByName: null,
     });
     const rules = [
@@ -191,11 +192,13 @@ describe("badges and iconified meta (ticket 56)", () => {
 describe("the expanded card foot (ticket 56)", () => {
   it("divides the full answer from a meta row carrying a compact Edit", async () => {
     const workspace = await read(WORKSPACE);
+    const actions = await read("src/app/dashboard/answers/answer-actions.tsx");
     expect(workspace).toContain("answersCardFoot");
-    expect(workspace).toMatch(/href=\{`\/dashboard\/answers\/\$\{rule\.id\}`\}/);
+    expect(actions).toMatch(/href=\{`\/dashboard\/answers\/\$\{rule\.id\}`\}/);
     // The compact outline Edit with its pencil mark, right-aligned on the
-    // foot row.
-    expect(workspace).toContain("answersEdit");
+    // foot row (ticket 58 labels it "Edit answer" and puts the three-dot
+    // lifecycle menu beside it, per the reference).
+    expect(actions).toContain("answersEdit");
     // The draft trail survives as the foot's fallback content.
     expect(workspace).toContain("Draft · last edited");
     // Collapsed bodies stay out of the tree and tab order.
@@ -207,7 +210,9 @@ describe("the expanded card foot (ticket 56)", () => {
     const css = await read(CSS);
     expect(css).toMatch(/\.answersCardFoot \{[^}]*border-top: 1px solid var\(--line\)/s);
     expect(css).toMatch(/\.answersEdit \{[^}]*color: var\(--sfc-blue\)/s);
-    expect(css).toMatch(/\.answersEdit \{[^}]*min-height: 36px/s);
+    // Ticket 58 raised the footer cluster (Edit answer and its three-dot
+    // menu) to the shared 44px touch floor.
+    expect(css).toMatch(/\.answersEdit \{[^}]*min-height: 44px/s);
   });
 });
 

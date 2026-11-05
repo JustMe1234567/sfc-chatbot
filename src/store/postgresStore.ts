@@ -344,10 +344,10 @@ export function createPostgresStore(sql: PostgresSql): Store {
     },
 
     async upsertAnswerRule(rule) {
-      await sql`INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at)
+      await sql`INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at, trashed_at)
                 VALUES (${rule.id}, ${rule.topic}, ${rule.response}, ${rule.link ?? null},
                         ${JSON.stringify(rule.phrases)}, ${rule.keywords ? JSON.stringify(rule.keywords) : null},
-                        ${rule.status}, ${rule.updatedAt}, ${rule.publishedBy}, ${rule.reviewedAt})
+                        ${rule.status}, ${rule.updatedAt}, ${rule.publishedBy}, ${rule.reviewedAt}, ${rule.trashedAt})
                 ON CONFLICT(id) DO UPDATE SET
                   topic = EXCLUDED.topic,
                   response = EXCLUDED.response,
@@ -357,13 +357,25 @@ export function createPostgresStore(sql: PostgresSql): Store {
                   status = EXCLUDED.status,
                   updated_at = EXCLUDED.updated_at,
                   published_by = EXCLUDED.published_by,
-                  reviewed_at = EXCLUDED.reviewed_at`;
+                  reviewed_at = EXCLUDED.reviewed_at,
+                  trashed_at = EXCLUDED.trashed_at`;
     },
 
     async getAnswerRule(id) {
       const rows = await sql.unsafe(`SELECT ${RULE_COLUMNS} FROM answer_rules WHERE id = $1`, [id]);
       const row = rows[0] as RuleRow | undefined;
       return row ? rowToRule(row) : null;
+    },
+
+    async deleteAnswerRule(id) {
+      // Permanent deletion keeps the accountability record (ticket 58): the
+      // audit rows are detached — the same treatment the transcript purge
+      // gives them — before the rule row itself is removed. One transaction,
+      // the ADR 0003 shape for multi-step invariants.
+      await sql.begin(async (tx: TransactionSql) => {
+        await tx`UPDATE audit_log SET rule_id = NULL WHERE rule_id = ${id}`;
+        await tx`DELETE FROM answer_rules WHERE id = ${id}`;
+      });
     },
 
     async listAnswerRules() {

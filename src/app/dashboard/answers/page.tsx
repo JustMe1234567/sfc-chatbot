@@ -10,11 +10,13 @@ import AnswersWorkspace from "./answers-workspace";
 import styles from "../dashboard.module.css";
 
 /**
- * The answer library (tickets 55-56): the page shell — heading row with the
+ * The answer library (tickets 55-58): the page shell — heading row with the
  * filled primary New Answer action (plus icon) top-right and a short
  * description — over the workspace's three tabs (Answer Rules, Handoff
- * Phrases, Welcome Message). All data is loaded here once; the workspace's
- * switching, search, status filter, and expansion are client-side only.
+ * Phrases, Welcome Message), on one wide aligned content grid inside the
+ * dashboard's scrolling column. All data is loaded here once; the
+ * workspace's switching, search, status views, expansion, and the lifecycle
+ * actions are client-side.
  */
 export default async function AnswersPage() {
   const staffHeaders = await headers();
@@ -41,31 +43,33 @@ export default async function AnswersPage() {
         role={guard.staff.role}
       />
 
-      <div className={styles.inbox}>
-        <div className={styles.answersHead}>
-          <p className={styles.answersIntro}>
-            Draft, publish, and review the answers the chat gives visitors —
-            plus the phrases that go straight to staff and the fresh-chat
-            greeting.
-          </p>
-          <Link className={`${styles.primaryButton} ${styles.answersNew}`} href="/dashboard/answers/new">
-            <svg
-              viewBox="0 0 24 24"
-              width={16}
-              height={16}
-              aria-hidden="true"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New Answer
-          </Link>
+      <div className={styles.contentArea}>
+        <div className={styles.answersPage}>
+          <div className={styles.answersHead}>
+            <p className={styles.answersIntro}>
+              Draft, publish, and review the answers the chat gives visitors —
+              plus the phrases that go straight to staff and the fresh-chat
+              greeting.
+            </p>
+            <Link className={`${styles.primaryButton} ${styles.answersNew}`} href="/dashboard/answers/new">
+              <svg
+                viewBox="0 0 24 24"
+                width={16}
+                height={16}
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New Answer
+            </Link>
+          </div>
+          <AnswersWorkspace rules={rules} phrases={phrases} welcome={welcome} />
         </div>
-        <AnswersWorkspace rules={rules} phrases={phrases} welcome={welcome} />
       </div>
     </main>
   );

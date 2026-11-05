@@ -72,9 +72,10 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
     // The brand block no longer carries the h1; the content head does.
     expect(header).toContain("contentTitle");
     expect(header.indexOf("<h1")).toBeGreaterThan(header.indexOf("contentHead"));
-    // The rail keeps the brand mark and college name.
+    // The rail keeps the brand mark — the reference's crest-alone block
+    // (ticket 58): larger and centered over a divider, with no wordmark.
     expect(header).toContain("/brand/cropped-SFC-Final-Logo-Single.png");
-    expect(header).toContain("Springfield College");
+    expect(header).not.toContain("sideCollege");
   });
 });
 

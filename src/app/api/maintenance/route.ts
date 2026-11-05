@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { sweepTranscripts } from "@/domain/retention";
 import { expireAnalytics } from "@/domain/analytics";
+import { sweepExpiredTrash } from "@/domain/answerLifecycle";
 import { trustedOrigins } from "@/config";
 
 /** Constant-time bearer comparison for the network-visible cron secret. */
@@ -40,9 +41,13 @@ export async function GET(request: Request) {
   const { db, store } = await getChatbotService();
   const transcripts = await sweepTranscripts(db, store);
   const analytics = await expireAnalytics(db, store);
+  // The Trash sweep (ticket 58) rides the same passes: answers sitting in
+  // Trash past the fixed 30-day threshold are purged for good.
+  const trash = await sweepExpiredTrash(store);
   return NextResponse.json({
     ok: true,
     removedConversations: transcripts?.removedConversations ?? null,
     analyticsRemoved: analytics,
+    answersPurged: trash?.purgedAnswers ?? null,
   });
 }

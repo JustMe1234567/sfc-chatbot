@@ -25,6 +25,7 @@ export async function POST(request: Request, context: RouteContext) {
     ...loaded.rule,
     status: "draft",
     updatedAt: new Date().toISOString(),
+    trashedAt: null,
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);

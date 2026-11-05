@@ -52,7 +52,7 @@ export interface Message {
   createdAt: string;
 }
 
-export type AnswerRuleStatus = "draft" | "published";
+export type AnswerRuleStatus = "draft" | "published" | "archived" | "trashed";
 
 export interface AnswerRule {
   id: string;
@@ -72,6 +72,11 @@ export interface AnswerRule {
   publishedBy: string | null;
   /** When the live content was last approved by publishing; null while draft-only. */
   reviewedAt: string | null;
+  /**
+   * When the rule entered Trash (ticket 58): the fixed 30-day purge clock
+   * that the maintenance sweep runs on. Null for every other status.
+   */
+  trashedAt: string | null;
 }
 
 /**
@@ -114,6 +119,11 @@ export interface AuditEntry {
     | "rule_revised"
     | "rule_published"
     | "rule_unpublished"
+    | "rule_duplicated"
+    | "rule_archived"
+    | "rule_trashed"
+    | "rule_restored"
+    | "rule_purged"
     | "staff_invited"
     | "staff_disabled";
   /** Human-readable context, e.g. the transfer target's display name. */
@@ -251,6 +261,11 @@ export interface Store {
   listMessages(conversationId: string): Promise<Message[]>;
   upsertAnswerRule(rule: AnswerRule): Promise<void>;
   getAnswerRule(id: string): Promise<AnswerRule | null>;
+  /**
+   * Removes a rule permanently (ticket 58), detaching its audit rows first
+   * so the accountability record survives the deletion.
+   */
+  deleteAnswerRule(id: string): Promise<void>;
   /** Every rule, drafts included: the dashboard's answer-management view. */
   listAnswerRules(): Promise<AnswerRule[]>;
   listPublishedAnswerRules(): Promise<AnswerRule[]>;

@@ -414,8 +414,8 @@ export function createSqliteStore(db: DatabaseSync): Store {
 
     async upsertAnswerRule(rule) {
       db.prepare(
-        `INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at, trashed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            topic = excluded.topic,
            response = excluded.response,
@@ -425,7 +425,8 @@ export function createSqliteStore(db: DatabaseSync): Store {
            status = excluded.status,
            updated_at = excluded.updated_at,
            published_by = excluded.published_by,
-           reviewed_at = excluded.reviewed_at`,
+           reviewed_at = excluded.reviewed_at,
+           trashed_at = excluded.trashed_at`,
       ).run(
         rule.id,
         rule.topic,
@@ -437,6 +438,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
         rule.updatedAt,
         rule.publishedBy,
         rule.reviewedAt,
+        rule.trashedAt,
       );
     },
 
@@ -445,6 +447,22 @@ export function createSqliteStore(db: DatabaseSync): Store {
         .prepare(`SELECT ${RULE_COLUMNS} FROM answer_rules WHERE id = ?`)
         .get(id) as RuleRow | undefined;
       return row ? rowToRule(row) : null;
+    },
+
+    async deleteAnswerRule(id) {
+      // Permanent deletion keeps the accountability record (ticket 58): the
+      // audit rows are detached — the same treatment the transcript purge
+      // gives them — before the rule row itself is removed. One transaction,
+      // the ADR 0003 shape for multi-step invariants.
+      db.exec("BEGIN");
+      try {
+        db.prepare("UPDATE audit_log SET rule_id = NULL WHERE rule_id = ?").run(id);
+        db.prepare("DELETE FROM answer_rules WHERE id = ?").run(id);
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     },
 
     async listAnswerRules() {

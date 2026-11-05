@@ -72,7 +72,9 @@ async function ruleRequest(
     const { PUT } = await import("../src/app/api/staff/answer-rules/[id]/route");
     return PUT(request, { params: Promise.resolve({ id: match[1] }) });
   }
-  const actionMatch = path.match(/^\/api\/staff\/answer-rules\/([^/]+)\/(publish|unpublish)$/);
+  const actionMatch = path.match(
+    /^\/api\/staff\/answer-rules\/([^/]+)\/(publish|unpublish|duplicate|archive|trash|restore|purge)$/,
+  );
   if (actionMatch) {
     const { POST } = await import(
       `../src/app/api/staff/answer-rules/[id]/${actionMatch[2]}/route`
@@ -95,6 +97,10 @@ interface RuleRecord {
   publishedBy: string | null;
   publishedByName: string | null;
   reviewedAt: string | null;
+  trashedAt?: string | null;
+  topic?: string;
+  phrases?: string[];
+  link?: string;
 }
 
 async function createRule(jar: CookieJar, payload: RulePayload): Promise<RuleRecord> {
@@ -250,6 +256,158 @@ describe("who published a rule, and when it was reviewed", () => {
     expect(listed?.status).toBe("published");
     expect(listed?.publishedByName).toBe("Eddie");
     expect(listed?.reviewedAt).toBeTruthy();
+  });
+});
+
+describe("the answer lifecycle (ticket 58)", () => {
+  it("duplicates a rule as a separate draft prefilled with its content", async () => {
+    const jar = new CookieJar();
+    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const content = uniqueRuleContent("dupe");
+    const original = await createRule(jar, content);
+    await publishRule(jar, original.id);
+
+    const duplicateResponse = await ruleRequest(
+      jar,
+      "POST",
+      `/api/staff/answer-rules/${original.id}/duplicate`,
+    );
+    expect(duplicateResponse.status).toBe(201);
+    const copy = (await duplicateResponse.json()) as RuleRecord;
+
+    // The copy is a distinct draft carrying the original's content.
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.status).toBe("draft");
+    expect(copy.topic).toBe(`${content.topic} (copy)`);
+    expect(copy.phrases).toEqual(content.phrases);
+    expect(copy.link).toBe(content.link);
+    expect(copy.publishedBy).toBeNull();
+
+    // The original is untouched and still live.
+    const list = await ruleRequest(jar, "GET", "/api/staff/answer-rules");
+    const originalAfter = ((await list.json()) as { rules: RuleRecord[] }).rules.find(
+      (item) => item.id === original.id,
+    );
+    expect(originalAfter?.status).toBe("published");
+
+    // The copy never answers visitors until it is explicitly published.
+    const asked = await askFresh(content.phrases[0]!);
+    expect(asked.state).toBe("bot_active");
+    // One reply only: the original's — not the copy's identical text twice.
+    const topicsNow = await topics();
+    expect(topicsNow.topics.filter((topic) => topic.topic === content.topic)).toHaveLength(1);
+  });
+
+  it("archiving retires the answer from visitors immediately but keeps it restorable", async () => {
+    const jar = new CookieJar();
+    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const content = uniqueRuleContent("archive");
+    const question = content.phrases[0]!;
+    const rule = await createRule(jar, content);
+    await publishRule(jar, rule.id);
+    expect((await askFresh(question)).reply?.text).toContain("Main Street lot");
+
+    const archived = await ruleRequest(jar, "POST", `/api/staff/answer-rules/${rule.id}/archive`);
+    expect(archived.status).toBe(200);
+    const body = (await archived.json()) as RuleRecord;
+    expect(body.status).toBe("archived");
+
+    // Gone from the topic suggestions and the visitor matcher at once.
+    expect((await topics()).topics.find((topic) => topic.id === rule.id)).toBeUndefined();
+    expect((await askFresh(question)).reply?.text ?? "").not.toContain("Main Street lot");
+
+    // Restore returns it as a Draft — never automatically republished.
+    const restored = await ruleRequest(jar, "POST", `/api/staff/answer-rules/${rule.id}/restore`);
+    expect(restored.status).toBe(200);
+    expect(((await restored.json()) as RuleRecord).status).toBe("draft");
+    expect((await askFresh(question)).reply?.text ?? "").not.toContain("Main Street lot");
+  });
+
+  it("Delete moves the answer to Trash with a purge stamp, and restoring cancels the expiry", async () => {
+    const jar = new CookieJar();
+    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const content = uniqueRuleContent("trash");
+    const question = content.phrases[0]!;
+    const rule = await createRule(jar, content);
+    await publishRule(jar, rule.id);
+
+    const trashed = await ruleRequest(jar, "POST", `/api/staff/answer-rules/${rule.id}/trash`);
+    expect(trashed.status).toBe(200);
+    const body = (await trashed.json()) as RuleRecord;
+    expect(body.status).toBe("trashed");
+    expect(body.trashedAt).toBeTruthy();
+
+    // Out of visitors and suggestions immediately; transcripts keep flowing.
+    expect((await topics()).topics.find((topic) => topic.id === rule.id)).toBeUndefined();
+    expect((await askFresh(question)).reply?.text ?? "").not.toContain("Main Street lot");
+
+    // Restoring before the 30 days returns a Draft with no purge stamp.
+    const restored = await ruleRequest(jar, "POST", `/api/staff/answer-rules/${rule.id}/restore`);
+    const restoredBody = (await restored.json()) as RuleRecord;
+    expect(restoredBody.status).toBe("draft");
+    expect(restoredBody.trashedAt ?? null).toBeNull();
+  });
+
+  it("permanently deletion works from Trash only, for owners and editors, and really removes", async () => {
+    const ownerJar = new CookieJar();
+    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const content = uniqueRuleContent("purge");
+    const activeRule = await createRule(ownerJar, content);
+    await publishRule(ownerJar, activeRule.id);
+
+    // Purging an answer that is not in Trash is refused.
+    const premature = await ruleRequest(
+      ownerJar,
+      "POST",
+      `/api/staff/answer-rules/${activeRule.id}/purge`,
+    );
+    expect(premature.status).toBe(409);
+
+    const trashedRule = await ruleRequest(
+      ownerJar,
+      "POST",
+      `/api/staff/answer-rules/${activeRule.id}/trash`,
+    );
+    expect(trashedRule.status).toBe(200);
+
+    const purged = await ruleRequest(
+      ownerJar,
+      "POST",
+      `/api/staff/answer-rules/${activeRule.id}/purge`,
+    );
+    expect(purged.status).toBe(200);
+
+    // The rule is gone for good: unknown to every rule listing.
+    const list = await ruleRequest(ownerJar, "GET", "/api/staff/answer-rules");
+    expect(
+      ((await list.json()) as { rules: RuleRecord[] }).rules.find((item) => item.id === activeRule.id),
+    ).toBeUndefined();
+
+    // An editor holds the same power.
+    const editorJar = new CookieJar();
+    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editorRule = await createRule(editorJar, uniqueRuleContent("purge-editor"));
+    await ruleRequest(editorJar, "POST", `/api/staff/answer-rules/${editorRule.id}/trash`);
+    const editorPurge = await ruleRequest(
+      editorJar,
+      "POST",
+      `/api/staff/answer-rules/${editorRule.id}/purge`,
+    );
+    expect(editorPurge.status).toBe(200);
+
+    // Plain staff may not purge.
+    const staffJar = new CookieJar();
+    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const ownerForStaff = new CookieJar();
+    await signInWithTotp(ownerForStaff, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const staffTarget = await createRule(ownerForStaff, uniqueRuleContent("purge-staff"));
+    await ruleRequest(ownerForStaff, "POST", `/api/staff/answer-rules/${staffTarget.id}/trash`);
+    const staffPurge = await ruleRequest(
+      staffJar,
+      "POST",
+      `/api/staff/answer-rules/${staffTarget.id}/purge`,
+    );
+    expect(staffPurge.status).toBe(403);
   });
 });
 

@@ -19,7 +19,9 @@ export default async function NewAnswerPage() {
   return (
     <main className={styles.shell}>
       <DashboardHeader area="answers" title="New answer" name={guard.staff.name} role={guard.staff.role} />
-      <RuleForm mode="create" initial={{ topic: "", response: "", phrasesText: "", keywordsText: "", link: "" }} />
+      <div className={styles.contentArea}>
+        <RuleForm mode="create" initial={{ topic: "", response: "", phrasesText: "", keywordsText: "", link: "" }} />
+      </div>
     </main>
   );
 }

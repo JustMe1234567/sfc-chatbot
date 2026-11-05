@@ -37,6 +37,11 @@ const ACTION_LABELS: Record<AuditView["action"], string> = {
   rule_revised: "revised an answer rule",
   rule_published: "published an answer rule",
   rule_unpublished: "unpublished an answer rule",
+  rule_duplicated: "duplicated an answer rule",
+  rule_archived: "archived an answer rule",
+  rule_trashed: "moved an answer rule to Trash",
+  rule_restored: "restored an answer rule",
+  rule_purged: "permanently deleted an answer rule",
   staff_invited: "invited a staff member",
   staff_disabled: "disabled a staff account",
 };
@@ -143,181 +148,183 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
         name={guard.staff.name}
         role={guard.staff.role}
       />
-      <div className={styles.desk}>
-        <nav className={styles.deskList} aria-label="Conversation list">
-          <div className={styles.deskTabs}>
-            <Link href="/dashboard/inbox" aria-current={view === "active" ? "page" : undefined}>
-              Conversations
-              {attentionTierCount > 0 ? (
-                <span className={styles.countAttention}>{attentionTierCount} new</span>
-              ) : null}
-            </Link>
-            <Link
-              href="/dashboard/inbox/history"
-              aria-current={view === "history" ? "page" : undefined}
-            >
-              History
-            </Link>
-          </div>
-          <AttentionSounds events={attentionEvents} />
-          {desk ? (
-            <>
-              <h2>
-                Incoming
-                {desk.incoming.length > 0 ? (
-                  <span className={styles.countNeedsHuman}>{desk.incoming.length} waiting</span>
+      <div className={styles.contentArea}>
+        <div className={styles.desk}>
+          <nav className={styles.deskList} aria-label="Conversation list">
+            <div className={styles.deskTabs}>
+              <Link href="/dashboard/inbox" aria-current={view === "active" ? "page" : undefined}>
+                Conversations
+                {attentionTierCount > 0 ? (
+                  <span className={styles.countAttention}>{attentionTierCount} new</span>
                 ) : null}
-              </h2>
-              {desk.incoming.length === 0 ? (
-                <p className={styles.deskEmpty}>Nothing is waiting for staff.</p>
-              ) : (
-                desk.incoming.map((item) => (
-                  <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
-                ))
-              )}
-              <h2>Active</h2>
-              {desk.active.length === 0 ? (
-                <p className={styles.deskEmpty}>No live conversations right now.</p>
-              ) : (
-                desk.active.map((item) => (
-                  <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
-                ))
-              )}
-            </>
-          ) : (
-            <>
-              <div className={styles.historyHead}>
-                <h2>History</h2>
-                {/* Owner-only bulk clear (ticket 51), hidden when nothing
-                    closed exists to remove. */}
-                {guard.staff.role === "owner" && closedHistoryCount > 0 ? (
-                  <ClearHistoryButton count={closedHistoryCount} selectedId={selectedId} />
-                ) : null}
-              </div>
-              {history.length === 0 ? (
-                <p className={styles.deskEmpty}>No past conversations yet.</p>
-              ) : (
-                history.map((item) => (
-                  <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
-                ))
-              )}
-            </>
-          )}
-        </nav>
-        <section className={styles.deskPane} aria-label="Selected conversation">
-          {selected ? (
-            <>
-              <div className={styles.paneHead}>
-                <h2>Conversation</h2>
-                <span className={styles.paneHeadMeta}>
-                  {selectedTier ? (
-                    <span className={`${styles.chip} ${TIER_CHIPS[selectedTier]}`}>
-                      {DESK_STATUS_LABELS[selectedTier]}
-                    </span>
-                  ) : (
-                    <span
-                      className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}
-                    >
-                      {DESK_STATE_LABELS[selected.state] ?? selected.state}
-                    </span>
-                  )}
-                  <span>
-                    {selected.state === "claimed" && selectedActive
-                      ? claimedByMe
-                        ? "You are helping"
-                        : `${claimerName} is helping`
-                      : null}
-                    {selectedActive && selected.state !== "closed" && selected.state !== "claimed"
-                      ? `Last message ${new Date(selected.lastActivityAt).toLocaleString("en-GB")}`
-                      : null}
-                    {selected.state === "closed" ? "Closed by staff" : null}
-                    {!selectedActive && selected.state !== "closed"
-                      ? "Quiet since " + new Date(selected.lastActivityAt).toLocaleString("en-GB")
-                      : null}
-                  </span>
-                </span>
-                {/* The follow-up address the visitor left at handoff
-                    (ticket 53): header meta on its own line, never a
-                    transcript row. */}
-                {selected.visitorEmail ? (
-                  <span className={styles.paneEmail}>
-                    <strong>Follow-up email</strong> {selected.visitorEmail}
-                  </span>
-                ) : null}
-              </div>
-              <Link
-                className={styles.deskBack}
-                href={view === "history" ? "/dashboard/inbox/history" : "/dashboard/inbox"}
-              >
-                ← All conversations
               </Link>
-              <div className={styles.paneBody}>
-                <p className={styles.hint}>
-                  {selected.state === "awaiting_staff" && selectedActive &&
-                    "Waiting for a staff member to take over this conversation."}
-                  {!selectedActive && selected.state !== "closed" &&
-                    "This conversation has gone quiet and moved to History. The visitor's next question starts a fresh chat."}
-                  {claimedByMe && selected.state === "claimed" && !selectedActive &&
-                    "Replying is paused until a reopening action exists; the transcript is kept."}
-                </p>
-                {selected.state === "awaiting_staff" && selectedActive && (
-                  <ClaimButton conversationId={selected.id} />
-                )}
-                {mayReassign && selectedActive && (
-                  <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />
-                )}
-                <div className={styles.transcript}>
-                  {messages.map((message) => (
-                    <div key={message.id} className={bubbleClass(message.role)}>
-                      <div className={styles.role}>
-                        {roleLabel(message.role)} ·{" "}
-                        {new Date(message.createdAt).toLocaleString("en-GB")}
-                      </div>
-                      {message.text}
-                    </div>
-                  ))}
-                </div>
-                {/* The composer sits at the bottom of the workspace, after
-                    the transcript it replies to (ticket 13). */}
-                {claimedByMe && selected.state === "claimed" && selectedActive && (
-                  <ReplyAndClose conversationId={selected.id} />
-                )}
-              </div>
-              {auditEntries.length > 0 ? (
-                <section aria-label="Audit trail" className={styles.deskActivity}>
-                  <h2>Activity</h2>
-                  {auditEntries.map((entry) => (
-                    <div key={entry.id} className={styles.deskAuditRow}>
-                      <span className={styles.deskAuditMeta}>
-                        {new Date(entry.createdAt).toLocaleString("en-GB")}
-                      </span>
-                      <span>
-                        {entry.actorName ?? "a former staff member"} {ACTION_LABELS[entry.action]}
-                        {entry.detail ? ` → ${entry.detail}` : ""}
-                      </span>
-                    </div>
-                  ))}
-                </section>
-              ) : null}
-            </>
-          ) : (
-            <div className={styles.emptyState}>
-              <Image
-                src="/brand/cropped-SFC-Final-Logo-Single.png"
-                alt=""
-                width={56}
-                height={56}
-              />
-              <strong>No conversation selected</strong>
-              <p>
-                Choose a conversation from the list. Incoming chats are waiting
-                for a staff member to take over; Active chats are already being
-                helped. Conversations that go quiet for a day move to History
-                with their transcripts kept.
-              </p>
+              <Link
+                href="/dashboard/inbox/history"
+                aria-current={view === "history" ? "page" : undefined}
+              >
+                History
+              </Link>
             </div>
-          )}
-        </section>
+            <AttentionSounds events={attentionEvents} />
+            {desk ? (
+              <>
+                <h2>
+                  Incoming
+                  {desk.incoming.length > 0 ? (
+                    <span className={styles.countNeedsHuman}>{desk.incoming.length} waiting</span>
+                  ) : null}
+                </h2>
+                {desk.incoming.length === 0 ? (
+                  <p className={styles.deskEmpty}>Nothing is waiting for staff.</p>
+                ) : (
+                  desk.incoming.map((item) => (
+                    <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
+                  ))
+                )}
+                <h2>Active</h2>
+                {desk.active.length === 0 ? (
+                  <p className={styles.deskEmpty}>No live conversations right now.</p>
+                ) : (
+                  desk.active.map((item) => (
+                    <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
+                  ))
+                )}
+              </>
+            ) : (
+              <>
+                <div className={styles.historyHead}>
+                  <h2>History</h2>
+                  {/* Owner-only bulk clear (ticket 51), hidden when nothing
+                      closed exists to remove. */}
+                  {guard.staff.role === "owner" && closedHistoryCount > 0 ? (
+                    <ClearHistoryButton count={closedHistoryCount} selectedId={selectedId} />
+                  ) : null}
+                </div>
+                {history.length === 0 ? (
+                  <p className={styles.deskEmpty}>No past conversations yet.</p>
+                ) : (
+                  history.map((item) => (
+                    <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
+                  ))
+                )}
+              </>
+            )}
+          </nav>
+          <section className={styles.deskPane} aria-label="Selected conversation">
+            {selected ? (
+              <>
+                <div className={styles.paneHead}>
+                  <h2>Conversation</h2>
+                  <span className={styles.paneHeadMeta}>
+                    {selectedTier ? (
+                      <span className={`${styles.chip} ${TIER_CHIPS[selectedTier]}`}>
+                        {DESK_STATUS_LABELS[selectedTier]}
+                      </span>
+                    ) : (
+                      <span
+                        className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}
+                      >
+                        {DESK_STATE_LABELS[selected.state] ?? selected.state}
+                      </span>
+                    )}
+                    <span>
+                      {selected.state === "claimed" && selectedActive
+                        ? claimedByMe
+                          ? "You are helping"
+                          : `${claimerName} is helping`
+                        : null}
+                      {selectedActive && selected.state !== "closed" && selected.state !== "claimed"
+                        ? `Last message ${new Date(selected.lastActivityAt).toLocaleString("en-GB")}`
+                        : null}
+                      {selected.state === "closed" ? "Closed by staff" : null}
+                      {!selectedActive && selected.state !== "closed"
+                        ? "Quiet since " + new Date(selected.lastActivityAt).toLocaleString("en-GB")
+                        : null}
+                    </span>
+                  </span>
+                  {/* The follow-up address the visitor left at handoff
+                      (ticket 53): header meta on its own line, never a
+                      transcript row. */}
+                  {selected.visitorEmail ? (
+                    <span className={styles.paneEmail}>
+                      <strong>Follow-up email</strong> {selected.visitorEmail}
+                    </span>
+                  ) : null}
+                </div>
+                <Link
+                  className={styles.deskBack}
+                  href={view === "history" ? "/dashboard/inbox/history" : "/dashboard/inbox"}
+                >
+                  ← All conversations
+                </Link>
+                <div className={styles.paneBody}>
+                  <p className={styles.hint}>
+                    {selected.state === "awaiting_staff" && selectedActive &&
+                      "Waiting for a staff member to take over this conversation."}
+                    {!selectedActive && selected.state !== "closed" &&
+                      "This conversation has gone quiet and moved to History. The visitor's next question starts a fresh chat."}
+                    {claimedByMe && selected.state === "claimed" && !selectedActive &&
+                      "Replying is paused until a reopening action exists; the transcript is kept."}
+                  </p>
+                  {selected.state === "awaiting_staff" && selectedActive && (
+                    <ClaimButton conversationId={selected.id} />
+                  )}
+                  {mayReassign && selectedActive && (
+                    <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />
+                  )}
+                  <div className={styles.transcript}>
+                    {messages.map((message) => (
+                      <div key={message.id} className={bubbleClass(message.role)}>
+                        <div className={styles.role}>
+                          {roleLabel(message.role)} ·{" "}
+                          {new Date(message.createdAt).toLocaleString("en-GB")}
+                        </div>
+                        {message.text}
+                      </div>
+                    ))}
+                  </div>
+                  {/* The composer sits at the bottom of the workspace, after
+                      the transcript it replies to (ticket 13). */}
+                  {claimedByMe && selected.state === "claimed" && selectedActive && (
+                    <ReplyAndClose conversationId={selected.id} />
+                  )}
+                </div>
+                {auditEntries.length > 0 ? (
+                  <section aria-label="Audit trail" className={styles.deskActivity}>
+                    <h2>Activity</h2>
+                    {auditEntries.map((entry) => (
+                      <div key={entry.id} className={styles.deskAuditRow}>
+                        <span className={styles.deskAuditMeta}>
+                          {new Date(entry.createdAt).toLocaleString("en-GB")}
+                        </span>
+                        <span>
+                          {entry.actorName ?? "a former staff member"} {ACTION_LABELS[entry.action]}
+                          {entry.detail ? ` → ${entry.detail}` : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                ) : null}
+              </>
+            ) : (
+              <div className={styles.emptyState}>
+                <Image
+                  src="/brand/cropped-SFC-Final-Logo-Single.png"
+                  alt=""
+                  width={56}
+                  height={56}
+                />
+                <strong>No conversation selected</strong>
+                <p>
+                  Choose a conversation from the list. Incoming chats are waiting
+                  for a staff member to take over; Active chats are already being
+                  helped. Conversations that go quiet for a day move to History
+                  with their transcripts kept.
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </main>
   );

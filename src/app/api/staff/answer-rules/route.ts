@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     updatedAt: now,
     publishedBy: null,
     reviewedAt: null,
+    trashedAt: null,
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);

@@ -1,20 +1,23 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
 import type { RuleView } from "@/api/staffAnswerRules";
+import type { AnswerRuleStatus } from "@/domain/types";
 import EscalationPhrasesForm from "./escalation-phrases-form";
 import WelcomeForm from "./welcome-form";
+import AnswerActions from "./answer-actions";
 import styles from "../dashboard.module.css";
 
 /**
- * The Answers tab's interactive workspace (tickets 55-56): three tabs —
- * Answer Rules (default), Handoff Phrases, Welcome Message — switching in
- * place, with client-side search and a status filter over the already-loaded
- * rules, and mockup-styled expandable answer cards (icon tiles, check-mark
- * Published pills, iconified meta, single-line collapsed previews). All data
- * arrives as props from the server page; switching, filtering, and expanding
- * never touch the network, and the two configuration forms keep their own
+ * The Answers tab's interactive workspace (tickets 55-56, lifecycle views
+ * from 58): three tabs — Answer Rules (default), Handoff Phrases, Welcome
+ * Message — switching in place, with client-side search and a status view
+ * over the already-loaded rules, and reference-styled expandable answer
+ * cards. The rules arrive as props once; the workspace keeps them in state
+ * so the card menu's lifecycle actions (duplicate, publish/unpublish,
+ * archive, trash, restore, permanent delete) update the page without a
+ * reload. Filtering never touches the network — all mutations ride the
+ * AnswerActions component — and the two configuration forms keep their own
  * save flows untouched.
  */
 
@@ -26,24 +29,34 @@ const TABS: { id: AnswersTab; label: string }[] = [
   { id: "welcome", label: "Welcome Message" },
 ];
 
-export type AnswersStatusFilter = "all" | "published" | "draft";
+export type AnswersStatusFilter = "all" | "published" | "draft" | "archived" | "trash";
+
+/** Which rule statuses each filter view shows (ticket 58): "all" — and any
+    unknown value, defensively — means the active answers only; Archived and
+    Trash are deliberate views of their own. */
+const VIEW_STATUSES: Record<AnswersStatusFilter, AnswerRuleStatus[]> = {
+  all: ["draft", "published"],
+  published: ["published"],
+  draft: ["draft"],
+  archived: ["archived"],
+  trash: ["trashed"],
+};
 
 /**
- * The search + status filter (tickets 55-56): case-insensitive text over the
- * topic and the answer content, ANDed with the status pill when one is
- * chosen, on the already-loaded array — no requests. An empty or blank query
- * and "all" match everything; an unknown status value degrades to "all"
- * rather than filtering the list away.
+ * The search + view filter (tickets 55-58): case-insensitive text over the
+ * topic and the answer content, ANDed with the chosen view, on the
+ * already-loaded array — no requests. An archived or trashed answer never
+ * appears in the normal list.
  */
 export function filterAnswerRules(
   rules: RuleView[],
   query: string,
   status: AnswersStatusFilter = "all",
 ): RuleView[] {
-  const statusFilter = status === "published" || status === "draft" ? status : "all";
+  const view = VIEW_STATUSES[status] ?? VIEW_STATUSES.all;
   const needle = query.trim().toLowerCase();
   return rules.filter((rule) => {
-    if (statusFilter !== "all" && rule.status !== statusFilter) {
+    if (!view.includes(rule.status)) {
       return false;
     }
     if (!needle) {
@@ -180,15 +193,6 @@ function ChainIcon() {
   );
 }
 
-function PencilIcon() {
-  return (
-    <Glyph size={14}>
-      <path d="m14.5 6.5 3 3" />
-      <path d="M4 20l1-4L16.5 4.5a2.12 2.12 0 0 1 3 3L8 19l-4 1Z" />
-    </Glyph>
-  );
-}
-
 function SortGlyph() {
   return (
     <Glyph size={14} weight={1.6}>
@@ -251,9 +255,17 @@ function Chevron() {
   );
 }
 
-function MetaItem({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+function MetaItem({
+  pill,
+  icon,
+  children,
+}: {
+  pill?: boolean;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <span className={styles.answersMetaItem}>
+    <span className={pill ? `${styles.answersMetaItem} ${styles.answersMetaPill}` : styles.answersMetaItem}>
       {icon}
       {children}
     </span>
@@ -264,19 +276,99 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+/** The card's status pill: green Published, quiet Draft, and the lifecycle
+    views' own honest labels (ticket 58). */
+function StatusBadge({ rule }: { rule: RuleView }) {
+  if (rule.status === "published") {
+    return (
+      <span className={styles.publishedBadge}>
+        <CheckIcon />
+        Published
+      </span>
+    );
+  }
+  if (rule.status === "archived") {
+    return <span className={styles.archivedBadge}>Archived</span>;
+  }
+  if (rule.status === "trashed") {
+    return <span className={styles.trashedBadge}>Trashed</span>;
+  }
+  return <span className={styles.draftBadge}>Draft</span>;
+}
+
+/** The footer's review trail (ticket 58): the published stamps, or the
+    plain last-edited line naming the card's lifecycle state. */
+function FootTrail({ rule }: { rule: RuleView }) {
+  if (rule.status === "published") {
+    return (
+      <>
+        <MetaItem icon={<PersonIcon />}>
+          Published by {rule.publishedByName ?? "an earlier publisher"}
+        </MetaItem>
+        {rule.reviewedAt ? (
+          <MetaItem icon={<CalendarIcon />}>Reviewed {formatDate(rule.reviewedAt)}</MetaItem>
+        ) : null}
+      </>
+    );
+  }
+  if (rule.status === "archived") {
+    return (
+      <MetaItem icon={<CalendarIcon />}>
+        Archived · last edited {formatDate(rule.updatedAt)}
+      </MetaItem>
+    );
+  }
+  if (rule.status === "trashed") {
+    return (
+      <MetaItem icon={<CalendarIcon />}>
+        In Trash · last edited {formatDate(rule.updatedAt)}
+      </MetaItem>
+    );
+  }
+  return (
+    <MetaItem icon={<CalendarIcon />}>
+      Draft · last edited {formatDate(rule.updatedAt)}
+    </MetaItem>
+  );
+}
+
+function CardMetaPills({ rule }: { rule: RuleView }) {
+  return (
+    <>
+      <MetaItem pill icon={<BubbleIcon />}>
+        {plural(rule.phrases.length, "phrase")}
+      </MetaItem>
+      {rule.keywords?.length ? (
+        <MetaItem pill icon={<FunnelIcon />}>
+          {plural(rule.keywords.length, "keyword condition")}
+        </MetaItem>
+      ) : null}
+      {rule.link ? (
+        <MetaItem pill icon={<ChainIcon />}>
+          College page link
+        </MetaItem>
+      ) : null}
+    </>
+  );
+}
+
 function AnswerCard({
   rule,
   open,
   onToggle,
+  onUpdated,
+  onCreated,
+  onRemoved,
 }: {
   rule: RuleView;
   open: boolean;
   onToggle: () => void;
+  onUpdated: (rule: RuleView) => void;
+  onCreated: (rule: RuleView) => void;
+  onRemoved: (id: string) => void;
 }) {
   const panelId = `answer-panel-${rule.id}`;
   const TileIcon = TOPIC_ICONS[iconForTopic(rule.topic)];
-  const phraseLabel = plural(rule.phrases.length, "phrase");
-  const published = rule.status === "published";
   return (
     <li className={styles.answersCard} data-open={open || undefined}>
       {/* Decorative tile: the topic text beside it carries the meaning. */}
@@ -296,24 +388,13 @@ function AnswerCard({
           <span className={styles.answersCardTop}>
             <span className={styles.answersCardTitle}>
               {rule.topic}
-              {published ? (
-                <span className={styles.publishedBadge}>
-                  <CheckIcon />
-                  Published
-                </span>
-              ) : (
-                <span className={styles.draftBadge}>Draft</span>
-              )}
+              <StatusBadge rule={rule} />
             </span>
             <Chevron />
           </span>
           <span className={styles.answersCardPreview}>{rule.response}</span>
           <span className={styles.answersCardMeta}>
-            <MetaItem icon={<BubbleIcon />}>{phraseLabel}</MetaItem>
-            {rule.keywords?.length ? (
-              <MetaItem icon={<FunnelIcon />}>{plural(rule.keywords.length, "keyword condition")}</MetaItem>
-            ) : null}
-            {rule.link ? <MetaItem icon={<ChainIcon />}>College page link</MetaItem> : null}
+            <CardMetaPills rule={rule} />
           </span>
         </button>
         <div
@@ -324,28 +405,19 @@ function AnswerCard({
         >
           <div className={styles.answersCardBody}>
             <p className={styles.answersCardResponse}>{rule.response}</p>
+            <div className={styles.answersCardMeta}>
+              <CardMetaPills rule={rule} />
+            </div>
             <div className={styles.answersCardFoot}>
               <p className={styles.answersCardMeta}>
-                {published ? (
-                  <>
-                    <MetaItem icon={<PersonIcon />}>
-                      Published by {rule.publishedByName ?? "an earlier publisher"}
-                    </MetaItem>
-                    {rule.reviewedAt ? (
-                      <MetaItem icon={<CalendarIcon />}>Reviewed {formatDate(rule.reviewedAt)}</MetaItem>
-                    ) : null}
-                  </>
-                ) : (
-                  <MetaItem icon={<CalendarIcon />}>
-                    Draft · last edited {formatDate(rule.updatedAt)}
-                  </MetaItem>
-                )}
-                <MetaItem icon={<BubbleIcon />}>{phraseLabel}</MetaItem>
+                <FootTrail rule={rule} />
               </p>
-              <Link className={styles.answersEdit} href={`/dashboard/answers/${rule.id}`}>
-                <PencilIcon />
-                Edit
-              </Link>
+              <AnswerActions
+                rule={rule}
+                onUpdated={onUpdated}
+                onCreated={onCreated}
+                onRemoved={onRemoved}
+              />
             </div>
           </div>
         </div>
@@ -354,8 +426,14 @@ function AnswerCard({
   );
 }
 
+/** Newest first — the server's list order (updated_at DESC), mirrored after
+    every client-side lifecycle mutation. */
+function byRecentFirst(list: RuleView[]): RuleView[] {
+  return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export default function AnswersWorkspace({
-  rules,
+  rules: initialRules,
   phrases,
   welcome,
 }: {
@@ -363,6 +441,7 @@ export default function AnswersWorkspace({
   phrases: string[];
   welcome: string;
 }) {
+  const [rules, setRules] = useState(initialRules);
   const [tab, setTab] = useState<AnswersTab>("rules");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<AnswersStatusFilter>("all");
@@ -373,9 +452,18 @@ export default function AnswersWorkspace({
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
     );
   };
+  const handleUpdated = (next: RuleView) => {
+    setRules((current) => byRecentFirst(current.map((rule) => (rule.id === next.id ? next : rule))));
+  };
+  const handleCreated = (next: RuleView) => {
+    setRules((current) => byRecentFirst([next, ...current]));
+  };
+  const handleRemoved = (id: string) => {
+    setRules((current) => current.filter((rule) => rule.id !== id));
+  };
 
   return (
-    <div className={styles.inbox}>
+    <div>
       <div role="tablist" aria-label="Answers sections" className={styles.answersTabs}>
         {TABS.map((entry) => (
           <button
@@ -424,6 +512,8 @@ export default function AnswersWorkspace({
                 <option value="all">All statuses</option>
                 <option value="published">Published</option>
                 <option value="draft">Draft</option>
+                <option value="archived">Archived</option>
+                <option value="trash">Trash</option>
               </select>
             </div>
             <div className={styles.answersCountRow}>
@@ -440,7 +530,13 @@ export default function AnswersWorkspace({
                   ? `No answers match “${query.trim()}”. Try a different word.`
                   : status === "draft"
                     ? "No draft answers yet."
-                    : "No published answers yet."}
+                    : status === "published"
+                      ? "No published answers yet."
+                      : status === "archived"
+                        ? "No archived answers."
+                        : status === "trash"
+                          ? "Trash is empty."
+                          : "No active answers."}
               </p>
             ) : (
               <ol className={styles.answersList}>
@@ -450,6 +546,9 @@ export default function AnswersWorkspace({
                     rule={rule}
                     open={expandedIds.includes(rule.id)}
                     onToggle={() => toggleExpanded(rule.id)}
+                    onUpdated={handleUpdated}
+                    onCreated={handleCreated}
+                    onRemoved={handleRemoved}
                   />
                 ))}
               </ol>

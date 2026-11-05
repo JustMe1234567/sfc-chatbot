@@ -23,6 +23,7 @@ const SEEDED_RULES: AnswerRule[] = [
     updatedAt: "2026-10-01T09:00:00.000Z",
     publishedBy: null,
     reviewedAt: "2026-10-01T09:00:00.000Z",
+    trashedAt: null,
   },
   {
     id: "fees-overview",
@@ -36,6 +37,7 @@ const SEEDED_RULES: AnswerRule[] = [
     updatedAt: "2026-10-01T09:00:00.000Z",
     publishedBy: null,
     reviewedAt: "2026-10-01T09:00:00.000Z",
+    trashedAt: null,
   },
   {
     id: "scholarships-overview",
@@ -47,6 +49,7 @@ const SEEDED_RULES: AnswerRule[] = [
     updatedAt: "2026-10-01T09:00:00.000Z",
     publishedBy: null,
     reviewedAt: null,
+    trashedAt: null,
   },
 ];
 

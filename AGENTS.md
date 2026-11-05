@@ -12,6 +12,13 @@ Use the five default triage roles as `Status:` values in local issue files. See 
 
 Use a single-context layout with `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+## Working style
+
+- **Build exactly what the ticket asks — nothing more.** Don't fix unrelated code, refactor untouched modules, upgrade dependencies, or "improve" anything nobody asked for, even if it looks wrong. File a ticket for it instead.
+- **No overengineering.** No speculative abstractions, options, or configurability that no ticket requires. Reuse existing components, patterns, and utilities; the smallest correct change wins.
+- **The ticket's acceptance criteria are the scope.** If something outside that scope seems necessary to complete the work, stop and ask the user rather than silently expanding the change.
+- **Never change behavior the user didn't ask about** — API contracts, schemas, matching logic, and working UI stay untouched unless the ticket says otherwise.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know

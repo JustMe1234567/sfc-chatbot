@@ -56,94 +56,96 @@ export default async function VisitorEmailsPage({
         role={guard.staff.role}
       />
 
-      <div className={styles.alertsPage}>
-        <section className={styles.alertsSection} aria-labelledby="emails-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <p className={styles.eyebrow}>Follow-up contacts</p>
-              <h2 id="emails-title">Visitor emails</h2>
-              <p>
-                A visitor who asks for a human can leave an address for the
-                college to reply to. Each entry opens the conversation it came
-                from; addresses disappear when their conversation is removed by
-                retention or deletion.
-              </p>
+      <div className={styles.contentArea}>
+        <div className={styles.alertsPage}>
+          <section className={styles.alertsSection} aria-labelledby="emails-title">
+            <div className={styles.sectionHeading}>
+              <div>
+                <p className={styles.eyebrow}>Follow-up contacts</p>
+                <h2 id="emails-title">Visitor emails</h2>
+                <p>
+                  A visitor who asks for a human can leave an address for the
+                  college to reply to. Each entry opens the conversation it came
+                  from; addresses disappear when their conversation is removed by
+                  retention or deletion.
+                </p>
+              </div>
             </div>
-          </div>
 
-          {total === 0 ? (
-            <div className={styles.alertEmpty}>
-              <strong>No visitor emails yet</strong>
-              <p>
-                An entry appears here when a visitor asks for a human and
-                leaves an email address for follow-up.
-              </p>
-            </div>
-          ) : (
-            <>
-              <ol className={styles.emailList}>
-                {conversations.map((conversation) => (
-                  <li key={conversation.id}>
-                    {/* The whole row is the link to the conversation — plain
-                        text inside, no nested interactive elements. */}
-                    <Link
-                      className={styles.emailRow}
-                      href={`/dashboard/inbox/${conversation.id}`}
-                    >
-                      <span className={styles.emailRowMain}>
-                        <span className={styles.emailAddress}>{conversation.visitorEmail}</span>
-                        <span className={styles.emailRowMeta}>
-                          <span
-                            className={`${styles.chip} ${STATE_CHIPS[conversation.state] ?? styles.chipClosed}`}
-                          >
-                            {DESK_STATE_LABELS[conversation.state] ?? conversation.state}
-                          </span>
-                          <time dateTime={conversation.lastActivityAt}>
-                            {new Date(conversation.lastActivityAt).toLocaleString("en-GB")}
-                          </time>
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-              {totalPages > 1 ? (
-                <nav className={styles.pager} aria-label="Visitor emails pages">
-                  {page > 1 ? (
-                    <Link className={styles.pagerLink} href={pageHref(page - 1)}>
-                      ← Previous
-                    </Link>
-                  ) : null}
-                  {emailsPageLinks(page, totalPages).map((link, index) =>
-                    link.kind === "gap" ? (
-                      <span
-                        key={`gap-${index}`}
-                        className={styles.pagerGap}
-                        aria-hidden="true"
-                      >
-                        …
-                      </span>
-                    ) : (
+            {total === 0 ? (
+              <div className={styles.alertEmpty}>
+                <strong>No visitor emails yet</strong>
+                <p>
+                  An entry appears here when a visitor asks for a human and
+                  leaves an email address for follow-up.
+                </p>
+              </div>
+            ) : (
+              <>
+                <ol className={styles.emailList}>
+                  {conversations.map((conversation) => (
+                    <li key={conversation.id}>
+                      {/* The whole row is the link to the conversation — plain
+                          text inside, no nested interactive elements. */}
                       <Link
-                        key={`page-${link.page}`}
-                        className={styles.pagerLink}
-                        href={pageHref(link.page)}
-                        aria-current={link.page === page ? "page" : undefined}
+                        className={styles.emailRow}
+                        href={`/dashboard/inbox/${conversation.id}`}
                       >
-                        {link.page}
+                        <span className={styles.emailRowMain}>
+                          <span className={styles.emailAddress}>{conversation.visitorEmail}</span>
+                          <span className={styles.emailRowMeta}>
+                            <span
+                              className={`${styles.chip} ${STATE_CHIPS[conversation.state] ?? styles.chipClosed}`}
+                            >
+                              {DESK_STATE_LABELS[conversation.state] ?? conversation.state}
+                            </span>
+                            <time dateTime={conversation.lastActivityAt}>
+                              {new Date(conversation.lastActivityAt).toLocaleString("en-GB")}
+                            </time>
+                          </span>
+                        </span>
                       </Link>
-                    ),
-                  )}
-                  {page < totalPages ? (
-                    <Link className={styles.pagerLink} href={pageHref(page + 1)}>
-                      Next →
-                    </Link>
-                  ) : null}
-                </nav>
-              ) : null}
-            </>
-          )}
-        </section>
+                    </li>
+                  ))}
+                </ol>
+                {totalPages > 1 ? (
+                  <nav className={styles.pager} aria-label="Visitor emails pages">
+                    {page > 1 ? (
+                      <Link className={styles.pagerLink} href={pageHref(page - 1)}>
+                        ← Previous
+                      </Link>
+                    ) : null}
+                    {emailsPageLinks(page, totalPages).map((link, index) =>
+                      link.kind === "gap" ? (
+                        <span
+                          key={`gap-${index}`}
+                          className={styles.pagerGap}
+                          aria-hidden="true"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <Link
+                          key={`page-${link.page}`}
+                          className={styles.pagerLink}
+                          href={pageHref(link.page)}
+                          aria-current={link.page === page ? "page" : undefined}
+                        >
+                          {link.page}
+                        </Link>
+                      ),
+                    )}
+                    {page < totalPages ? (
+                      <Link className={styles.pagerLink} href={pageHref(page + 1)}>
+                        Next →
+                      </Link>
+                    ) : null}
+                  </nav>
+                ) : null}
+              </>
+            )}
+          </section>
+        </div>
       </div>
     </main>
   );

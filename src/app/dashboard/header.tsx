@@ -180,27 +180,18 @@ function SidebarChrome({
       : {};
   return (
     <>
+      {/* The reference's brand block (ticket 58): the crest alone, larger and
+          centered over a thin divider — the rail's hierarchy is crest,
+          navigation, Sign out. */}
       <div className={styles.sideBrand}>
         <Image
           src="/brand/cropped-SFC-Final-Logo-Single.png"
           alt=""
-          width={34}
-          height={34}
+          width={44}
+          height={44}
           className={styles.brandMark}
         />
-        <span className={styles.sideCollege}>Springfield College</span>
       </div>
-      {onToggle ? (
-        <button
-          type="button"
-          className={styles.sideToggle}
-          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-          aria-expanded={!collapsed}
-          onClick={onToggle}
-        >
-          {CHEVRON}
-        </button>
-      ) : null}
       <nav
         className={styles.sideNav}
         aria-label="Dashboard"
@@ -228,6 +219,20 @@ function SidebarChrome({
           </Link>
         ))}
       </nav>
+      {onToggle ? (
+        // The expand/collapse control lives at the rail's bottom, under the
+        // navigation and over the identity divider (ticket 58) — the top of
+        // the rail stays the reference's crest/divider/navigation stack.
+        <button
+          type="button"
+          className={styles.sideToggle}
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          aria-expanded={!collapsed}
+          onClick={onToggle}
+        >
+          {CHEVRON}
+        </button>
+      ) : null}
       <div className={styles.sideIdentity}>
         <span className={styles.whoText}>
           {name} · {ROLE_LABELS[role] ?? role}

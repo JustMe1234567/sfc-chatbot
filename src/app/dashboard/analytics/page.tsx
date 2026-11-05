@@ -40,7 +40,9 @@ export default async function AnalyticsPage() {
         name={guard.staff.name}
         role={guard.staff.role}
       />
-      <AnalyticsView role={guard.staff.role} settings={settings} />
+      <div className={styles.contentArea}>
+        <AnalyticsView role={guard.staff.role} settings={settings} />
+      </div>
     </main>
   );
 }

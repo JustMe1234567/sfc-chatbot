@@ -292,66 +292,93 @@ a:focus-visible {
 
 /* Page shell and the shared top bar. */
 
+/* The app shell (ticket 58): the dashboard is one viewport-high grid — the
+   rail fills the left column and never moves, and the content column is the
+   scrolling area. The page itself never scrolls, so there is no second
+   window scrollbar. Pages wrap their content in .contentArea. */
 .shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--page);
   /* Sidebar column + content column (ticket 52): DashboardHeader renders
      the rail and the content heading as the first grid items, and every
-     page's blocks auto-place into the content column after them. */
+     page's .contentArea fills the rest of the content track. */
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   column-gap: 20px;
-  align-items: start;
-  padding: 0 24px 32px 0;
+  overflow: hidden;
+  padding: 0;
+  /* The file has no global border-box reset: the shell and the two layout
+     primitives it sizes intrinsically need it, or the rail's padding lands
+     outside its viewport height (the "100vh but still wrong" defect). */
+  box-sizing: border-box;
 }
 
-/* The dark sidebar rail (ticket 52): reuses the conversation desk's dark
-   token set (--rail-*) so later dark-mode work has one surface family. The
-   rail sits in grid column 1 spanning every row the page content occupies
-   (the span is generous so content never outgrows the placement). */
+/* The scrolling content column (ticket 58): the only scroll container on
+   the dashboard. It carries the outer padding the shell used to hold, so
+   its scrollbar sits at the true viewport edge. */
+.contentArea {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 24px 32px;
+  box-sizing: border-box;
+}
+
+/* The dark sidebar rail (ticket 52), full-height and fixed (ticket 58):
+   reuses the conversation desk's dark token set (--rail-*) so later
+   dark-mode work has one surface family — the rail re-declares those tokens
+   in its own deep navy (below), which recolors the rail and its callout
+   without touching the desk's surfaces. */
 .sidebar {
   grid-column: 1;
-  grid-row: 1 / span 40;
-  position: sticky;
-  top: 0;
-  height: 100vh;
+  grid-row: 1 / -1;
+  height: 100%;
   width: var(--sidebar-width);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 10px;
+  padding: 16px 12px 14px;
   background: var(--rail-bg);
   border-right: 1px solid var(--rail-line);
   overflow: hidden;
   transition: width var(--motion-base) var(--ease-out);
   --sidebar-width: 252px;
+  /* The reference's deep navy surface (ticket 58): darker and bluer than
+     the desk's slate, with tuned line/ink steps for the same AA pairings. */
+  --rail-bg: #101f42;
+  --rail-raised: #1c2e58;
+  --rail-line: #2e4272;
+  --rail-ink: #e8eefb;
+  --rail-muted: #a3b3d6;
 }
 
 .sidebar[data-collapsed] {
   --sidebar-width: 68px;
+  /* The compact rail's slimmer side padding leaves the 44px sign-out tile
+     and nav rows exactly their floor width. */
+  padding: 16px 10px 14px;
 }
 
+/* The reference's brand block (ticket 58): the crest alone, larger and
+   centered, over a thin divider — no wordmark in the rail. */
 .sideBrand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
+  justify-content: center;
+  padding: 6px 8px 14px;
+  border-bottom: 1px solid var(--rail-line);
   white-space: nowrap;
 }
 
 .brandMark {
   flex: none;
-}
-
-.sideCollege {
-  font: 600 11.5px/1.3 system-ui, sans-serif;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--sfc-gold);
-}
-
-.sidebar[data-collapsed] .sideCollege {
-  display: none;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
 }
 
 /* Collapsed: labels come off entirely rather than clipping at the rail edge
@@ -360,13 +387,17 @@ a:focus-visible {
   display: none;
 }
 
+/* The expand/collapse control sits at the rail's bottom, under the
+   navigation and over the identity divider (ticket 58), so the reference's
+   crest/divider/navigation hierarchy reads untouched. A quiet full-width
+   row; the compact rail shows it as the chevron alone. */
 .sideToggle {
-  align-self: flex-end;
   display: grid;
   place-items: center;
   min-height: 44px;
   min-width: 44px;
-  border: 1px solid var(--rail-line);
+  align-self: stretch;
+  border: 0;
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--rail-muted);
@@ -394,7 +425,7 @@ a:focus-visible {
 .sideNav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   /* The identity stays pinned at the rail's bottom even on short viewports:
      the nav gives up its space and scrolls instead of pushing it out. */
   flex: 1;
@@ -508,7 +539,7 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 8px 4px;
+  padding: 12px 2px 2px;
   border-top: 1px solid var(--rail-line);
 }
 
@@ -535,15 +566,31 @@ a:focus-visible {
   font-size: 0;
 }
 
+/* The rail's Sign out (ticket 58): the reference's dark tile with the red
+   mark and light label, full-width under the identity divider. */
 .sideIdentity .secondaryButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 44px;
+  width: 100%;
+  background: var(--rail-raised);
+  border-color: transparent;
+  color: var(--rail-ink);
 }
 
 .sideIdentity .secondaryButton svg {
   flex: none;
+  /* The red accent the reference gives the sign-out icon. */
+  color: var(--danger-bright);
+}
+
+.sideIdentity .secondaryButton:hover,
+.sideIdentity .secondaryButton:active {
+  background: #22356a;
+  border-color: transparent;
+  color: #ffffff;
 }
 
 .contentHead {
@@ -699,6 +746,28 @@ a:focus-visible {
   margin-left: 8px;
 }
 
+/* The lifecycle views' badges (ticket 58): quiet grey for Archived, the
+   danger tint for Trashed — the same pill shape, honest about the state. */
+.archivedBadge {
+  display: inline-block;
+  background: #eef1f6;
+  color: var(--muted);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  padding: 2px 10px;
+  margin-left: 8px;
+}
+
+.trashedBadge {
+  display: inline-block;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  padding: 2px 10px;
+  margin-left: 8px;
+}
+
 /* Answer library. */
 
 .ruleGrid {
@@ -752,11 +821,24 @@ a:focus-visible {
   margin: 0;
 }
 
-/* Answers tab redesign (tickets 55-56): the page's heading row, the three
-   in-place tabs, the search/status-filter toolbar with its count and order
-   line, and the mockup-styled expandable answer cards — icon tiles, pill
-   badges, iconified meta, single-line collapsed previews. Light-theme
-   tokens only; the two configuration forms keep their .ruleCard styling. */
+/* Answers tab redesign (tickets 55-56), restyled to the reference (ticket
+   58): one wide aligned content grid, the heading row with the New Answer
+   action top-right, the three in-place tabs, the search/status toolbar with
+   its count line, and reference-styled answer cards — icon tiles, pill
+   badges, outlined meta pills, highlighted expanded cards with a divided
+   footer carrying the review trail, the Edit action, and the three-dot
+   lifecycle menu. Light-theme tokens only; the two configuration forms keep
+   their .ruleCard styling. */
+
+/* The Answers grid (ticket 58): wider than the shared .inbox column and
+   left-aligned with the page heading, so the content, tabs, toolbar, and
+   cards share one edge instead of floating in a centered gutter. */
+.answersPage {
+  max-width: 68rem;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
 .answersHead {
   display: flex;
@@ -775,12 +857,14 @@ a:focus-visible {
 }
 
 /* The filled primary New Answer action: colors come from the shared
-   primaryButton; this adds the icon alignment and the touch floor. */
+   primaryButton; this adds the icon alignment, the touch floor, and the
+   reference's no-underline button text (it is a link, not prose). */
 .answersNew {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: 44px;
+  text-decoration: none;
 }
 
 .answersTabs {
@@ -947,6 +1031,13 @@ a:focus-visible {
   border-color: var(--sfc-blue);
 }
 
+/* The reference's clearly highlighted expanded card (ticket 58): the blue
+   border doubles into a soft ring, no layout change. */
+.answersCard[data-open] {
+  border-color: var(--sfc-blue);
+  box-shadow: 0 0 0 1px var(--sfc-blue);
+}
+
 /* The soft blue rounded square carrying the topic's mark. */
 .answersCardTile {
   flex: none;
@@ -967,8 +1058,9 @@ a:focus-visible {
 }
 
 /* When the card is open the full response below replaces the clamped
-   preview, and the collapsed meta row stands down with it — the foot's own
-   meta row (outside the toggle) is untouched. */
+   preview, and the toggle's own pill row stands down with it — the reveal
+   body repeats the pills between the response and the footer, which is the
+   reference's expanded order. */
 .answersCard[data-open] .answersCardPreview {
   display: none;
 }
@@ -1029,10 +1121,13 @@ a:focus-visible {
   text-overflow: ellipsis;
 }
 
+/* The meta row (ticket 58): the card's top meta row uses outlined pills in
+   the reference's treatment; the footer's review trail stays plain text. */
 .answersCardMeta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
+  gap: 8px;
   color: var(--muted);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
@@ -1041,12 +1136,15 @@ a:focus-visible {
 .answersMetaItem {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
-.answersMetaItem + .answersMetaItem::before {
-  content: "·";
-  margin: 0 7px;
+.answersMetaPill {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  padding: 4px 10px;
+  min-height: 28px;
 }
 
 .answersCard p.answersCardMeta {
@@ -1109,9 +1207,12 @@ a:focus-visible {
   border-radius: var(--radius-s);
   font: 600 13.5px system-ui, sans-serif;
   padding: 8px 14px;
-  min-height: 36px;
+  /* Ticket 58 raises the footer cluster to the 44px touch floor, keeping
+     Edit answer and the three-dot menu at one consistent height. */
+  min-height: 44px;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .answersEdit:hover {
@@ -1121,6 +1222,123 @@ a:focus-visible {
 .answersEdit:focus-visible {
   outline: 2px solid var(--sfc-blue);
   outline-offset: 2px;
+}
+
+/* The lifecycle actions (ticket 58): the three-dot button beside Edit
+   answer opens the reference's menu — Duplicate, Publish/Unpublish,
+   Archive, and (behind a divider) the red Delete. The wrapper anchors the
+   popover; both controls keep the cluster at one consistent 44px height. */
+.answersMenuWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.answersMenuButton {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid #c4cdda;
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: 700 14px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.answersMenuButton:hover {
+  border-color: var(--sfc-blue);
+  color: var(--sfc-blue-deep);
+}
+
+.answersMenuButton:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+.answersMenuButton[aria-expanded="true"] {
+  border-color: var(--sfc-blue);
+  background: var(--sfc-blue-soft);
+  color: var(--sfc-blue-deep);
+}
+
+.answersMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: 0 12px 30px rgba(9, 14, 20, 0.18);
+}
+
+.answersMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--ink);
+  font: 550 13.5px system-ui, sans-serif;
+  padding: 9px 10px;
+  min-height: 44px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.answersMenuItem:hover {
+  background: var(--sfc-blue-soft);
+}
+
+.answersMenuItem:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: -2px;
+}
+
+.answersMenuItem[data-danger] {
+  color: var(--danger);
+}
+
+.answersMenuItem[data-danger]:hover {
+  background: var(--danger-soft);
+}
+
+.answersMenuItem svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.answersMenuItem[data-danger] svg {
+  color: var(--danger);
+}
+
+.answersMenuDivider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--line);
+}
+
+/* Mutation feedback (ticket 58): pending and failed actions speak in the
+   card's footer, politely live so screen readers hear the change. */
+.answersActionNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.answersActionNote[data-error] {
+  color: var(--danger);
 }
 
 @media (max-width: 720px) {
@@ -2413,16 +2631,19 @@ a:focus-visible {
 
 @media (max-width: 900px) {
   .shell {
-    padding: 0 16px 24px 0;
     column-gap: 14px;
+  }
+
+  .contentArea {
+    padding: 0 16px 24px;
   }
 }
 
 @media (max-width: 760px) {
   /* The rail stays (it collapses on demand); the content column just loses
      outer padding. */
-  .shell {
-    padding: 0 12px 24px 0;
+  .contentArea {
+    padding: 0 12px 24px;
   }
 
   /* Narrow screens stack the panes; the back link makes switching between
@@ -2442,11 +2663,20 @@ a:focus-visible {
 
 /* Below 720px the rail leaves the layout entirely: the shell becomes a
    single column, and navigation opens as an overlay drawer from the
-   content-head control (ticket 52). */
+   content-head control (ticket 52). The page scrolls as one document again
+   — the viewport-high shell and its internal scroll area are desktop
+   accommodations for the fixed rail (ticket 58). */
 @media (max-width: 720px) {
   .shell {
     display: block;
+    height: auto;
+    overflow: visible;
     padding: 12px 12px 24px;
+  }
+
+  .contentArea {
+    overflow: visible;
+    padding: 0;
   }
 
   .sidebar {

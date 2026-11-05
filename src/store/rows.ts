@@ -89,10 +89,11 @@ export interface RuleRow {
   updated_at: string;
   published_by: string | null;
   reviewed_at: string | null;
+  trashed_at: string | null;
 }
 
 export const RULE_COLUMNS =
-  "id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at";
+  "id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at, trashed_at";
 
 export function rowToRule(row: RuleRow): AnswerRule {
   return {
@@ -106,6 +107,7 @@ export function rowToRule(row: RuleRow): AnswerRule {
     updatedAt: row.updated_at,
     publishedBy: row.published_by,
     reviewedAt: row.reviewed_at,
+    trashedAt: row.trashed_at,
   };
 }
 

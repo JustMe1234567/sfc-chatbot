@@ -102,13 +102,18 @@ describe("the answers workspace (ticket 55)", () => {
     expect(source).toContain("answersCardPreview");
     expect(source).toContain("College page link");
     expect(source).toContain("keyword condition");
-    // The expanded body carries the review trail and the Edit action that
-    // replaces the old whole-card navigation (ticket 56 moved it onto the
-    // foot's meta row as a compact blue outline button).
+    // The expanded body carries the review trail and the lifecycle actions
+    // (ticket 58 split the footer's Edit answer and its menu into the
+    // AnswerActions component, which owns the mutations).
+    const actions = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/answers/answer-actions.tsx"),
+      "utf8",
+    );
     expect(source).toContain("Published by");
     expect(source).toContain("Draft · last edited");
-    expect(source).toContain('href={`/dashboard/answers/${rule.id}`}');
-    expect(source).toContain("answersEdit");
+    expect(source).toContain("AnswerActions");
+    expect(actions).toContain('href={`/dashboard/answers/${rule.id}`}');
+    expect(actions).toContain("answersEdit");
     // The collapsed body leaves the accessibility tree and tab order.
     expect(source).toContain("inert={!open}");
   });
@@ -125,6 +130,7 @@ describe("the answers workspace (ticket 55)", () => {
       updatedAt: baseTime,
       publishedBy: null,
       reviewedAt: null,
+      trashedAt: null,
       publishedByName: null,
     });
     const rules = [

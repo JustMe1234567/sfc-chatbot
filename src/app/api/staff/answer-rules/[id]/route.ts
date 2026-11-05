@@ -41,6 +41,9 @@ export async function PUT(request: Request, context: RouteContext) {
     updatedAt: new Date().toISOString(),
     publishedBy: existing.publishedBy,
     reviewedAt: existing.reviewedAt,
+    // Any revision revives the rule as an active draft, so a leftover Trash
+    // stamp (and its purge clock) is cleared with it.
+    trashedAt: null,
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);

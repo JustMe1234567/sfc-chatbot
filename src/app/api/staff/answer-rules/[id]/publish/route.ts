@@ -29,6 +29,7 @@ export async function POST(request: Request, context: RouteContext) {
     updatedAt: now,
     publishedBy: staff.userId,
     reviewedAt: now,
+    trashedAt: null,
   };
   const { store, db } = await getChatbotService();
   await store.upsertAnswerRule(rule);
