@@ -11,6 +11,7 @@ import {
   type DeskStatus,
 } from "@/domain/inbox";
 import { STATUS_DOTS } from "./status-classes";
+import { DeleteConversationButton } from "./history-actions";
 import styles from "../dashboard.module.css";
 
 /**
@@ -27,6 +28,11 @@ import styles from "../dashboard.module.css";
  * attention-worthy tiers also say it in visible text. Color never works
  * alone. History rows are the archive, not live work: they keep their state
  * text and carry no status treatment at all.
+ *
+ * Ticket 51 adds a Delete control for closed rows. The row is a wrapper
+ * with the Link and the control as siblings — a button nested in an anchor
+ * is invalid HTML and would hijack navigation — while the link-status
+ * consumer stays inside the Link so the pending hint keeps working.
  */
 export default function DeskEntry({ item, selected }: { item: DeskItem; selected: boolean }) {
   // The CSS line-clamp trims the preview with an ellipsis; no JS slicing.
@@ -34,16 +40,32 @@ export default function DeskEntry({ item, selected }: { item: DeskItem; selected
     ? `${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text}`
     : "No messages";
   const status: DeskStatus | null = item.active ? deskStatus(item) : null;
+  const deletable = item.state === "closed";
   return (
-    <Link
-      href={`/dashboard/inbox/${item.id}`}
-      className={styles.deskItem}
-      data-selected={selected || undefined}
-      data-status={status ?? undefined}
-      aria-current={selected ? "true" : undefined}
-    >
-      <RowBody item={item} status={status} preview={preview} />
-    </Link>
+    <span className={styles.deskItemWrap}>
+      <Link
+        href={`/dashboard/inbox/${item.id}`}
+        className={styles.deskItem}
+        data-selected={selected || undefined}
+        data-status={status ?? undefined}
+        aria-current={selected ? "true" : undefined}
+      >
+        <RowBody item={item} status={status} preview={preview} />
+      </Link>
+      {deletable ? (
+        <DeleteConversationButton
+          conversationId={item.id}
+          selected={selected}
+          // Identifies the conversation by state + the row's own displayed
+          // time — never by transcript text (ticket 51).
+          description={`${DESK_STATE_LABELS[item.state] ?? item.state} · ${new Date(item.lastActivityAt).toLocaleString("en-GB", {
+            weekday: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`}
+        />
+      ) : null}
+    </span>
   );
 }
 

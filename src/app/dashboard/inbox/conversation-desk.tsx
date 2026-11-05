@@ -22,6 +22,7 @@ import AutoRefresh from "../conversations/[id]/auto-refresh";
 import { ClaimButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
 import DeskEntry from "./desk-entry";
 import AttentionSounds from "./attention-sounds";
+import { ClearHistoryButton } from "./history-actions";
 import { TIER_CHIPS } from "./status-classes";
 import styles from "../dashboard.module.css";
 
@@ -77,6 +78,9 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // attention alert.
   const desk = view === "active" ? await summarizeConversationDesk(store) : null;
   const history = view === "history" ? await summarizeConversationHistory(store) : [];
+  // Clear history counts what it would actually remove: only closed
+  // conversations are deletable (ticket 51); quiet claimed/waiting rows stay.
+  const closedHistoryCount = history.filter((item) => item.state === "closed").length;
 
   const selected = selectedId ? await store.getConversation(selectedId) : null;
   const selectedActive = selected ? isConversationActive(selected) : false;
@@ -182,7 +186,14 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
             </>
           ) : (
             <>
-              <h2>History</h2>
+              <div className={styles.historyHead}>
+                <h2>History</h2>
+                {/* Owner-only bulk clear (ticket 51), hidden when nothing
+                    closed exists to remove. */}
+                {guard.staff.role === "owner" && closedHistoryCount > 0 ? (
+                  <ClearHistoryButton count={closedHistoryCount} selectedId={selectedId} />
+                ) : null}
+              </div>
               {history.length === 0 ? (
                 <p className={styles.deskEmpty}>No past conversations yet.</p>
               ) : (

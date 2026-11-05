@@ -56,7 +56,6 @@ describe("shared pending feedback (ticket 42)", () => {
       ["src/app/dashboard/notifications/alert-settings-form.tsx", ["Saving…"]],
       ["src/app/dashboard/analytics/analytics-settings-form.tsx", ["Saving…"]],
       ["src/app/dashboard/staff/invite-form.tsx", ["Creating…"]],
-      ["src/app/dashboard/staff/disable-button.tsx", ["Disabling…"]],
     ];
     for (const [file, verbs] of cases) {
       const source = await read(file);
@@ -65,6 +64,12 @@ describe("shared pending feedback (ticket 42)", () => {
         expect(source, `${file} → ${verb}`).toContain(verb);
       }
     }
+    // Ticket 51 moved the disable confirmation into the shared dialog: the
+    // trigger is a plain button and the "Disabling…" verb lives on the
+    // dialog's PendingButton confirm control.
+    const disable = await read("src/app/dashboard/staff/disable-button.tsx");
+    expect(disable).toContain("Disabling…");
+    expect(disable).toContain("ConfirmDialog");
   });
 
   it("labels authentication and sign-out with their active verbs", async () => {

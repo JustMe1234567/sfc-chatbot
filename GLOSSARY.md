@@ -78,3 +78,9 @@ The number of days a closed conversation's transcript and visitor contact detail
 
 **Retention run**:
 The operator-visible record of one cleanup pass that removed expired conversations. It carries counts only — never message text or contact details.
+
+**Delete (history)**:
+A staff member's hard removal of ONE closed conversation from the History tab (ticket 51), behind a confirmation dialog. It uses the same transactional purge as the retention sweep; claimed or waiting conversations cannot be deleted.
+
+**Clear history**:
+An owner-only action that hard-removes every closed conversation from the History tab at once (ticket 51), behind a confirmation dialog stating how many will go. Conversations still claimed or waiting are kept. Distinct from the visitor's "Clear conversation", which starts the visitor a fresh chat.
