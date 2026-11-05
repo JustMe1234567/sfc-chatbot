@@ -912,6 +912,52 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Delivery history pager (ticket 50): real page links with a 44px touch
+   floor; the current page is filled rather than a dead link. */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.pagerLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 13px system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.pagerLink:hover {
+  border-color: var(--sfc-blue);
+  color: var(--sfc-blue-deep);
+}
+
+.pagerLink:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+.pagerLink[aria-current="page"] {
+  background: var(--sfc-blue);
+  border-color: var(--sfc-blue);
+  color: #ffffff;
+}
+
+.pagerGap {
+  color: var(--muted);
+  padding: 0 4px;
+}
+
 .alertEmpty {
   padding: 36px 20px;
   border: 1px dashed #c4cdda;

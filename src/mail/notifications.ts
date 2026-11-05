@@ -253,6 +253,55 @@ export async function listNotifications(db: AppDatabase): Promise<NotificationRo
   return listRows(db);
 }
 
+/** Rows shown per Delivery history page (ticket 50). */
+export const NOTIFICATIONS_PAGE_SIZE = 10;
+
+/**
+ * One Delivery history page's rows: only this page's slice, never the full
+ * table. Newest first, matching the unpaginated listing; the id tie-break
+ * keeps page boundaries stable when attempts share a created_at instant.
+ * The total that drives the pager comes from `notificationStatusCounts`,
+ * which the page fetches anyway for its summary badges.
+ */
+export async function listNotificationPage(
+  db: AppDatabase,
+  page: number,
+): Promise<NotificationRow[]> {
+  const offset = (page - 1) * NOTIFICATIONS_PAGE_SIZE;
+  const rows = await db.all<NotificationRecord>(
+    `SELECT ${NOTIFICATION_COLUMNS} FROM notifications ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+    NOTIFICATIONS_PAGE_SIZE,
+    offset,
+  );
+  return rows.map(rowToNotification);
+}
+
+/**
+ * Status counts across EVERY notification — the Delivery history's summary
+ * badges must not shrink to the current page's slice. The total also drives
+ * the pager (ticket 50), so a page render runs one aggregate query here and
+ * never a second COUNT in the page query.
+ */
+export async function notificationStatusCounts(
+  db: AppDatabase,
+): Promise<{ total: number; delivered: number; failed: number }> {
+  const rows = await db.all<{ status: NotificationRow["status"]; n: number | string }>(
+    "SELECT status, COUNT(*) AS n FROM notifications GROUP BY status",
+  );
+  const counts = { total: 0, delivered: 0, failed: 0 };
+  for (const row of rows) {
+    const n = Number(row.n);
+    counts.total += n;
+    if (row.status === "sent") {
+      counts.delivered = n;
+    }
+    if (row.status === "failed") {
+      counts.failed = n;
+    }
+  }
+  return counts;
+}
+
 /**
  * Staff retry of a failed alert. Retrying a sent notification is refused so
  * a successful alert can never be duplicated; retrying reuses the same row.

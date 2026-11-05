@@ -1,8 +1,16 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
-import { listNotifications } from "@/mail/notifications";
+import {
+  listNotificationPage,
+  notificationStatusCounts,
+} from "@/mail/notifications";
+import {
+  notificationPageLinks,
+  resolveNotificationPage,
+} from "./pagination";
 import {
   DEFAULT_RETENTION_DAYS,
   getAlertRecipients,
@@ -18,7 +26,11 @@ import RetentionForm from "./retention-form";
 import RetryButton from "./retry-button";
 import styles from "../dashboard.module.css";
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const staffHeaders = await headers();
   const guard = await requireStaff(staffHeaders, { roles: STAFF_ROLES });
   if ("response" in guard) {
@@ -30,13 +42,18 @@ export default async function NotificationsPage() {
   }
 
   const { db, store } = await getChatbotService();
-  const notifications = await listNotifications(db);
   const recipients = await getAlertRecipients(db);
   const supportHours = await getSupportHours(db);
   const retentionDays = await getTranscriptRetentionDays(db);
   const lastRun = await latestRetentionRun(store);
-  const deliveredCount = notifications.filter((notification) => notification.status === "sent").length;
-  const failedCount = notifications.filter((notification) => notification.status === "failed").length;
+  // The badges and pager both key on counts over EVERY notification; only
+  // the rendered rows come from the page query (ticket 50).
+  const counts = await notificationStatusCounts(db);
+  const { page, totalPages } = resolveNotificationPage((await searchParams).page, counts.total);
+  const notifications = await listNotificationPage(db, page);
+  const deliveredCount = counts.delivered;
+  const failedCount = counts.failed;
+  const pageHref = (target: number) => `/dashboard/notifications?page=${target}`;
 
   return (
     <main className={styles.shell}>
@@ -115,50 +132,86 @@ export default async function NotificationsPage() {
             </div>
           </div>
 
-          {notifications.length === 0 ? (
+          {counts.total === 0 ? (
             <div className={styles.alertEmpty}>
               <strong>No email alerts yet</strong>
               <p>New handoff alerts will appear here with their delivery status.</p>
             </div>
           ) : (
-            <ol className={styles.alertList}>
-              {notifications.map((notification) => {
-                const statusLabel =
-                  notification.status === "sent"
-                    ? "Delivered"
-                    : notification.status === "failed"
-                      ? "Failed"
-                      : "Pending";
-                const statusClass =
-                  notification.status === "sent"
-                    ? styles.alertStatusSent
-                    : notification.status === "failed"
-                      ? styles.alertStatusFailed
-                      : styles.alertStatusPending;
+            <>
+              <ol className={styles.alertList}>
+                {notifications.map((notification) => {
+                  const statusLabel =
+                    notification.status === "sent"
+                      ? "Delivered"
+                      : notification.status === "failed"
+                        ? "Failed"
+                        : "Pending";
+                  const statusClass =
+                    notification.status === "sent"
+                      ? styles.alertStatusSent
+                      : notification.status === "failed"
+                        ? styles.alertStatusFailed
+                        : styles.alertStatusPending;
 
-                return (
-                  <li key={notification.id} className={styles.alertRow}>
-                    <div className={styles.alertRowMain}>
-                      <div className={styles.alertRowMeta}>
-                        <span className={`${styles.alertStatus} ${statusClass}`}>{statusLabel}</span>
-                        <span>Attempt {notification.attempts}</span>
-                        <time dateTime={notification.createdAt}>
-                          {new Date(notification.createdAt).toLocaleString("en-GB")}
-                        </time>
+                  return (
+                    <li key={notification.id} className={styles.alertRow}>
+                      <div className={styles.alertRowMain}>
+                        <div className={styles.alertRowMeta}>
+                          <span className={`${styles.alertStatus} ${statusClass}`}>{statusLabel}</span>
+                          <span>Attempt {notification.attempts}</span>
+                          <time dateTime={notification.createdAt}>
+                            {new Date(notification.createdAt).toLocaleString("en-GB")}
+                          </time>
+                        </div>
+                        <p className={styles.alertMessage}>
+                          {notification.lastError
+                            ? notification.lastError
+                            : `Sent to ${notification.recipients.join(", ")}.`}
+                        </p>
                       </div>
-                      <p className={styles.alertMessage}>
-                        {notification.lastError
-                          ? notification.lastError
-                          : `Sent to ${notification.recipients.join(", ")}.`}
-                      </p>
-                    </div>
-                    {notification.lastError && notification.status !== "sent" ? (
-                      <RetryButton notificationId={notification.id} />
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
+                      {notification.lastError && notification.status !== "sent" ? (
+                        <RetryButton notificationId={notification.id} />
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+              {totalPages > 1 ? (
+                <nav className={styles.pager} aria-label="Delivery history pages">
+                  {page > 1 ? (
+                    <Link className={styles.pagerLink} href={pageHref(page - 1)}>
+                      ← Previous
+                    </Link>
+                  ) : null}
+                  {notificationPageLinks(page, totalPages).map((link, index) =>
+                    link.kind === "gap" ? (
+                      <span
+                        key={`gap-${index}`}
+                        className={styles.pagerGap}
+                        aria-hidden="true"
+                      >
+                        …
+                      </span>
+                    ) : (
+                      <Link
+                        key={`page-${link.page}`}
+                        className={styles.pagerLink}
+                        href={pageHref(link.page)}
+                        aria-current={link.page === page ? "page" : undefined}
+                      >
+                        {link.page}
+                      </Link>
+                    ),
+                  )}
+                  {page < totalPages ? (
+                    <Link className={styles.pagerLink} href={pageHref(page + 1)}>
+                      Next →
+                    </Link>
+                  ) : null}
+                </nav>
+              ) : null}
+            </>
           )}
         </section>
       </div>
