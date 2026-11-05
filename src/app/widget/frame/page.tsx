@@ -10,7 +10,6 @@ import {
   type StoredSession,
 } from "@/lib/visitorSession";
 import { startPresenceHeartbeat } from "@/widget/presence";
-import { historyPollDue, OPEN_HISTORY_INTERVAL_MS } from "@/widget/historyPolling";
 import { DEFAULT_WELCOME_MESSAGE } from "@/domain/welcome";
 import {
   emptyArrivalState,
@@ -144,8 +143,6 @@ export default function WidgetFrame() {
   // Bumped whenever the visitor's conversation is replaced (ticket 14): any
   // in-flight request from an older generation must never repaint the chat.
   const generationRef = useRef(0);
-  const historyInFlightRef = useRef(false);
-  const lastHistoryRequestAtRef = useRef(0);
   // Synchronous mirror of the sending flag: state updates land after React
   // renders, but the duplicate-send guard must hold during awaits.
   const sendingRef = useRef(false);
@@ -220,16 +217,10 @@ export default function WidgetFrame() {
       return;
     }
     sessionRef.current = session;
-    const generation = generationRef.current;
-    historyInFlightRef.current = true;
-    lastHistoryRequestAtRef.current = Date.now();
     fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
       headers: { Authorization: `Bearer ${session.token}` },
     })
       .then(async (response) => {
-        if (generationRef.current !== generation) {
-          return;
-        }
         if (response.status === 401 || response.status === 404) {
           dropSession();
           return;
@@ -238,19 +229,9 @@ export default function WidgetFrame() {
           showError();
           return;
         }
-        const body = await response.json();
-        if (generationRef.current === generation) {
-          applyHistory(body, false);
-        }
+        applyHistory(await response.json(), false);
       })
-      .catch(() => {
-        if (generationRef.current === generation) {
-          showError();
-        }
-      })
-      .finally(() => {
-        historyInFlightRef.current = false;
-      });
+      .catch(showError);
   }, [showError, applyHistory]);
 
   // Published topic buttons, re-fetched on every widget open so staff
@@ -348,32 +329,16 @@ export default function WidgetFrame() {
     });
   }, []);
 
-  // Keep the open chat live, but stop fetching its entire history every three
-  // seconds while the panel is closed. A closed, visible panel still refreshes
-  // within the server's 60-second visitor-presence window; a hidden host page
-  // pauses requests and catches up on return (ticket 59).
+  // Authorized polling: new staff messages appear promptly, and a reload or
+  // reconnect recovers everything from the stored conversation. Each tick is
+  // tagged with the current generation so a response from a cleared
+  // conversation can never repaint the fresh chat (ticket 14).
   useEffect(() => {
-    let panelOpen = window.parent === window;
-    let hostVisible = document.visibilityState === "visible";
-    const poll = (immediate = false) => {
+    const timer = setInterval(() => {
       const session = sessionRef.current;
-      const now = Date.now();
-      if (!historyPollDue({
-        hasSession: session !== null,
-        visible: hostVisible && document.visibilityState === "visible",
-        inFlight: historyInFlightRef.current,
-        open: panelOpen,
-        lastRequestAt: lastHistoryRequestAtRef.current,
-        now,
-        immediate,
-      })) {
-        return;
-      }
       if (!session) {
         return;
       }
-      historyInFlightRef.current = true;
-      lastHistoryRequestAtRef.current = now;
       const generation = generationRef.current;
       fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
         headers: { Authorization: `Bearer ${session.token}` },
@@ -396,39 +361,9 @@ export default function WidgetFrame() {
           }
           applyHistory(body, true);
         })
-        .catch(() => {})
-        .finally(() => {
-          historyInFlightRef.current = false;
-        });
-    };
-    const onState = (event: MessageEvent) => {
-      if (event.source !== window.parent || event.data?.type !== "sfcw:state") {
-        return;
-      }
-      const wasOpen = panelOpen;
-      const wasVisible = hostVisible;
-      panelOpen = event.data.open === true;
-      hostVisible = event.data.visible === true;
-      if (hostVisible && (!wasVisible || (panelOpen && !wasOpen))) {
-        poll(true);
-      }
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        poll(true);
-      }
-    };
-    window.addEventListener("message", onState);
-    document.addEventListener("visibilitychange", onVisibility);
-    if (window.parent !== window) {
-      window.parent.postMessage({ type: "sfcw:ready" }, "*");
-    }
-    const timer = window.setInterval(() => poll(), OPEN_HISTORY_INTERVAL_MS);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("message", onState);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(timer);
   }, [applyHistory]);
 
   useEffect(() => {
