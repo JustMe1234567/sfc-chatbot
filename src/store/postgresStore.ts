@@ -65,6 +65,26 @@ export function createPostgresStore(sql: PostgresSql): Store {
       await sql`UPDATE conversations SET visitor_email = ${email} WHERE id = ${id}`;
     },
 
+    // The Visitor emails list (ticket 53): the SQLite store's live-derived
+    // page query, with the same last_activity_at/id ordering — conversations
+    // carry no seq, so the id is the shared deterministic tie-break.
+    async listConversationsWithEmail(page, pageSize) {
+      const rows = await sql.unsafe(
+        `SELECT ${CONVERSATION_COLUMNS} FROM conversations
+         WHERE visitor_email IS NOT NULL
+         ORDER BY last_activity_at DESC, id DESC LIMIT $1 OFFSET $2`,
+        [pageSize, (page - 1) * pageSize],
+      );
+      return (rows as unknown as ConversationRow[]).map(rowToConversation);
+    },
+
+    async countConversationsWithEmail() {
+      // Cast to int: bigint comes back as a string through postgres.js.
+      const row = (await sql`SELECT COUNT(*)::int AS n FROM conversations
+                            WHERE visitor_email IS NOT NULL`)[0] as { n: number };
+      return Number(row.n);
+    },
+
     async touchVisitorPresence(id) {
       await sql`UPDATE conversations SET visitor_last_seen_at = ${new Date().toISOString()} WHERE id = ${id}`;
     },

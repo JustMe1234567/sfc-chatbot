@@ -6,10 +6,13 @@ import Image from "next/image";
 import SignOutButton from "./inbox/sign-out-button";
 import styles from "./dashboard.module.css";
 
-export type HeaderArea = "inbox" | "answers" | "staff" | "alerts" | "analytics";
+export type HeaderArea = "inbox" | "emails" | "answers" | "staff" | "alerts" | "analytics";
 
 const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] = [
   { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] },
+  // Ticket 53 amends the shared NAV list (ticket 52 froze its five entries):
+  // Visitor emails joins beside Conversations, for the roles that work handoffs.
+  { area: "emails", href: "/dashboard/emails", label: "Visitor emails", roles: ["owner", "staff"] },
   { area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] },
   { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] },
   { area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] },
@@ -57,6 +60,12 @@ const ICONS: Record<HeaderArea, ReactNode> = {
     <Mark>
       <path d="M4 5.5h9.5V14H8.8L4 17.5z" />
       <path d="M16.5 9H20v5.5h-1.3L16 16.7V14h-2.5" />
+    </Mark>
+  ),
+  emails: (
+    <Mark>
+      <rect x="3.5" y="6" width="17" height="12.5" rx="1.5" />
+      <path d="m4.5 7.5 7.5 5.5 7.5-5.5" />
     </Mark>
   ),
   analytics: (

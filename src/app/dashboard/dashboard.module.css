@@ -1187,6 +1187,81 @@ a:focus-visible {
     flex-direction: column;
   }
 }
+/* Visitor emails list (ticket 53): the delivery history's row language,
+   with each row one whole-row link to its conversation. */
+.emailList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+
+.emailList li {
+  border-top: 1px solid var(--line);
+}
+
+.emailList li:first-child {
+  border-top: 0;
+}
+
+.emailRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 13px 16px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.emailRow:hover {
+  background: var(--sfc-blue-soft);
+}
+
+.emailRow:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: -2px;
+}
+
+.emailRowMain {
+  min-width: 0;
+}
+
+.emailAddress {
+  display: block;
+  font: 600 14px/1.4 system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.emailRowMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The visitor's follow-up address (ticket 53): its own meta line under the
+   pane head row, never a transcript row. */
+.paneEmail {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.paneEmail strong {
+  color: var(--ink);
+  font-weight: 600;
+  margin-right: 6px;
+}
 
 .previewPanel {
   display: flex;

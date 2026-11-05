@@ -17,10 +17,12 @@ async function readHeader(): Promise<string> {
 }
 
 describe("the sidebar keeps the navigation contract (ticket 52)", () => {
-  it("keeps the exact five areas, hrefs, and role filtering of the top nav", async () => {
+  it("keeps the exact hrefs, labels, and role filtering of the existing areas", async () => {
     const header = await readHeader();
     // The NAV table is the single seam ticket 53 coordinates against: labels,
     // hrefs, and role subsets must be byte-identical to the top bar's.
+    // Ticket 53 adds its own sixth entry (Visitor emails) without touching
+    // these five rows.
     for (const row of [
       '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] }',
       '{ area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] }',
@@ -37,10 +39,11 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
 
   it("renders a hand-authored inline SVG icon per area, with no icon library", async () => {
     const header = await readHeader();
-    // One shared Mark wrapper renders the inline SVG; the five area entries
-    // supply their own paths, plus the toggle chevron and menu marks.
+    // One shared Mark wrapper renders the inline SVG; the six area entries
+    // (ticket 53 added the envelope) supply their own paths, plus the
+    // toggle chevron and menu marks.
     const marks = (header.match(/<Mark>/g) ?? []).length;
-    expect(marks).toBe(5);
+    expect(marks).toBe(6);
     expect(header).toMatch(/function Mark/);
     // Icons inherit color — no fills that ignore currentColor.
     expect(header).not.toMatch(/fill="#(?!none)/);

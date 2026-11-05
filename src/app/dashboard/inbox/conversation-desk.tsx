@@ -236,6 +236,14 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                       : null}
                   </span>
                 </span>
+                {/* The follow-up address the visitor left at handoff
+                    (ticket 53): header meta on its own line, never a
+                    transcript row. */}
+                {selected.visitorEmail ? (
+                  <span className={styles.paneEmail}>
+                    <strong>Follow-up email</strong> {selected.visitorEmail}
+                  </span>
+                ) : null}
               </div>
               <Link
                 className={styles.deskBack}

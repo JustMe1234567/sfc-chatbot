@@ -54,6 +54,29 @@ export function createSqliteStore(db: DatabaseSync): Store {
       db.prepare("UPDATE conversations SET visitor_email = ? WHERE id = ?").run(email, id);
     },
 
+    // The Visitor emails list (ticket 53): derived live from the email
+    // column, so a conversation purged by any deletion path drops out with
+    // no extra bookkeeping. Newest activity first; the id tie-break keeps
+    // page boundaries stable when two conversations share an instant (the
+    // Postgres store uses the same tie-break — conversations carry no seq).
+    async listConversationsWithEmail(page, pageSize) {
+      const rows = db
+        .prepare(
+          `SELECT ${CONVERSATION_COLUMNS} FROM conversations
+           WHERE visitor_email IS NOT NULL
+           ORDER BY last_activity_at DESC, id DESC LIMIT ? OFFSET ?`,
+        )
+        .all(pageSize, (page - 1) * pageSize) as unknown as ConversationRow[];
+      return rows.map(rowToConversation);
+    },
+
+    async countConversationsWithEmail() {
+      const row = db
+        .prepare("SELECT COUNT(*) AS n FROM conversations WHERE visitor_email IS NOT NULL")
+        .get() as { n: number | bigint };
+      return Number(row.n);
+    },
+
     async touchVisitorPresence(id) {
       db.prepare("UPDATE conversations SET visitor_last_seen_at = ? WHERE id = ?").run(
         new Date().toISOString(),

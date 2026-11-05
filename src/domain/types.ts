@@ -165,6 +165,15 @@ export interface Store {
   clearConversationAttention(id: string): Promise<void>;
   /** Records the optional follow-up address the visitor left at handoff. */
   setConversationEmail(id: string, email: string): Promise<void>;
+  /**
+   * One page of conversations that carry a follow-up email (ticket 53),
+   * newest activity first — the Visitor emails list's rows. Derived live
+   * from the email column: no copied rows, so retention, manual delete, and
+   * clear-history remove the entry together with the conversation.
+   */
+  listConversationsWithEmail(page: number, pageSize: number): Promise<Conversation[]>;
+  /** How many conversations carry a follow-up email (ticket 53). */
+  countConversationsWithEmail(): Promise<number>;
   /** Marks the visitor as present right now (polling and posting count). */
   touchVisitorPresence(id: string): Promise<void>;
   /**
