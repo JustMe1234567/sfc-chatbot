@@ -6,15 +6,16 @@ import DashboardHeader from "../header";
 import { getChatbotService } from "@/db/service";
 import { getEscalationPhrases, getWelcomeMessage } from "@/settings";
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
-import EscalationPhrasesForm from "./escalation-phrases-form";
-import WelcomeForm from "./welcome-form";
+import AnswersWorkspace from "./answers-workspace";
 import styles from "../dashboard.module.css";
 
-function formatDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString("en-GB") : "";
-}
-
-/** The answer library: drafts and published rules with their review trail. */
+/**
+ * The answer library (ticket 55): the page shell — heading row with the
+ * New answer action top-right and a short description — over the workspace's
+ * three tabs (Answer Rules, Handoff Phrases, Welcome Message). All data is
+ * loaded here once; the workspace's switching, search, and expansion are
+ * client-side only.
+ */
 export default async function AnswersPage() {
   const staffHeaders = await headers();
   const guard = await requireStaff(staffHeaders, { roles: ANSWER_RULE_ROLES });
@@ -41,52 +42,17 @@ export default async function AnswersPage() {
       />
 
       <div className={styles.inbox}>
-        <div className={styles.publishBar}>
+        <div className={styles.answersHead}>
+          <p className={styles.answersIntro}>
+            Draft, publish, and review the answers the chat gives visitors —
+            plus the phrases that go straight to staff and the fresh-chat
+            greeting.
+          </p>
           <Link className={styles.secondaryButton} href="/dashboard/answers/new">
             New answer
           </Link>
         </div>
-      </div>
-
-      {rules.length === 0 ? (
-        <p className={styles.empty}>No answer rules yet. Create the first one.</p>
-      ) : (
-        <div className={styles.inbox}>
-          {rules.map((rule) => (
-            <Link
-              key={rule.id}
-              href={`/dashboard/answers/${rule.id}`}
-              className={styles.conversationCard}
-            >
-              <div className={styles.meta}>
-                {rule.topic}
-                {rule.status === "published" ? (
-                  <span className={styles.publishedBadge}>published</span>
-                ) : (
-                  <span className={styles.draftBadge}>draft</span>
-                )}
-              </div>
-              <div className={styles.preview}>{rule.response.slice(0, 140)}</div>
-              <div className={styles.meta}>
-                {rule.status === "published" && rule.reviewedAt
-                  ? `Published by ${rule.publishedByName ?? "an earlier publisher"} · reviewed ${formatDate(rule.reviewedAt)}`
-                  : `Draft · last edited ${formatDate(rule.updatedAt)}`}
-              </div>
-              <div className={styles.meta}>
-                {rule.phrases.length} phrase{rule.phrases.length === 1 ? "" : "s"}
-                {rule.keywords?.length
-                  ? ` · ${rule.keywords.length} keyword condition${rule.keywords.length === 1 ? "" : "s"}`
-                  : ""}
-                {rule.link ? " · college page link" : ""}
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-
-      <div className={styles.inbox}>
-        <EscalationPhrasesForm initialPhrases={phrases} />
-        <WelcomeForm initialText={welcome} />
+        <AnswersWorkspace rules={rules} phrases={phrases} welcome={welcome} />
       </div>
     </main>
   );

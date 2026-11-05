@@ -726,6 +726,247 @@ a:focus-visible {
   margin: 0;
 }
 
+/* Answers tab redesign (ticket 55): the page's heading row, the three
+   in-place tabs, and the compact expandable answer cards. Light-theme
+   tokens only; the two configuration forms keep their .ruleCard styling. */
+
+.answersHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.answersIntro {
+  margin: 0;
+  max-width: 42rem;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.answersTabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.answersTabs button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--muted);
+  font: 600 13.5px system-ui, sans-serif;
+  padding: 10px 16px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.answersTabs button:hover {
+  border-color: var(--sfc-blue);
+  color: var(--sfc-blue-deep);
+}
+
+.answersTabs button:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+.answersTabs button[aria-selected="true"] {
+  background: var(--sfc-blue);
+  border-color: var(--sfc-blue);
+  color: #ffffff;
+}
+
+.answersPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The class's display beats the UA's [hidden] rule, so hide explicitly:
+   the inactive tab's panel must leave the render entirely. */
+.answersPanel[hidden] {
+  display: none;
+}
+
+/* The forms keep their full .ruleCard styling; only the Save buttons stop
+   stretching to the card's full width (scoped here, so the rule editor
+   page keeps its own layout). */
+.answersPanel .ruleCard button {
+  align-self: flex-start;
+}
+
+.answersSearch {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 14px system-ui, sans-serif;
+  padding: 10px 14px;
+  min-height: 44px;
+}
+
+.answersSearch:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+.answersList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.answersCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.answersCard:hover {
+  border-color: var(--sfc-blue);
+}
+
+/* When the card is open the full response below replaces the clamped
+   preview — showing both would read as duplication. */
+.answersCard[data-open] .answersCardPreview {
+  display: none;
+}
+
+.answersCardToggle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 14px 16px;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.answersCardToggle:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: -2px;
+}
+
+.answersCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.answersCardTitle {
+  font: 600 14.5px system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.answersChevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform var(--motion-base) var(--ease-out);
+}
+
+.answersCardToggle[aria-expanded="true"] .answersChevron {
+  transform: rotate(180deg);
+}
+
+.answersCardPreview {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.answersCardMeta {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.answersCard p.answersCardMeta {
+  margin: 0;
+}
+
+/* The expandable body: a 0fr→1fr grid row animates the reveal without
+   measuring content; while closed it is inert and hidden from the
+   accessibility tree, so its Edit link is never in the tab order. */
+.answersCardReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-base) var(--ease-out);
+}
+
+.answersCardReveal[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.answersCardBody {
+  overflow: hidden;
+  min-height: 0;
+  visibility: hidden;
+  padding: 0 16px;
+  transition: visibility var(--motion-base);
+}
+
+.answersCardReveal[data-open] .answersCardBody {
+  visibility: visible;
+  padding-bottom: 16px;
+}
+
+.answersCardResponse {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.answersCardActions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .answersHead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .answersTabs button {
+    flex: 1 1 auto;
+  }
+
+  .answersCardToggle {
+    padding: 12px 14px;
+  }
+
+  .answersCardBody {
+    padding: 0 14px;
+  }
+
+  .answersCardReveal[data-open] .answersCardBody {
+    padding-bottom: 14px;
+  }
+}
+
 /* Email alerts: compact configuration hierarchy plus a dense delivery log. */
 
 .alertsPage {
