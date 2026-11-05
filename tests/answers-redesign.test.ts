@@ -30,10 +30,11 @@ describe("the answers page shell (ticket 55)", () => {
     expect(source).toContain("getWelcomeMessage");
     expect(source).toContain("AnswersWorkspace");
 
-    // The heading row: description plus the New answer action, top-right.
+    // The heading row: description plus the New Answer action, top-right
+    // (ticket 56 promoted it to the filled primary treatment).
     expect(source).toContain("answersHead");
     expect(source).toContain('href="/dashboard/answers/new"');
-    expect(source).toContain("New answer");
+    expect(source).toContain("New Answer");
     expect(source).toContain("answersIntro");
   });
 
@@ -81,7 +82,7 @@ describe("the answers workspace (ticket 55)", () => {
     // The search input is a labelled search box driven by state.
     expect(source).toContain('type="search"');
     expect(source).toContain('aria-label="Search answers"');
-    expect(source).toContain("filterAnswerRules(rules, query)");
+    expect(source).toMatch(/filterAnswerRules\(rules, query/);
     // A no-match state explains itself.
     expect(source).toContain("No answers match");
     // The library-empty state survives from the old page.
@@ -99,14 +100,15 @@ describe("the answers workspace (ticket 55)", () => {
     expect(source).toContain("publishedBadge");
     expect(source).toContain("draftBadge");
     expect(source).toContain("answersCardPreview");
-    expect(source).toContain("college page link");
+    expect(source).toContain("College page link");
     expect(source).toContain("keyword condition");
     // The expanded body carries the review trail and the Edit action that
-    // replaces the old whole-card navigation.
+    // replaces the old whole-card navigation (ticket 56 moved it onto the
+    // foot's meta row as a compact blue outline button).
     expect(source).toContain("Published by");
     expect(source).toContain("Draft · last edited");
     expect(source).toContain('href={`/dashboard/answers/${rule.id}`}');
-    expect(source).toContain("Edit answer");
+    expect(source).toContain("answersEdit");
     // The collapsed body leaves the accessibility tree and tab order.
     expect(source).toContain("inert={!open}");
   });
@@ -161,12 +163,14 @@ describe("the answers redesign styles (ticket 55)", () => {
     }
 
     // The selected tab uses the college blue; controls keep the 44px touch
-    // floor; the preview clamps to two lines like the desk's rows.
+    // floor; the preview truncates on a single line (ticket 56's mockup
+    // treatment, superseding the two-line clamp).
     expect(css).toMatch(/\.answersTabs button\[aria-selected="true"\]/);
     expect(css).toMatch(/\.answersTabs button \{[^}]*min-height: 44px/s);
     expect(css).toMatch(/\.answersSearch \{[^}]*min-height: 44px/s);
     expect(css).toMatch(/\.answersCardToggle \{[^}]*min-height: 44px/s);
-    expect(css).toMatch(/\.answersCardPreview \{[^}]*-webkit-line-clamp: 2/s);
+    expect(css).toMatch(/\.answersCardPreview \{[^}]*white-space: nowrap/s);
+    expect(css).toMatch(/\.answersCardPreview \{[^}]*text-overflow: ellipsis/s);
     // The reveal animates through the shared motion tokens, which reduce to
     // instant under prefers-reduced-motion (the tokens go 0ms there).
     expect(css).toMatch(/\.answersCardReveal \{[^}]*transition: grid-template-rows var\(--motion-base\)/s);

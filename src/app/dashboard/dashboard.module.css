@@ -557,6 +557,12 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* In the shell grid, `margin: 0 auto` disables stretch, so the item's
+     width would resolve as fit-content — and unbreakable content (the
+     answers cards' nowrap preview) could push it past the viewport. A
+     definite width keeps the centering and pins the item to its track. */
+  width: 100%;
+  min-width: 0;
 }
 
 .empty {
@@ -654,7 +660,9 @@ a:focus-visible {
 }
 
 .publishedBadge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: var(--ok-soft);
   color: var(--ok);
   border-radius: var(--radius-pill);
@@ -726,8 +734,10 @@ a:focus-visible {
   margin: 0;
 }
 
-/* Answers tab redesign (ticket 55): the page's heading row, the three
-   in-place tabs, and the compact expandable answer cards. Light-theme
+/* Answers tab redesign (tickets 55-56): the page's heading row, the three
+   in-place tabs, the search/status-filter toolbar with its count and order
+   line, and the mockup-styled expandable answer cards — icon tiles, pill
+   badges, iconified meta, single-line collapsed previews. Light-theme
    tokens only; the two configuration forms keep their .ruleCard styling. */
 
 .answersHead {
@@ -744,6 +754,15 @@ a:focus-visible {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.55;
+}
+
+/* The filled primary New Answer action: colors come from the shared
+   primaryButton; this adds the icon alignment and the touch floor. */
+.answersNew {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
 }
 
 .answersTabs {
@@ -806,12 +825,85 @@ a:focus-visible {
   color: var(--ink);
   font: 400 14px system-ui, sans-serif;
   padding: 10px 14px;
+  /* Left padding clears the wrap's decorative magnifier (left 12px + 16px
+     mark + breathing room). */
+  padding-left: 38px;
   min-height: 44px;
 }
 
 .answersSearch:focus-visible {
   outline: 2px solid var(--sfc-blue);
   outline-offset: 2px;
+}
+
+/* Search and the status filter share one row; the input wraps with the
+   magnifier riding decoratively inside it. */
+.answersToolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.answersSearchWrap {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.answersSearchWrap svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.answersStatusFilter {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: 500 14px system-ui, sans-serif;
+  padding: 10px 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.answersStatusFilter:hover {
+  border-color: var(--sfc-blue);
+}
+
+.answersStatusFilter:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
+}
+
+/* The live count (left) and the informational order note (right): the note
+   names the ordering, it is not a reordering control. */
+.answersCountRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.answersCount {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.answersSortNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .answersList {
@@ -824,9 +916,12 @@ a:focus-visible {
 }
 
 .answersCard {
+  display: flex;
+  gap: 14px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
+  padding: 14px 16px;
   overflow: hidden;
 }
 
@@ -834,9 +929,33 @@ a:focus-visible {
   border-color: var(--sfc-blue);
 }
 
+/* The soft blue rounded square carrying the topic's mark. */
+.answersCardTile {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--sfc-blue-soft);
+  color: var(--sfc-blue);
+  display: grid;
+  place-items: center;
+}
+
+.answersCardContent {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* When the card is open the full response below replaces the clamped
-   preview — showing both would read as duplication. */
+   preview, and the collapsed meta row stands down with it — the foot's own
+   meta row (outside the toggle) is untouched. */
 .answersCard[data-open] .answersCardPreview {
+  display: none;
+}
+
+.answersCard[data-open] .answersCardToggle .answersCardMeta {
   display: none;
 }
 
@@ -850,14 +969,14 @@ a:focus-visible {
   text-align: left;
   font: inherit;
   color: inherit;
-  padding: 14px 16px;
+  padding: 0;
   cursor: pointer;
   min-height: 44px;
 }
 
 .answersCardToggle:focus-visible {
   outline: 2px solid var(--sfc-blue);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 .answersCardTop {
@@ -882,21 +1001,34 @@ a:focus-visible {
   transform: rotate(180deg);
 }
 
+/* The mockup's single-line treatment for the collapsed preview. */
 .answersCardPreview {
   color: var(--muted);
   font-size: 13.5px;
   line-height: 1.5;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .answersCardMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   color: var(--muted);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
+}
+
+.answersMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.answersMetaItem + .answersMetaItem::before {
+  content: "·";
+  margin: 0 7px;
 }
 
 .answersCard p.answersCardMeta {
@@ -920,13 +1052,11 @@ a:focus-visible {
   overflow: hidden;
   min-height: 0;
   visibility: hidden;
-  padding: 0 16px;
   transition: visibility var(--motion-base);
 }
 
 .answersCardReveal[data-open] .answersCardBody {
   visibility: visible;
-  padding-bottom: 16px;
 }
 
 .answersCardResponse {
@@ -935,12 +1065,44 @@ a:focus-visible {
   font-size: 14px;
   line-height: 1.55;
   overflow-wrap: anywhere;
+  padding-top: 2px;
 }
 
-.answersCardActions {
+/* The foot: a divider over the review trail and the compact Edit, which
+   sits right-aligned on that row (per the mockup). */
+.answersCardFoot {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
   padding-top: 12px;
+}
+
+.answersEdit {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c4cdda;
+  background: var(--surface);
+  color: var(--sfc-blue);
+  border-radius: var(--radius-s);
+  font: 600 13.5px system-ui, sans-serif;
+  padding: 8px 14px;
+  min-height: 36px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.answersEdit:hover {
+  border-color: var(--sfc-blue);
+}
+
+.answersEdit:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 2px;
 }
 
 @media (max-width: 720px) {
@@ -954,16 +1116,23 @@ a:focus-visible {
     flex: 1 1 auto;
   }
 
-  .answersCardToggle {
+  /* The filter drops below the full-width search on narrow screens. */
+  .answersSearchWrap {
+    flex-basis: 100%;
+  }
+
+  .answersCard {
     padding: 12px 14px;
+    gap: 12px;
+  }
+
+  .answersCardTile {
+    width: 40px;
+    height: 40px;
   }
 
   .answersCardBody {
-    padding: 0 14px;
-  }
-
-  .answersCardReveal[data-open] .answersCardBody {
-    padding-bottom: 14px;
+    padding: 0;
   }
 }
 

@@ -37,8 +37,11 @@ function deleteSeedRows() {
   conn.close();
 }
 
-/** Five rules with targetable text: the three seed topics plus two extras. */
-function seedExtraRules() {
+/** Six rules with targetable text: the three seed topics, two extras, and
+    one draft so the status filter and the Draft badge have something to show.
+    Published rules credit the owner so the expanded foot reads like the
+    mockup ("Published by College Owner"). */
+function seedExtraRules(ownerId) {
   const conn = new DatabaseSync(DB_PATH);
   const at = new Date().toISOString();
   const extras = [
@@ -53,6 +56,11 @@ function seedExtraRules() {
       response:
         "Tuition for most programs is $3,500 per semester. See the fees page for the current schedule.",
       phrases: ["Tuition fees", "Fees"],
+      keywords: [
+        ["tuition"],
+        ["fees"],
+      ],
+      link: "https://www.springfield.edu/fees",
     },
     {
       topic: "Scholarships",
@@ -72,20 +80,31 @@ function seedExtraRules() {
         "The main library opens 8am to midnight on weekdays and 10am to 10pm on weekends during term. Hours change over the summer and between semesters.",
       phrases: ["library hours", "when is the library open"],
     },
+    {
+      topic: "Transcript requests",
+      response:
+        "Official transcripts are requested through the registrar's online form and are ready for pickup or mail within five business days.",
+      phrases: ["transcript"],
+      draft: true,
+    },
   ];
   for (const extra of extras) {
     conn
       .prepare(
         `INSERT INTO answer_rules (id, topic, response, link, phrases, keywords, status, updated_at, published_by, reviewed_at)
-         VALUES (?, ?, ?, NULL, ?, NULL, 'published', ?, NULL, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         crypto.randomUUID(),
         extra.topic,
         extra.response,
+        extra.link ?? null,
         JSON.stringify(extra.phrases),
+        extra.keywords ? JSON.stringify(extra.keywords) : null,
+        extra.draft ? "draft" : "published",
         at,
-        at,
+        extra.draft ? null : ownerId,
+        extra.draft ? null : at,
       );
   }
   conn.close();
@@ -108,6 +127,9 @@ if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
 
 const db = new DatabaseSync(DB_PATH);
 const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
+if (!owner?.id) {
+  throw new Error(`the certification DB has no ${EMAIL} row to sign in or credit publishes with`);
+}
 if (owner) {
   db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
   db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
@@ -153,8 +175,8 @@ await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
 console.log("signed in; enrollment complete");
 mkdirSync(OUT, { recursive: true });
 
-// --- Seed the five rules this script's assertions name. --------------------
-seedExtraRules();
+// --- Seed the six rules this script's assertions name. ----------------------
+seedExtraRules(owner?.id);
 deleteSeedRows();
 await gotoAndWait();
 // A render worker initialized by this very navigation may have re-seeded
@@ -165,7 +187,9 @@ await gotoAndWait();
 async function gotoAndWait() {
   await page.goto(PAGE_URL);
   await page.waitForLoadState("domcontentloaded");
-  await page.getByRole("link", { name: "New answer" }).waitFor({ timeout: 10000 });
+  // The label changed with ticket 56 (New answer → New Answer); the regex
+  // keeps the before mode usable against older builds.
+  await page.getByRole("link", { name: /new answer/i }).waitFor({ timeout: 10000 });
 }
 
 async function shotAt(width, height, name) {
@@ -201,6 +225,7 @@ if (BEFORE) {
   await shotAt(1280, 900, "before-answers-1280");
   await shotAt(760, 900, "before-answers-760");
   await shotAt(390, 900, "before-answers-390");
+  await shotAt(360, 800, "before-answers-360");
   if (pageErrors.length > 0) throw new Error(`page errors: ${pageErrors.join(" | ")}`);
   await browser.close();
   console.log("before shots captured in", OUT);
@@ -225,36 +250,122 @@ const selected = await tabs.locator('[aria-selected="true"]').innerText();
 if (!selected.includes("Answer Rules")) {
   throw new Error(`Answer Rules must be the default tab, found: ${selected}`);
 }
-const newAnswer = page.getByRole("link", { name: "New answer" });
+const newAnswer = page.getByRole("link", { name: /new answer/i });
 if (!(await newAnswer.isVisible())) {
-  throw new Error("the New answer button is missing");
+  throw new Error("the New Answer button is missing");
 }
-console.log("ok: three tabs with Answer Rules default; New answer present");
+const newClass = await newAnswer.getAttribute("class");
+if (!newClass || !newClass.includes("primaryButton")) {
+  throw new Error(`New Answer must be the filled primary button, found: ${newClass}`);
+}
+const newLabel = (await newAnswer.innerText()).trim();
+if (!newLabel.includes("New Answer")) {
+  throw new Error(`the button must read New Answer, found: ${newLabel}`);
+}
+console.log("ok: three tabs with Answer Rules default; New Answer is the filled primary action");
 
-// Cards render collapsed with the five seeded topics visible.
+// Cards render collapsed with the six seeded topics visible.
 const cards = page.locator('[class*="answersList"] > li');
 const cardCount = await cards.count();
-if (cardCount !== 5) {
-  throw new Error(`expected 5 answer cards, found ${cardCount}`);
+if (cardCount !== 6) {
+  throw new Error(`expected 6 answer cards, found ${cardCount}`);
 }
 const firstToggle = cards.first().getByRole("button", { expanded: false }).first();
 if ((await firstToggle.getAttribute("aria-expanded")) !== "false") {
   throw new Error("cards must start collapsed");
 }
-// Collapsed cards show the two-line preview and the phrase count.
+// Collapsed cards show the phrase count and a decorative icon tile.
 if (!(await cards.first().innerText()).match(/\d+ phrase/)) {
   throw new Error("a collapsed card does not show its phrase count");
 }
-
-// Expanding reveals the full response, review trail, and the Edit action.
-await firstToggle.click();
-const expandedPanel = cards.first().locator('[role="region"], [class*="answersCardBody"]').first();
-await expandedPanel.waitFor({ timeout: 5000 });
-const expandedText = await cards.first().innerText();
-if (!expandedText.includes("Published by") && !expandedText.includes("reviewed")) {
-  throw new Error("the expanded card does not show publisher/review metadata");
+const tileSvg = cards.first().locator('[class*="answersCardTile"] svg');
+if ((await tileSvg.count()) !== 1) {
+  throw new Error("a collapsed card is missing its icon tile");
 }
-const editLink = cards.first().getByRole("link", { name: /Edit answer|Edit/ }).first();
+// The map is deterministic: Scholarships (graduation cap) and Fees (coins)
+// must carry different marks. Card text leaks across rows (the Admissions
+// response mentions fees), so every pick is pinned to its own card's topic
+// row via .first() on hasText filters.
+const tileMark = (card) => card.first().locator('[class*="answersCardTile"] svg').innerHTML();
+const scholarshipsCard = cards.filter({ hasText: "Scholarships" }).first();
+const feesCard = cards.filter({ hasText: "Fees" }).first();
+// The Fees seed carries keywords and a link, so the funnel and chain-link
+// meta icons render for real (the mockup's collapsed meta row).
+const feesMeta = feesCard.locator('[class*="answersCardMeta"]').first();
+const feesMetaText = await feesMeta.innerText();
+for (const expected of ["2 keyword conditions", "College page link"]) {
+  if (!feesMetaText.includes(expected)) {
+    throw new Error(`the Fees collapsed meta is missing "${expected}": ${feesMetaText}`);
+  }
+}
+if ((await feesMeta.locator("svg").count()) < 3) {
+  throw new Error("the Fees collapsed meta is missing its iconified items");
+}
+if ((await tileMark(scholarshipsCard)) === (await tileMark(feesCard))) {
+  throw new Error("Scholarships and Fees must map to different topic icons");
+}
+console.log("ok: every card carries a deterministic icon tile");
+
+// Collapsed previews truncate on one line (ticket 56's mockup treatment).
+const previewLine = await cards
+  .filter({ hasText: "Admissions" })
+  .first()
+  .locator('[class*="answersCardPreview"]')
+  .evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { whiteSpace: style.whiteSpace, truncated: el.scrollWidth > el.clientWidth };
+  });
+if (previewLine.whiteSpace !== "nowrap" || !previewLine.truncated) {
+  throw new Error(
+    `the long preview must truncate on one line, found white-space=${previewLine.whiteSpace} truncated=${previewLine.truncated}`,
+  );
+}
+console.log("ok: collapsed previews truncate with a single-line ellipsis");
+
+// Badges: published cards show the title-case pill with its check mark; the
+// draft card keeps visible neutral text and no check.
+const publishedBadge = scholarshipsCard.locator('[class*="publishedBadge"]');
+if (!(await publishedBadge.innerText()).includes("Published")) {
+  throw new Error("the published badge must read Published");
+}
+if ((await publishedBadge.locator("svg").count()) !== 1) {
+  throw new Error("the published badge is missing its check mark");
+}
+const draftCard = cards.filter({ hasText: "Transcript requests" }).first();
+const draftBadge = draftCard.locator('[class*="draftBadge"]');
+if (!(await draftBadge.innerText()).includes("Draft")) {
+  throw new Error("the draft badge must read Draft");
+}
+if ((await draftCard.locator('[class*="publishedBadge"]').count()) !== 0) {
+  throw new Error("a draft card must not show the published pill");
+}
+console.log("ok: check-marked Published pills; visible-text Draft badge");
+
+// Expanding reveals the full response and the divider foot: review trail,
+// phrase count, and the compact Edit action right-aligned on that row. The
+// collapsed meta row stands down while open.
+const scholarToggle = scholarshipsCard.getByRole("button", { expanded: false }).first();
+await scholarToggle.click();
+const expandedPanel = scholarshipsCard.locator('[class*="answersCardBody"]').first();
+await expandedPanel.waitFor({ timeout: 5000 });
+const foot = scholarshipsCard.locator('[class*="answersCardFoot"]');
+const footText = await foot.innerText();
+for (const expected of ["Published by", "Reviewed", "phrase"]) {
+  if (!footText.includes(expected)) {
+    throw new Error(`the expanded foot is missing "${expected}": ${footText}`);
+  }
+}
+const footDivider = await foot.evaluate((el) => getComputedStyle(el).borderTopWidth);
+if (footDivider === "0px") {
+  throw new Error("the expanded card is missing its divider");
+}
+const collapsedMetaHidden = await scholarshipsCard
+  .locator('[class*="answersCardToggle"] [class*="answersCardMeta"]')
+  .evaluate((el) => getComputedStyle(el).display === "none");
+if (!collapsedMetaHidden) {
+  throw new Error("the collapsed meta row must stand down while the card is open");
+}
+const editLink = foot.getByRole("link", { name: "Edit" });
 if (!(await editLink.isVisible())) {
   throw new Error("the expanded card does not expose an Edit action");
 }
@@ -262,7 +373,7 @@ const editHref = await editLink.getAttribute("href");
 if (!editHref || !editHref.match(/\/dashboard\/answers\/[0-9a-f-]{36}$/)) {
   throw new Error(`the Edit action does not target the editor: ${editHref}`);
 }
-console.log("ok: cards expand with metadata and a working Edit action");
+console.log("ok: cards expand to the divider foot with publisher/reviewed/phrases and Edit");
 
 // Keyboard: the toggle is a real button — focus it and press Enter on another card.
 const secondToggle = cards.nth(1).locator("button").first();
@@ -277,25 +388,68 @@ if ((await secondToggle.getAttribute("aria-expanded")) !== "false") {
 }
 console.log("ok: keyboard focus + Enter expands and collapses");
 
-// Search filters live, case-insensitively, with an empty state.
+// The toolbar: search with its magnifier and mockup placeholder, the status
+// filter, and the count/order line under the row.
 const search = page.getByRole("searchbox");
+if ((await search.getAttribute("placeholder")) !== "Search answers…") {
+  throw new Error("the search placeholder does not match the mockup");
+}
+if ((await page.locator('[class*="answersSearchWrap"] svg').count()) !== 1) {
+  throw new Error("the search box is missing its magnifying-glass icon");
+}
+const statusFilter = page.getByRole("combobox", { name: "Filter by status" });
+if ((await statusFilter.inputValue()) !== "all") {
+  throw new Error("the status filter must default to All statuses");
+}
+// The count <p> only: [class*=answersCount] also matches answersCountRow.
+const countLine = page.locator('p[class*="answersCount"]');
+const sortNote = page.locator('[class*="answersSortNote"]');
+if ((await countLine.innerText()).trim() !== "6 answers") {
+  throw new Error(`the count line must read 6 answers, found: ${await countLine.innerText()}`);
+}
+if (!(await sortNote.innerText()).includes("Sorted by current order")) {
+  throw new Error("the informational order note is missing");
+}
+console.log("ok: toolbar with search icon, placeholder, count line, and order note");
+
+// Search filters live, case-insensitively, with an empty state.
 await search.fill("SCHOLAR");
 await page.waitForTimeout(200);
-const filtered = await cards.count();
-if (filtered !== 1 || !(await cards.first().innerText()).includes("Scholarships")) {
-  throw new Error(`case-insensitive search did not isolate Scholarships (found ${filtered})`);
+if ((await cards.count()) !== 1 || !(await cards.first().innerText()).includes("Scholarships")) {
+  throw new Error(`case-insensitive search did not isolate Scholarships (found ${await cards.count()})`);
 }
-await search.fill("zzzz-nothing");
-await page.waitForTimeout(200);
-if (!(await page.getByText("No answers match").count())) {
-  throw new Error("search with no matches shows no empty state");
+if ((await countLine.innerText()).trim() !== "1 answer") {
+  throw new Error("the live count does not follow the search");
 }
+// The status filter composes with the text query (AND), client-side.
 await search.fill("");
+await statusFilter.selectOption("published");
 await page.waitForTimeout(200);
 if ((await cards.count()) !== 5) {
-  throw new Error("clearing search does not restore every card");
+  throw new Error(`the published filter must keep 5 cards (found ${await cards.count()})`);
 }
-console.log("ok: live case-insensitive search with an empty state");
+if ((await countLine.innerText()).trim() !== "5 answers") {
+  throw new Error(`the count must follow the status filter, found: ${await countLine.innerText()}`);
+}
+await statusFilter.selectOption("draft");
+await page.waitForTimeout(200);
+if ((await cards.count()) !== 1 || !(await cards.first().innerText()).includes("Transcript requests")) {
+  throw new Error("the draft filter must isolate the draft rule");
+}
+// AND: the draft rule does not match the scholar query, so nothing is left.
+await search.fill("scholar");
+await page.waitForTimeout(200);
+if ((await cards.count()) !== 0 || !(await page.getByText("No answers match").count())) {
+  throw new Error("search and status must compose with AND into the empty state");
+}
+// Reset both, restoring the full list.
+await search.fill("");
+await statusFilter.selectOption("all");
+await page.waitForTimeout(200);
+if ((await cards.count()) !== 6) {
+  throw new Error("clearing both filters does not restore every card");
+}
+console.log("ok: live search + status filter composing AND with a live count");
 
 // Tab switching happens without navigation (the URL never changes), and
 // the inactive panels actually leave the render.

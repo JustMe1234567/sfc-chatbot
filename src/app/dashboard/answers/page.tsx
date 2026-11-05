@@ -10,11 +10,11 @@ import AnswersWorkspace from "./answers-workspace";
 import styles from "../dashboard.module.css";
 
 /**
- * The answer library (ticket 55): the page shell — heading row with the
- * New answer action top-right and a short description — over the workspace's
- * three tabs (Answer Rules, Handoff Phrases, Welcome Message). All data is
- * loaded here once; the workspace's switching, search, and expansion are
- * client-side only.
+ * The answer library (tickets 55-56): the page shell — heading row with the
+ * filled primary New Answer action (plus icon) top-right and a short
+ * description — over the workspace's three tabs (Answer Rules, Handoff
+ * Phrases, Welcome Message). All data is loaded here once; the workspace's
+ * switching, search, status filter, and expansion are client-side only.
  */
 export default async function AnswersPage() {
   const staffHeaders = await headers();
@@ -48,8 +48,21 @@ export default async function AnswersPage() {
             plus the phrases that go straight to staff and the fresh-chat
             greeting.
           </p>
-          <Link className={styles.secondaryButton} href="/dashboard/answers/new">
-            New answer
+          <Link className={`${styles.primaryButton} ${styles.answersNew}`} href="/dashboard/answers/new">
+            <svg
+              viewBox="0 0 24 24"
+              width={16}
+              height={16}
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Answer
           </Link>
         </div>
         <AnswersWorkspace rules={rules} phrases={phrases} welcome={welcome} />
