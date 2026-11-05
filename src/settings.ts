@@ -58,6 +58,16 @@ export function isValidRecipientList(recipients: unknown): recipients is string[
   );
 }
 
+/**
+ * The single-address half of the list rule (ticket 54): the stacked
+ * recipient boxes validate each entry inline as it is added or edited,
+ * with the whole-list PUT and `isValidRecipientList` still the final
+ * authority.
+ */
+export function isValidRecipientEmail(value: string): boolean {
+  return EMAIL_PATTERN.test(value);
+}
+
 const ESCALATION_PHRASES_KEY = "escalation_phrases";
 
 /** Launch defaults until editors configure the college's own wording. */

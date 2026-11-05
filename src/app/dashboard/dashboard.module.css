@@ -261,6 +261,7 @@
 .secondaryButton:focus-visible,
 .ghostButton:focus-visible,
 .dangerButton:focus-visible,
+.recipientIcon:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--sfc-blue);
   outline-offset: 2px;
@@ -1139,6 +1140,127 @@ a:focus-visible {
   color: var(--ink);
 }
 
+/* Stacked recipient boxes (ticket 54): one address per row, Edit/Delete on
+   the right, inline edit mode in place. */
+.recipientList {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recipientRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  padding: 8px 10px;
+}
+
+.recipientRow[data-pending] {
+  opacity: 0.6;
+}
+
+.recipientAddress {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 550 14px system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.recipientControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.recipientIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.recipientError {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+  font: 550 13px system-ui, sans-serif;
+}
+
+.recipientEditArea {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.recipientEditLabel {
+  font: 600 12.5px system-ui, sans-serif;
+  color: var(--muted);
+}
+
+.recipientInput {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--ink);
+  font: 550 14px system-ui, sans-serif;
+  min-width: 0;
+}
+
+.recipientInput:focus-visible {
+  outline: 2px solid var(--sfc-blue);
+  outline-offset: 1px;
+}
+
+.recipientAdd {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.recipientAdd label {
+  font: 600 13px system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.recipientAddRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recipientAddRow .recipientInput {
+  flex: 1;
+}
+
+/* At phone widths the address takes its own line and the controls drop
+   below it (ticket 54), instead of both squeezing onto one row. */
+@media (max-width: 480px) {
+  .recipientAddress {
+    flex-basis: 100%;
+  }
+
+  .recipientControls {
+    margin-left: 0;
+  }
+}
+
 .alertEmpty p {
   margin: 5px 0 0;
   color: var(--muted);
@@ -1187,6 +1309,7 @@ a:focus-visible {
     flex-direction: column;
   }
 }
+
 /* Visitor emails list (ticket 53): the delivery history's row language,
    with each row one whole-row link to its conversation. */
 .emailList {

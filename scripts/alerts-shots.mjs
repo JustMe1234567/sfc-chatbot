@@ -101,16 +101,19 @@ for (const card of ["Support hours", "Staff alert recipients", "Transcript reten
 }
 console.log("ok: setup grid renders all three owner cards over an empty history");
 
-// --- A real form submission survives the redesign. -------------------------
-await page.fill("#recipients", "front-desk@example.edu");
-await page.getByRole("button", { name: "Save recipients" }).click();
+// --- A real form submission survives the redesign (ticket 54's boxes). -----
+await page.fill("#recipient-add", "front-desk@example.edu");
+await page.getByRole("button", { name: "Add recipient" }).click();
+await page.locator('[class*="recipientAddress"]').first().waitFor({ timeout: 10000 });
 await page.getByText("Alert recipients saved.").waitFor({ timeout: 10000 });
 await page.reload();
 await page.waitForLoadState("domcontentloaded");
-if (
-  (await page.locator("#recipients").inputValue()) !== "front-desk@example.edu"
-) {
-  throw new Error("the saved recipients did not survive a reload");
+const savedBox = page
+  .locator('[class*="recipientAddress"]')
+  .filter({ hasText: "front-desk@example.edu" });
+await savedBox.first().waitFor({ timeout: 10000 });
+if ((await savedBox.count()) !== 1) {
+  throw new Error("the saved recipient box did not survive a reload");
 }
 console.log("ok: recipients save persists through the new layout");
 
@@ -229,7 +232,7 @@ for (const required of [
   "hours-zone",
   "hours-start",
   "hours-end",
-  "recipients",
+  "recipient-add",
   "retention-days",
 ]) {
   // Retry delivery is intentionally absent here: the earlier step already

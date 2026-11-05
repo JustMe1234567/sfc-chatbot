@@ -78,7 +78,7 @@ describe("email alerts dashboard structure (ticket 49)", () => {
       [
         "src/app/dashboard/notifications/alert-settings-form.tsx",
         "/api/staff/settings/alert-recipients",
-        "JSON.stringify({ recipients })",
+        "JSON.stringify({ recipients:",
       ] as const,
       [
         "src/app/dashboard/notifications/retention-form.tsx",

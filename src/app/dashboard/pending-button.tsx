@@ -13,6 +13,10 @@ type PendingButtonProps = {
   type?: ButtonHTMLAttributes<HTMLButtonElement>["type"];
   disabled?: boolean;
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Accessible name, for icon-only instances (ticket 54's box controls). */
+  ariaLabel?: string;
+  /** Names the inline explanation for a disabled instance. */
+  ariaDescribedBy?: string;
 };
 
 /**
@@ -38,6 +42,8 @@ export default function PendingButton({
   type = "button",
   disabled,
   onClick,
+  ariaLabel,
+  ariaDescribedBy,
 }: PendingButtonProps) {
   const inFlightRef = useRef(false);
   useEffect(() => {
@@ -52,6 +58,8 @@ export default function PendingButton({
       className={pending ? `${styles.pendingButton}${className ? ` ${className}` : ""}` : className}
       disabled={disabled || pending}
       aria-busy={pending || undefined}
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       onClick={
         pending
           ? undefined
