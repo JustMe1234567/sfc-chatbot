@@ -58,6 +58,20 @@ describe("WordPress embed smoke check", () => {
     expect(source).toContain("@media (prefers-reduced-motion:reduce)");
   });
 
+  it("tells the frame about panel and host visibility for the poll cadence (ticket 59)", async () => {
+    const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
+    const source = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
+
+    // The loader posts its state on load, on open, on close, and on host
+    // visibility changes — the frame's gated poller (historyPolling) reads
+    // those transitions. Same pinned shape in source and built bundle.
+    expect(source).toContain('type: "sfcw:state"');
+    expect(source).toContain("document.addEventListener(\"visibilitychange\", sendFrameState)");
+    expect(source).toContain('frame.addEventListener("load", sendFrameState)');
+    expect(script).toContain("sfcw:state");
+    expect(script).toContain("visibilitychange");
+  });
+
   it("keeps the visitor credential in iframe-origin session storage", async () => {
     // Storage access moved behind src/widget/visitorSession.ts (shared with
     // the /return landing page); the exposure review covers both files.

@@ -86,6 +86,18 @@ function boot(): void {
   let hideTimer: number | undefined;
   let isOpen = false;
 
+  // The iframe stays mounted when closed. Tell it whether the panel and host
+  // page are visible so it can keep a live conversation responsive without
+  // polling full history at the same rate while idle.
+  function sendFrameState(): void {
+    frame.contentWindow?.postMessage(
+      { type: "sfcw:state", open: isOpen, visible: document.visibilityState === "visible" },
+      base,
+    );
+  }
+  frame.addEventListener("load", sendFrameState);
+  document.addEventListener("visibilitychange", sendFrameState);
+
   function openFrame(): void {
     isOpen = true;
     delete launcher.dataset.closing;
@@ -105,6 +117,7 @@ function boot(): void {
     });
     launcher.setAttribute("aria-label", "Close chat");
     launcher.setAttribute("aria-expanded", "true");
+    sendFrameState();
     frame.contentWindow?.focus();
   }
 
@@ -116,6 +129,7 @@ function boot(): void {
     launcher.dataset.closing = "true";
     launcher.setAttribute("aria-label", "Chat with Springfield College");
     launcher.setAttribute("aria-expanded", "false");
+    sendFrameState();
     launcher.focus();
     if (hideTimer !== undefined) {
       window.clearTimeout(hideTimer);
@@ -137,10 +151,16 @@ function boot(): void {
     }
   });
 
-  // The frame requests its own closure (for example on Escape); only accept
-  // messages from the chatbot origin.
+  // The frame requests its own closure (for example on Escape) and asks for
+  // the latest visibility state after hydration; only accept messages from
+  // this widget's iframe on the chatbot origin.
   window.addEventListener("message", (event) => {
-    if (event.origin === base && (event.data as { type?: string } | null)?.type === "sfcw:close") {
+    if (event.origin !== base || event.source !== frame.contentWindow) {
+      return;
+    }
+    if ((event.data as { type?: string } | null)?.type === "sfcw:ready") {
+      sendFrameState();
+    } else if ((event.data as { type?: string } | null)?.type === "sfcw:close") {
       close();
     }
   });
