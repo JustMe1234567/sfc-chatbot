@@ -57,7 +57,7 @@
 /* Hover, pressed, and selection feedback (ticket 15): colors and the float
    of pressed buttons only — never layout dimensions. Focus rings stay
    instant so keyboard orientation never waits on an animation. */
-.topNav a,
+.sideItem,
 .deskTabs a,
 .deskItem,
 .deskBack,
@@ -261,13 +261,13 @@
 .secondaryButton:focus-visible,
 .ghostButton:focus-visible,
 .dangerButton:focus-visible,
-.topNav a:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--sfc-blue);
   outline-offset: 2px;
 }
 
 /* Gold reads on the dark rail; blue carries the ring on light surfaces. */
+.sideItem:focus-visible,
 .deskItem:focus-visible,
 .deskTabs a:focus-visible {
   outline-color: var(--sfc-gold);
@@ -294,89 +294,258 @@ a:focus-visible {
 .shell {
   min-height: 100vh;
   background: var(--page);
-  padding: 20px 24px 32px;
-}
-
-.topBar {
+  /* Sidebar column + content column (ticket 52): DashboardHeader renders
+     the rail and the content heading as the first grid items, and every
+     page's blocks auto-place into the content column after them. */
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 20px;
-  max-width: 72rem;
-  margin: 0 auto 20px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-m);
-  padding: 12px 18px;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 20px;
+  align-items: start;
+  padding: 0 24px 32px 0;
 }
 
-.brand {
+/* The dark sidebar rail (ticket 52): reuses the conversation desk's dark
+   token set (--rail-*) so later dark-mode work has one surface family. The
+   rail sits in grid column 1 spanning every row the page content occupies
+   (the span is generous so content never outgrows the placement). */
+.sidebar {
+  grid-column: 1;
+  grid-row: 1 / span 40;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 10px;
+  background: var(--rail-bg);
+  border-right: 1px solid var(--rail-line);
+  overflow: hidden;
+  transition: width var(--motion-base) var(--ease-out);
+  --sidebar-width: 252px;
+}
+
+.sidebar[data-collapsed] {
+  --sidebar-width: 68px;
+}
+
+.sideBrand {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 
 .brandMark {
   flex: none;
 }
 
-.brandText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.brandCollege {
+.sideCollege {
   font: 600 11.5px/1.3 system-ui, sans-serif;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--sfc-gold-deep);
+  color: var(--sfc-gold);
 }
 
-.pageTitle {
+.sidebar[data-collapsed] .sideCollege {
+  display: none;
+}
+
+/* Collapsed: labels come off entirely rather than clipping at the rail edge
+   — no letter slivers mid-transition, and the tooltips carry the name. */
+.sidebar[data-collapsed] .sideLabel {
+  display: none;
+}
+
+.sideToggle {
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  border: 1px solid var(--rail-line);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--rail-muted);
+  cursor: pointer;
+}
+
+.sideToggle svg {
+  transition: transform var(--motion-base) var(--ease-out);
+}
+
+.sidebar[data-collapsed] .sideToggle svg {
+  transform: rotate(180deg);
+}
+
+.sideToggle:hover {
+  color: var(--rail-ink);
+  background: var(--rail-raised);
+}
+
+.sideToggle:focus-visible {
+  outline: 2px solid var(--sfc-gold);
+  outline-offset: 1px;
+}
+
+.sideNav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* The identity stays pinned at the rail's bottom even on short viewports:
+     the nav gives up its space and scrolls instead of pushing it out. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sideItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  color: var(--rail-muted);
+  font: 550 14px system-ui, sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  /* Hover feedback animates color only (ticket 15's rule for this file):
+     no layout dimensions in the transition. */
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.sideItem:hover {
+  background: var(--rail-raised);
+  color: var(--rail-ink);
+}
+
+.sideItem[aria-current="page"] {
+  background: var(--sfc-blue);
+  color: #ffffff;
+}
+
+.sideItem:focus-visible {
+  outline: 2px solid var(--sfc-gold);
+  outline-offset: -2px;
+}
+
+.sideIcon {
+  flex: none;
+}
+
+/* Labels collapse by width + opacity rather than display, so they fade with
+   the rail instead of popping; the links carry aria-labels, so hiding them
+   visually never empties an accessible name. */
+.sideLabel {
+  overflow: hidden;
+  max-width: 160px;
+  opacity: 1;
+  transition:
+    max-width var(--motion-base) var(--ease-out),
+    opacity var(--motion-base) var(--ease-out);
+}
+
+.sidebar[data-collapsed] .sideLabel {
+  max-width: 0;
+  opacity: 0;
+}
+
+/* Collapse tooltips: hidden while expanded — the label is already visible —
+   and shown from the icon rail on hover or keyboard focus, floating to the
+   right of the rail so they never cover the active row's highlight. */
+.sideTip {
+  display: none;
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  translate: 0 -50%;
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line);
+  color: var(--rail-ink);
+  font: 550 13px system-ui, sans-serif;
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(9, 14, 20, 0.35);
+  pointer-events: none;
+  /* Above the rail and its overflow clip; below the drawer layers. */
+  z-index: 65;
+}
+
+.sidebar[data-collapsed] .sideItem:hover .sideTip,
+.sidebar[data-collapsed] .sideItem:focus-visible .sideTip,
+.sidebar[data-collapsed] .sideItem:focus-within .sideTip {
+  display: block;
+}
+
+.sideIdentity {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 8px 4px;
+  border-top: 1px solid var(--rail-line);
+}
+
+.whoText {
+  color: var(--rail-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.sidebar[data-collapsed] .whoText {
+  display: none;
+}
+
+/* Collapsed rail: the Sign out shrinks to its inline SVG arrow (the label's
+   text hides under font-size 0; the accessible name stays on the button);
+   the bulk revoke has no icon form and stays an expanded-rail affordance. */
+.sidebar[data-collapsed] .ghostButton {
+  display: none;
+}
+
+.sidebar[data-collapsed] .sideIdentity .secondaryButton {
+  min-width: 44px;
+  padding: 0;
+  font-size: 0;
+}
+
+.sideIdentity .secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.sideIdentity .secondaryButton svg {
+  flex: none;
+}
+
+.contentHead {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 20px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+
+.contentTitle {
   font: 700 19px/1.2 system-ui, sans-serif;
   color: var(--ink);
   margin: 0;
   white-space: nowrap;
 }
 
-.topNav {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.topNav a {
-  text-decoration: none;
-  color: var(--muted);
-  font: 550 14px system-ui, sans-serif;
-  padding: 7px 12px;
-  border-radius: var(--radius-pill);
-  white-space: nowrap;
-}
-
-.topNav a:hover {
-  color: var(--sfc-blue-deep);
-  background: var(--sfc-blue-soft);
-}
-
-.topNav a[aria-current="page"] {
-  background: var(--sfc-blue);
-  color: #fff;
-}
-
-.topIdentity {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.whoText {
-  color: var(--muted);
-  font-size: 14px;
-  white-space: nowrap;
+.menuButton {
+  display: none;
 }
 
 /* Shared content column (forms, rosters, alert lists). */
@@ -1617,49 +1786,17 @@ a:focus-visible {
 }
 
 @media (max-width: 900px) {
-  /* The top bar wraps in a deliberate order: brand, then navigation, then
-     identity, so nothing competes for one row at the pictured width. */
-  .topBar {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "brand brand"
-      "nav identity";
-    row-gap: 10px;
-  }
-
-  .brand {
-    grid-area: brand;
-  }
-
-  .topNav {
-    grid-area: nav;
-    justify-content: flex-start;
-  }
-
-  .topIdentity {
-    grid-area: identity;
+  .shell {
+    padding: 0 16px 24px 0;
+    column-gap: 14px;
   }
 }
 
 @media (max-width: 760px) {
+  /* The rail stays (it collapses on demand); the content column just loses
+     outer padding. */
   .shell {
-    padding: 12px 12px 24px;
-  }
-
-  .topBar {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "brand"
-      "nav"
-      "identity";
-  }
-
-  .topIdentity {
-    justify-content: space-between;
-    /* The identity row's buttons cannot fit one line beside the name at
-       phone widths; wrapping keeps the stacked header inside the viewport
-       (ticket 49's no-overflow verification caught this). */
-    flex-wrap: wrap;
+    padding: 0 12px 24px 0;
   }
 
   /* Narrow screens stack the panes; the back link makes switching between
@@ -1674,6 +1811,79 @@ a:focus-visible {
 
   .deskBack {
     display: inline-block;
+  }
+}
+
+/* Below 720px the rail leaves the layout entirely: the shell becomes a
+   single column, and navigation opens as an overlay drawer from the
+   content-head control (ticket 52). */
+@media (max-width: 720px) {
+  .shell {
+    display: block;
+    padding: 12px 12px 24px;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .contentHead {
+    padding-top: 0;
+    flex-wrap: wrap;
+  }
+
+  .menuButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font: 550 14px system-ui, sans-serif;
+    cursor: pointer;
+  }
+
+  .menuButton:hover {
+    border-color: var(--sfc-blue);
+    color: var(--sfc-blue-deep);
+  }
+
+  .menuButton:focus-visible {
+    outline: 2px solid var(--sfc-blue);
+    outline-offset: 2px;
+  }
+
+  .menuLabel {
+    white-space: nowrap;
+  }
+
+  .sideScrim {
+    position: fixed;
+    inset: 0;
+    /* Above the content, below the drawer panel. */
+    z-index: 70;
+    background: rgba(12, 18, 26, 0.62);
+  }
+
+  /* The drawer composes the rail's surface (.sidebar in the markup) and
+     overrides only its placement: fixed panel over the scrim instead of a
+     sticky grid column, and back to flex — the narrow-width .sidebar rule
+     above hides the rail, and this element carries that class too. */
+  .sideDrawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 71;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 10px;
+    width: min(280px, 84vw);
+    overflow-y: auto;
   }
 }
 

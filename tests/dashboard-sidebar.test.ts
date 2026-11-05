@@ -1,0 +1,129 @@
+import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { repoRoot } from "../src/paths";
+
+const HEADER = "src/app/dashboard/header.tsx";
+const CSS = "src/app/dashboard/dashboard.module.css";
+
+/**
+ * Ticket 52: the dashboard's top navigation bar becomes a collapsible dark
+ * left sidebar, built entirely inside DashboardHeader so its prop contract
+ * (area/title/name/role) — and therefore every page — stays untouched.
+ */
+
+async function readHeader(): Promise<string> {
+  return readFile(path.join(repoRoot(), HEADER), "utf8");
+}
+
+describe("the sidebar keeps the navigation contract (ticket 52)", () => {
+  it("keeps the exact five areas, hrefs, and role filtering of the top nav", async () => {
+    const header = await readHeader();
+    // The NAV table is the single seam ticket 53 coordinates against: labels,
+    // hrefs, and role subsets must be byte-identical to the top bar's.
+    for (const row of [
+      '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] }',
+      '{ area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] }',
+      '{ area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] }',
+      '{ area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] }',
+      '{ area: "alerts", href: "/dashboard/notifications", label: "Email alerts", roles: ["owner", "staff"] }',
+    ]) {
+      expect(header, row).toContain(row);
+    }
+    // Active area tracking matches the top bar exactly.
+    expect(header).toContain('aria-current={item.area === area ? "page" : undefined}');
+    expect(header).toContain('aria-label="Dashboard"');
+  });
+
+  it("renders a hand-authored inline SVG icon per area, with no icon library", async () => {
+    const header = await readHeader();
+    // One shared Mark wrapper renders the inline SVG; the five area entries
+    // supply their own paths, plus the toggle chevron and menu marks.
+    const marks = (header.match(/<Mark>/g) ?? []).length;
+    expect(marks).toBe(5);
+    expect(header).toMatch(/function Mark/);
+    // Icons inherit color — no fills that ignore currentColor.
+    expect(header).not.toMatch(/fill="#(?!none)/);
+    // No icon dependency is added.
+    expect(header).not.toMatch(/react-icons|lucide|heroicons|@iconify|@mui\/icons/);
+    // The rendered icon must follow the active area, not be a single fixed
+    // mark: the per-area icon is selected from a map keyed by area id.
+    expect(header).toMatch(/Record<HeaderArea/);
+    // Sign out carries the arrow mark on the same grid.
+    expect(header).toContain("SIGN_OUT_MARK");
+  });
+
+  it("persists the collapse choice and falls back to expanded", async () => {
+    const header = await readHeader();
+    expect(header).toContain("dashboard.sidebar.collapsed");
+    // Only the exact collapsed marker restores the collapsed rail; anything
+    // else — missing, "0", or a stale junk value — reads as expanded.
+    expect(header).toMatch(/getItem\([^)]*\) === "1"/);
+    expect(header).toMatch(/catch/);
+  });
+
+  it("moves the page title into a content-area heading", async () => {
+    const header = await readHeader();
+    // The brand block no longer carries the h1; the content head does.
+    expect(header).toContain("contentTitle");
+    expect(header.indexOf("<h1")).toBeGreaterThan(header.indexOf("contentHead"));
+    // The rail keeps the brand mark and college name.
+    expect(header).toContain("/brand/cropped-SFC-Final-Logo-Single.png");
+    expect(header).toContain("Springfield College");
+  });
+});
+
+describe("the drawer replaces the rail on narrow screens (ticket 52)", () => {
+  it("opens from a header control with scrim, Escape, and close-on-navigate", async () => {
+    const header = await readHeader();
+    // The drawer control announces itself and tracks its own state.
+    expect(header).toMatch(/aria-expanded=\{drawerOpen/);
+    expect(header).toMatch(/aria-controls/);
+    // A scrim closes it; Escape closes it; navigating closes it.
+    expect(header).toMatch(/scrim/i);
+    expect(header).toContain('"Escape"');
+    expect(header).toMatch(/closeDrawer\(\)/);
+  });
+});
+
+describe("the sidebar styles stay in the dashboard token system (ticket 52)", () => {
+  it("grids the shell into rail plus content and animates the rail", async () => {
+    const css = await readFile(path.join(repoRoot(), CSS), "utf8");
+    // The shell becomes sidebar column + content column.
+    expect(css).toMatch(/\.shell \{[^}]*grid-template-columns: auto minmax\(0, 1fr\)/s);
+    // Expanded and collapsed rail widths, animated via the motion tokens.
+    expect(css).toMatch(/--sidebar-width: 2\d\dpx/);
+    expect(css).toMatch(/--sidebar-width: 6\dpx/);
+    expect(css).toMatch(/\.sidebar \{[^}]*width: var\(--sidebar-width\)/s);
+    expect(css).toMatch(/\.sidebar \{[^}]*transition: width var\(--motion-base\)/s);
+    // Nav rows are comfortable touch targets in both states.
+    expect(css).toMatch(/\.sideItem \{[^}]*min-height: 44px/s);
+  });
+
+  it("shows tooltips only while collapsed, and never on the active label", async () => {
+    const css = await readFile(path.join(repoRoot(), CSS), "utf8");
+    // Hidden by default (the expanded rail shows real labels)...
+    expect(css).toMatch(/\.sideTip \{[^}]*display: none/s);
+    // ...revealed from the collapsed rail on hover or keyboard focus.
+    expect(css).toMatch(/\.sidebar\[data-collapsed\] \.sideItem:hover \.sideTip/);
+    expect(css).toMatch(/\.sidebar\[data-collapsed\] \.sideItem:focus-visible \.sideTip/);
+  });
+
+  it("swaps the rail for the drawer at narrow widths", async () => {
+    const css = await readFile(path.join(repoRoot(), CSS), "utf8");
+    expect(css).toMatch(/@media \(max-width: 720px\) \{/);
+    const narrow = css.slice(css.indexOf("@media (max-width: 720px)"));
+    expect(narrow).toMatch(/\.sidebar \{[^}]*display: none/s);
+    expect(narrow).toMatch(/\.sideScrim \{/);
+    expect(narrow).toMatch(/\.sideDrawer \{[^}]*position: fixed/s);
+    // The narrow shell drops the two-column grid entirely.
+    expect(narrow).toMatch(/\.shell \{[^}]*display: block/s);
+  });
+
+  it("leaves the old top-bar styles behind", async () => {
+    const css = await readFile(path.join(repoRoot(), CSS), "utf8");
+    expect(css).not.toContain(".topBar");
+    expect(css).not.toContain(".topNav");
+    expect(css).not.toContain(".topIdentity");
+  });
+});

@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
-export default function SignOutButton() {
+/**
+ * The signed-in identity's sign-out pair (ticket 08). `icon` is the
+ * sidebar's inline arrow mark (ticket 52); it renders before the label so
+ * the collapsed rail can shrink the control to the icon alone.
+ */
+export default function SignOutButton({ icon }: { icon?: ReactNode }) {
   const router = useRouter();
   const [signOutPending, setSignOutPending] = useState(false);
   const [revokePending, setRevokePending] = useState(false);
@@ -30,6 +35,7 @@ export default function SignOutButton() {
         disabled={revokePending}
         onClick={signOut}
       >
+        {icon}
         Sign out
       </PendingButton>
       <PendingButton
