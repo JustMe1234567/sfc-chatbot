@@ -271,7 +271,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                   {mayReassign && selectedActive && (
                     <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />
                   )}
-                  <div className={styles.transcript}>
+                  <div className={styles.transcript} tabIndex={0} aria-label="Messages">
                     {messages.map((message) => (
                       <div key={message.id} className={bubbleClass(message.role)}>
                         <div className={styles.role}>

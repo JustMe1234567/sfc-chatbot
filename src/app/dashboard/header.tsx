@@ -370,7 +370,10 @@ export default function DashboardHeader({
         </>
       ) : null}
 
-      <div className={styles.contentHead}>
+      <div
+        className={styles.contentHead}
+        data-desk-heading={area === "inbox" || undefined}
+      >
         <button
           ref={menuButtonRef}
           type="button"

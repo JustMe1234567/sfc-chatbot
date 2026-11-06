@@ -627,6 +627,15 @@ a:focus-visible {
   min-width: 0;
 }
 
+/* Ticket 63 scopes the desk-width heading to Conversations and History.
+   The 48px subtraction mirrors .contentArea's desktop side padding, so the
+   title and desk keep the same centered edges as the sidebar changes width. */
+.contentHead[data-desk-heading] {
+  width: calc(100% - 48px);
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
 .contentTitle {
   font: 700 19px/1.2 system-ui, sans-serif;
   color: var(--ink);
@@ -2204,6 +2213,8 @@ a:focus-visible {
 .desk {
   max-width: 72rem;
   margin: 0 auto;
+  height: 100%;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
   gap: 16px;
@@ -2217,7 +2228,7 @@ a:focus-visible {
   background: var(--rail-bg);
   border-radius: var(--radius-m);
   padding: 12px;
-  max-height: calc(100vh - 150px);
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -2555,7 +2566,8 @@ a:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius-m);
   padding: 18px 22px;
-  min-height: 60vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .paneHead {
@@ -2587,10 +2599,17 @@ a:focus-visible {
   flex-direction: column;
   gap: 12px;
   flex: 1;
+  min-height: 0;
 }
 
 .paneBody .transcript {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 12px;
+  overscroll-behavior: contain;
 }
 
 /* Deliberate empty state: brand watermark plus guidance, never a blank pane. */
@@ -2661,6 +2680,10 @@ a:focus-visible {
   .contentArea {
     padding: 0 16px 24px;
   }
+
+  .contentHead[data-desk-heading] {
+    width: calc(100% - 32px);
+  }
 }
 
 @media (max-width: 760px) {
@@ -2674,10 +2697,20 @@ a:focus-visible {
      list and transcript explicit and keyboard-reachable. */
   .desk {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .deskList {
     max-height: none;
+  }
+
+  .deskPane {
+    min-height: 60vh;
+    overflow: visible;
+  }
+
+  .contentHead[data-desk-heading] {
+    width: calc(100% - 24px);
   }
 
   .deskBack {
@@ -2710,6 +2743,10 @@ a:focus-visible {
   .contentHead {
     padding-top: 0;
     flex-wrap: wrap;
+  }
+
+  .contentHead[data-desk-heading] {
+    width: 100%;
   }
 
   .menuButton {
