@@ -159,6 +159,8 @@ export default function WidgetFrame() {
   // timestamp rides along (ticket 46) so the pair stays atomic.
   const [welcome, setWelcome] = useState<{ text: string; at: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const historyRequestRef = useRef<string | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuItemRef = useRef<HTMLButtonElement>(null);
   const confirmClearRef = useRef<HTMLButtonElement>(null);
@@ -205,6 +207,62 @@ export default function WidgetFrame() {
     [],
   );
 
+  // One authorized history read (ticket 61), shared by the mount load and
+  // the poller. A sessionless visitor fetches nothing; a send in flight
+  // holds the poller off so a mid-send read cannot repaint over the
+  // optimistic bubble or the bot reply the send response carries. The
+  // in-flight latch is keyed by generation and session so requests never
+  // stack, and generation checks keep stale responses from repainting a
+  // cleared or replaced chat (ticket 14).
+  const refreshHistory = useCallback(
+    async (animate = true, reportError = false) => {
+      const session = sessionRef.current;
+      if (!session || sendingRef.current) {
+        return;
+      }
+      const generation = generationRef.current;
+      const requestKey = `${generation}:${session.id}`;
+      if (historyRequestRef.current === requestKey) {
+        return;
+      }
+      historyRequestRef.current = requestKey;
+      try {
+        const response = await fetch(
+          `/api/v1/conversations/${encodeURIComponent(session.id)}/messages`,
+          { headers: { Authorization: `Bearer ${session.token}` } },
+        );
+        if (generationRef.current !== generation || sessionRef.current?.id !== session.id) {
+          return;
+        }
+        if (response.status === 401 || response.status === 404) {
+          dropSession();
+          return;
+        }
+        if (!response.ok) {
+          if (reportError) showError();
+          return;
+        }
+        const body = await response.json();
+        if (generationRef.current === generation && sessionRef.current?.id === session.id) {
+          applyHistory(body, animate);
+        }
+      } catch {
+        if (
+          reportError &&
+          generationRef.current === generation &&
+          sessionRef.current?.id === session.id
+        ) {
+          showError();
+        }
+      } finally {
+        if (historyRequestRef.current === requestKey) {
+          historyRequestRef.current = null;
+        }
+      }
+    },
+    [applyHistory, showError],
+  );
+
   // Load the surviving history once on mount: a reload of the WordPress page
   // reloads this iframe, which re-reads chatbot-origin session storage. A
   // mount with no stored session is a genuinely fresh chat, eligible for the
@@ -217,22 +275,27 @@ export default function WidgetFrame() {
       return;
     }
     sessionRef.current = session;
-    fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
-      headers: { Authorization: `Bearer ${session.token}` },
-    })
-      .then(async (response) => {
-        if (response.status === 401 || response.status === 404) {
-          dropSession();
-          return;
-        }
-        if (!response.ok) {
-          showError();
-          return;
-        }
-        applyHistory(await response.json(), false);
-      })
-      .catch(showError);
-  }, [showError, applyHistory]);
+    void refreshHistory(false, true);
+  }, [refreshHistory]);
+
+  // The panel's open state comes from the loader (ticket 61): after
+  // hydration the frame asks with sfcw:ready and applies only sfcw:state
+  // messages its parent window sent. Outside an embed (a standalone dev
+  // preview) the frame is the visible chat, so it reads as open.
+  useEffect(() => {
+    if (window.parent === window) {
+      setPanelOpen(true);
+      return;
+    }
+    function onPanelState(event: MessageEvent): void {
+      if (event.source === window.parent && event.data?.type === "sfcw:state") {
+        setPanelOpen(event.data.open === true);
+      }
+    }
+    window.addEventListener("message", onPanelState);
+    window.parent.postMessage({ type: "sfcw:ready" }, "*");
+    return () => window.removeEventListener("message", onPanelState);
+  }, []);
 
   // Published topic buttons, re-fetched on every widget open so staff
   // publishing changes what visitors see without a redeploy. Failure is
@@ -329,42 +392,16 @@ export default function WidgetFrame() {
     });
   }, []);
 
-  // Authorized polling: new staff messages appear promptly, and a reload or
-  // reconnect recovers everything from the stored conversation. Each tick is
-  // tagged with the current generation so a response from a cleared
-  // conversation can never repaint the fresh chat (ticket 14).
+  // An open chat checks every second (ticket 61). The closed frame keeps
+  // its original three-second cadence, and opening a saved chat checks
+  // immediately.
   useEffect(() => {
-    const timer = setInterval(() => {
-      const session = sessionRef.current;
-      if (!session) {
-        return;
-      }
-      const generation = generationRef.current;
-      fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
-        headers: { Authorization: `Bearer ${session.token}` },
-      })
-        .then(async (response) => {
-          if (generationRef.current !== generation) {
-            return;
-          }
-          if (response.status === 401 || response.status === 404) {
-            dropSession();
-            return;
-          }
-          if (!response.ok) {
-            return; // Transient network trouble; the next tick retries.
-          }
-          const body = await response.json();
-          // The clear can land inside the parse await.
-          if (generationRef.current !== generation) {
-            return;
-          }
-          applyHistory(body, true);
-        })
-        .catch(() => {});
-    }, 3000);
+    if (panelOpen) {
+      void refreshHistory();
+    }
+    const timer = setInterval(() => void refreshHistory(), panelOpen ? 1000 : 3000);
     return () => clearInterval(timer);
-  }, [applyHistory]);
+  }, [panelOpen, refreshHistory]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });

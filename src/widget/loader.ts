@@ -86,8 +86,13 @@ function boot(): void {
   let hideTimer: number | undefined;
   let isOpen = false;
 
+  function sendOpenState(): void {
+    frame.contentWindow?.postMessage({ type: "sfcw:state", open: isOpen }, base);
+  }
+
   function openFrame(): void {
     isOpen = true;
+    sendOpenState();
     delete launcher.dataset.closing;
     if (hideTimer !== undefined) {
       window.clearTimeout(hideTimer);
@@ -110,6 +115,7 @@ function boot(): void {
 
   function close(): void {
     isOpen = false;
+    sendOpenState();
     frame.classList.remove("sfcw-frame-in");
     // Keep the close affordance until the fading frame (and its crest) is
     // display-hidden, so the launcher crest never duplicates it on screen.
@@ -137,10 +143,16 @@ function boot(): void {
     }
   });
 
-  // The frame requests its own closure (for example on Escape); only accept
-  // messages from the chatbot origin.
+  // The frame requests its own closure (for example on Escape) and, once
+  // hydrated, asks for the panel's open state (ticket 61). Only messages
+  // from the chatbot origin AND the widget iframe's own window count.
   window.addEventListener("message", (event) => {
-    if (event.origin === base && (event.data as { type?: string } | null)?.type === "sfcw:close") {
+    if (event.origin !== base || event.source !== frame.contentWindow) {
+      return;
+    }
+    if ((event.data as { type?: string } | null)?.type === "sfcw:ready") {
+      sendOpenState();
+    } else if ((event.data as { type?: string } | null)?.type === "sfcw:close") {
       close();
     }
   });

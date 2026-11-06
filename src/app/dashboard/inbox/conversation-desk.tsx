@@ -90,8 +90,8 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   const selected = selectedId ? await store.getConversation(selectedId) : null;
   const selectedActive = selected ? isConversationActive(selected) : false;
   // Opening the transcript is viewing it: the attention alert clears, so the
-  // next visitor message can raise it again. The desk polls every few
-  // seconds, so a staff member watching the pane stays "viewing".
+  // next visitor message can raise it again. The active desk polls every
+  // second (ticket 61), so a staff member watching the pane stays "viewing".
   if (selected) {
     await store.clearConversationAttention(selected.id);
   }
@@ -141,7 +141,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
 
   return (
     <main className={styles.shell}>
-      <AutoRefresh />
+      <AutoRefresh intervalMs={view === "active" ? 1000 : 3000} />
       <DashboardHeader
         area="inbox"
         title="Conversations"
