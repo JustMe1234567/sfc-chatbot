@@ -225,17 +225,23 @@ export interface Store {
     closingNotice: string,
   ): Promise<{ successorId: string; created: boolean } | null>;
   /**
-   * Closed conversations whose retention period ended before the cutoff
-   * instant: the retention sweep's candidates.
+   * History conversations whose retention period ended (ticket 62, the
+   * retention sweep's candidates): closed ones closed before `closedBefore`,
+   * and any other state whose last meaningful activity is before
+   * `quietBefore` — the caller folds the inactivity window into that cutoff
+   * so the period counts from the moment the conversation entered History.
    */
-  listConversationsClosedBefore(cutoffIso: string): Promise<Conversation[]>;
+  listExpiredHistoryConversations(closedBefore: string, quietBefore: string): Promise<Conversation[]>;
   /**
-   * Removes one closed conversation with everything that makes it reachable
-   * or attributable to a visitor: messages, visitor sessions, return tokens,
-   * and notification records. Audit entries survive with their conversation
-   * link cleared. Returns false unless a closed conversation was removed.
+   * Removes one History conversation with everything that makes it
+   * reachable or attributable to a visitor: messages, visitor sessions,
+   * return tokens, and notification records. Audit entries survive with
+   * their conversation link cleared. History membership — closed, or last
+   * meaningful activity strictly before `quietBefore` — is rechecked inside
+   * the transaction before anything is touched; a conversation that is (or
+   * became) live, or does not exist, returns false with every record intact.
    */
-  purgeClosedConversation(id: string): Promise<boolean>;
+  purgeHistoryConversation(id: string, quietBefore: string): Promise<boolean>;
   /** Records one cleanup pass for the operator (counts only). */
   recordRetentionRun(run: RetentionRun): Promise<void>;
   /** The most recent recorded cleanup pass, if any. */

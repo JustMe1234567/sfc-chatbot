@@ -93,8 +93,10 @@ describe("the retention default is 30 days (ticket 47)", () => {
       path.join(repoRoot(), "src/app/dashboard/notifications/page.tsx"),
       "utf8",
     );
-    // The read-only summary shows the effective value, not "kept forever".
-    expect(page).toContain("{DEFAULT_RETENTION_DAYS} days after closure");
+    // The read-only summary shows the effective value, not "kept forever",
+    // counted from entering History rather than closure alone (ticket 62).
+    expect(page).toContain("{DEFAULT_RETENTION_DAYS} days in History");
+    expect(page).not.toContain("days after closure");
     expect(page).not.toContain("closed transcripts are kept");
 
     const route = await readFile(

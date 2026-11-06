@@ -29,9 +29,10 @@ import styles from "../dashboard.module.css";
  * alone. History rows are the archive, not live work: they keep their state
  * text and carry no status treatment at all.
  *
- * Ticket 51 adds a Delete control for closed rows. The row is a wrapper
- * with the Link and the control as siblings — a button nested in an anchor
- * is invalid HTML and would hijack navigation — while the link-status
+ * Ticket 51 adds a Delete control for History rows (every History row since
+ * ticket 62 — closed or quiet in any state; live rows never). The row is a
+ * wrapper with the Link and the control as siblings — a button nested in an
+ * anchor is invalid HTML and would hijack navigation — while the link-status
  * consumer stays inside the Link so the pending hint keeps working.
  */
 export default function DeskEntry({ item, selected }: { item: DeskItem; selected: boolean }) {
@@ -40,7 +41,7 @@ export default function DeskEntry({ item, selected }: { item: DeskItem; selected
     ? `${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text}`
     : "No messages";
   const status: DeskStatus | null = item.active ? deskStatus(item) : null;
-  const deletable = item.state === "closed";
+  const deletable = !item.active;
   return (
     <span className={styles.deskItemWrap}>
       <Link

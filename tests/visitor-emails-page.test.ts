@@ -136,7 +136,8 @@ describe("the store's email page queries (ticket 53)", () => {
       throw new Error("the seed's far-end conversation is missing");
     }
 
-    expect(await store.purgeClosedConversation(purged)).toBe(true);
+    const { historyQuietBefore } = await import("../src/domain/activity");
+    expect(await store.purgeHistoryConversation(purged, historyQuietBefore())).toBe(true);
     expect(await store.countConversationsWithEmail()).toBe(12);
     const remaining = await store.listConversationsWithEmail(2, 10);
     expect(remaining.map((row) => row.id)).not.toContain(purged);

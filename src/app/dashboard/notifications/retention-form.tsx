@@ -23,10 +23,11 @@ function removedConversationsLabel(count: number): string {
 
 /**
  * Owner configuration of the transcript retention period (ticket 10,
- * amended by ticket 47). A closed conversation's transcript and visitor
- * contact details are removed permanently once this many days pass; while
- * no period is set, the default of 30 days applies. Saving runs the cleanup
- * immediately.
+ * amended by tickets 47 and 62). A History conversation's transcript and
+ * visitor contact details — closed, or inactive for a day in any state —
+ * are removed permanently once this many days pass after it entered
+ * History; while no period is set, the default of 30 days applies. Saving
+ * runs the cleanup immediately.
  */
 export default function RetentionForm({
   initialDays,
@@ -94,9 +95,11 @@ export default function RetentionForm({
     <form className={`${styles.ruleCard} ${styles.alertSettingsCard}`} onSubmit={submit}>
       <h2>Transcript retention</h2>
       <p className={styles.hint}>
-        Closed conversations are removed permanently — with their messages,
-        visitor email addresses, and return links — once this many days have
-        passed. Leave empty to use the default of {DEFAULT_RETENTION_DAYS} days.
+        Every History conversation, closed or inactive, is removed
+        permanently — with its messages, visitor email addresses, and return
+        links — once this many days have passed since it moved to History.
+        Live conversations are never removed. Leave empty to use the
+        default of {DEFAULT_RETENTION_DAYS} days.
       </p>
       <div className={styles.formField}>
         <label htmlFor="retention-days">Retention period</label>

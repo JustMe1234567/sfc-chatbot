@@ -2,18 +2,25 @@ import { NextResponse } from "next/server";
 import { sameOriginGuard } from "@/api/staff";
 import { loadStaffConversation } from "@/api/staffConversations";
 import { getChatbotService } from "@/db/service";
+import { historyQuietBefore, isConversationActive } from "@/domain/activity";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+function liveConflict(message: string) {
+  return NextResponse.json({ error: { code: "conversation_live", message } }, { status: 409 });
+}
+
 /**
- * Hard-deletes one closed conversation from the History tab (ticket 51) —
- * the manual equivalent of the retention sweep's purge. The same
- * transactional primitive removes the transcript, visitor sessions, return
- * links, and notification rows while detaching audit rows, and refuses
- * anything not closed, so live conversations can never be deleted through
- * this route.
+ * Hard-deletes one History conversation (ticket 51, widened by ticket 62 to
+ * every History row: closed, or quiet past the inactivity window in any
+ * stored state) — the manual equivalent of the retention sweep's purge. The
+ * same transactional primitive removes the transcript, visitor sessions,
+ * return links, and notification rows while detaching audit rows, and it
+ * rechecks History membership inside its transaction, so a conversation
+ * that is live — or turned live after the list rendered — is refused with
+ * every record intact.
  */
 export async function POST(request: Request, context: RouteContext) {
   const blocked = sameOriginGuard(request);
@@ -25,23 +32,18 @@ export async function POST(request: Request, context: RouteContext) {
   if ("response" in loaded) {
     return loaded.response;
   }
-  if (loaded.conversation.state !== "closed") {
-    return NextResponse.json(
-      {
-        error: {
-          code: "invalid_state",
-          message: "Only closed conversations can be deleted. Close it first.",
-        },
-      },
-      { status: 409 },
+  const now = new Date();
+  if (isConversationActive(loaded.conversation, now)) {
+    return liveConflict(
+      "This conversation is still live on the Conversations tab. Only History conversations can be deleted.",
     );
   }
 
   const { store } = await getChatbotService();
-  const removed = await store.purgeClosedConversation(id);
+  const removed = await store.purgeHistoryConversation(id, historyQuietBefore(now));
   if (!removed) {
-    // The state moved between the load and the purge: someone deleted it
-    // concurrently (gone → 404) or it reopened (no longer eligible → 409).
+    // Membership moved between the load and the purge: someone deleted it
+    // concurrently (gone → 404) or it turned live again (→ 409).
     const stillThere = await store.getConversation(id);
     if (!stillThere) {
       return NextResponse.json(
@@ -49,14 +51,8 @@ export async function POST(request: Request, context: RouteContext) {
         { status: 404 },
       );
     }
-    return NextResponse.json(
-      {
-        error: {
-          code: "invalid_state",
-          message: "This conversation can no longer be deleted.",
-        },
-      },
-      { status: 409 },
+    return liveConflict(
+      "This conversation became live again and was kept. Only History conversations can be deleted.",
     );
   }
   return NextResponse.json({ ok: true, removed: 1 });

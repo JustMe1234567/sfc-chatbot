@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
 import { getChatbotService } from "@/db/service";
+import { historyQuietBefore, isConversationActive } from "@/domain/activity";
 
 /**
- * Owner-only bulk clear of the History tab (ticket 51): hard-deletes every
- * closed conversation at once, through the same transactional purge as the
- * retention sweep. Claimed and waiting rows survive — only the archive of
- * finished conversations is removed — and each purge refuses non-closed
- * states on its own, so a conversation reopened mid-loop is skipped.
+ * Owner-only bulk clear of the History tab (ticket 51, widened by ticket 62):
+ * hard-deletes every History conversation — closed ones and those quiet
+ * past the inactivity window in any stored state — through the same
+ * transactional purge as the retention sweep. Live conversations are never
+ * enumerated, and each purge rechecks History membership on its own, so a
+ * conversation that turns live mid-loop is kept.
  */
 export async function POST(request: Request) {
   const blocked = sameOriginGuard(request);
@@ -20,12 +22,16 @@ export async function POST(request: Request) {
   }
 
   const { store } = await getChatbotService();
-  // Only closed conversations are enumerated — claimed and waiting rows are
-  // never even loaded for the clear.
-  const closed = await store.listConversationsByState("closed");
+  const now = new Date();
+  // The History tab's own rule (isConversationActive), so the dialog's count
+  // and the clear agree.
+  const history = (await store.listConversations()).filter(
+    (conversation) => !isConversationActive(conversation, now),
+  );
+  const quietBefore = historyQuietBefore(now);
   let removed = 0;
-  for (const conversation of closed) {
-    if (await store.purgeClosedConversation(conversation.id)) {
+  for (const conversation of history) {
+    if (await store.purgeHistoryConversation(conversation.id, quietBefore)) {
       removed += 1;
     }
   }

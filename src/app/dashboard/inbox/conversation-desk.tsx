@@ -83,9 +83,8 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // attention alert.
   const desk = view === "active" ? await summarizeConversationDesk(store) : null;
   const history = view === "history" ? await summarizeConversationHistory(store) : [];
-  // Clear history counts what it would actually remove: only closed
-  // conversations are deletable (ticket 51); quiet claimed/waiting rows stay.
-  const closedHistoryCount = history.filter((item) => item.state === "closed").length;
+  // Clear history removes exactly what History lists (ticket 62): every
+  // closed or quiet conversation, so its count is the list's length.
 
   const selected = selectedId ? await store.getConversation(selectedId) : null;
   const selectedActive = selected ? isConversationActive(selected) : false;
@@ -194,10 +193,10 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               <>
                 <div className={styles.historyHead}>
                   <h2>History</h2>
-                  {/* Owner-only bulk clear (ticket 51), hidden when nothing
-                      closed exists to remove. */}
-                  {guard.staff.role === "owner" && closedHistoryCount > 0 ? (
-                    <ClearHistoryButton count={closedHistoryCount} selectedId={selectedId} />
+                  {/* Owner-only bulk clear (ticket 51), hidden when History
+                      is empty; it covers every History row (ticket 62). */}
+                  {guard.staff.role === "owner" && history.length > 0 ? (
+                    <ClearHistoryButton count={history.length} selectedId={selectedId} />
                   ) : null}
                 </div>
                 {history.length === 0 ? (

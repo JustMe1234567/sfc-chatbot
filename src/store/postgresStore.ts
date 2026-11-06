@@ -235,12 +235,13 @@ export function createPostgresStore(sql: PostgresSql): Store {
       });
     },
 
-    async listConversationsClosedBefore(cutoffIso) {
+    async listExpiredHistoryConversations(closedBefore, quietBefore) {
       const rows = await sql.unsafe(
         `SELECT ${CONVERSATION_COLUMNS} FROM conversations
-         WHERE state = 'closed' AND closed_at IS NOT NULL AND closed_at < $1
-         ORDER BY closed_at`,
-        [cutoffIso],
+         WHERE (state = 'closed' AND closed_at IS NOT NULL AND closed_at < $1)
+            OR (state <> 'closed' AND COALESCE(last_activity_at, created_at) < $2)
+         ORDER BY COALESCE(closed_at, last_activity_at, created_at)`,
+        [closedBefore, quietBefore],
       );
       return (rows as unknown as ConversationRow[]).map(rowToConversation);
     },
@@ -248,19 +249,31 @@ export function createPostgresStore(sql: PostgresSql): Store {
     // One transaction removes the transcript together with every path back to
     // it. The audit rows are detached, not deleted: accountability must
     // outlive the transcript, and the explicit UPDATE (rather than a cascade)
-    // keeps the foreign key strict for every other deletion path. The
-    // conditional final DELETE re-verifies the closed state so a conversation
-    // that reopened between listing and purging survives untouched.
-    async purgeClosedConversation(id) {
+    // keeps the foreign key strict for every other deletion path. History
+    // membership is checked first under a row lock (ticket 62): returning
+    // from sql.begin COMMITS, so a refusal must happen before any write — the
+    // old closed-only version deleted the transcript and sessions, then
+    // returned false and committed them away. The lock makes a concurrent
+    // activity touch wait for this decision; the final DELETE's condition is
+    // a backstop that throws, rolling everything back.
+    async purgeHistoryConversation(id, quietBefore) {
       return sql.begin(async (tx: TransactionSql) => {
+        const eligible = await tx`SELECT id FROM conversations
+          WHERE id = ${id}
+            AND (state = 'closed' OR COALESCE(last_activity_at, created_at) < ${quietBefore})
+          FOR UPDATE`;
+        if (eligible.length === 0) {
+          return false;
+        }
         await tx`UPDATE audit_log SET conversation_id = NULL WHERE conversation_id = ${id}`;
         await tx`DELETE FROM notifications WHERE conversation_id = ${id}`;
         await tx`DELETE FROM return_tokens WHERE conversation_id = ${id}`;
         await tx`DELETE FROM visitor_sessions WHERE conversation_id = ${id}`;
         await tx`DELETE FROM messages WHERE conversation_id = ${id}`;
-        const removed = await tx`DELETE FROM conversations WHERE id = ${id} AND state = 'closed'`;
+        const removed = await tx`DELETE FROM conversations WHERE id = ${id}
+          AND (state = 'closed' OR COALESCE(last_activity_at, created_at) < ${quietBefore})`;
         if (changesOf(removed) === 0) {
-          return false;
+          throw new Error(`conversation ${id} left History while locked for its purge`);
         }
         return true;
       });

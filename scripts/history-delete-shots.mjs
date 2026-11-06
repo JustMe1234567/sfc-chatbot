@@ -1,11 +1,14 @@
-// Ticket 51 verification (headless Chromium): the History tab's Delete and
-// Clear history controls behind the shared confirmation dialog. Signs the
-// owner in through the real UI, seeds closed + claimed conversations
-// through the real APIs, and walks the whole dialog contract live: focus
-// moves in, Escape/backdrop/Cancel close without deleting, confirm deletes,
-// Clear history (owner-only) removes every closed conversation while the
-// claimed row survives, and deleting the open transcript returns to the
-// list. Screenshots at 1280/390 with zero overflow.
+// Tickets 51 + 62 verification (headless Chromium): the History tab's Delete
+// and Clear history controls behind the shared confirmation dialog. Signs
+// the owner in through the real UI, seeds closed, quiet claimed, quiet
+// waiting, and live claimed conversations through the real APIs, and walks
+// the whole dialog contract live: live rows carry no Delete, every History
+// row does (ticket 62), focus moves in, Escape/backdrop/Cancel close without
+// deleting, a quiet waiting row deletes, a row that turns live while its
+// dialog is open is refused inline and kept, Clear history (owner-only)
+// counts and removes every History row while the live conversation
+// survives, and deleting the open transcript returns to the list.
+// Screenshots at 1280/390/360 with zero overflow.
 // Usage: node scripts/history-delete-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
@@ -135,40 +138,72 @@ for (const question of [
 ]) {
   await seedClosed(question);
 }
-// Claimed, then quiet for two days: sits in History claimed — undeletable,
-// and a Clear survivor.
-const claimedId = await page.evaluate(async () => {
-  const started = await fetch("/api/v1/conversations", { method: "POST" });
-  const conversation = await started.json();
-  const post = (text) =>
-    fetch(`/api/v1/conversations/${conversation.id}/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${conversation.token}`,
-      },
-      body: JSON.stringify({ text }),
-    });
-  for (const [step, response] of Object.entries({
-    question: await post("Where is the gym?"),
-    escalate: await post("Please let me speak to a human."),
-  })) {
-    if (!response.ok) throw new Error(`claimed seed ${step} failed`);
-  }
-  const claim = await fetch(`/api/staff/conversations/${conversation.id}/claim`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!claim.ok) throw new Error("claimed seed claim failed");
-  return conversation.id;
-});
-{
+// Ticket 62: History membership, not the closed state, is the deletion
+// boundary. Two quiet non-closed rows (claimed, and waiting for staff) sit in
+// History beside the closed ones; one live claimed conversation stays on the
+// Conversations tab.
+async function seedEscalated(question, { claim }) {
+  return page.evaluate(
+    async ({ q, claim: shouldClaim }) => {
+      const started = await fetch("/api/v1/conversations", { method: "POST" });
+      const conversation = await started.json();
+      const post = (text) =>
+        fetch(`/api/v1/conversations/${conversation.id}/messages`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${conversation.token}`,
+          },
+          body: JSON.stringify({ text }),
+        });
+      for (const [step, response] of Object.entries({
+        question: await post(q),
+        escalate: await post("Please let me speak to a human."),
+      })) {
+        if (!response.ok) throw new Error(`seed ${step} failed`);
+      }
+      if (shouldClaim) {
+        const claim = await fetch(`/api/staff/conversations/${conversation.id}/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!claim.ok) throw new Error("seed claim failed");
+      }
+      return conversation.id;
+    },
+    { q: question, claim },
+  );
+}
+function setLastActivity(id, iso) {
   const conn = new DatabaseSync(DB_PATH);
-  const quiet = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-  conn.prepare("UPDATE conversations SET last_activity_at = ? WHERE id = ?").run(quiet, claimedId);
+  conn.prepare("UPDATE conversations SET last_activity_at = ? WHERE id = ?").run(iso, id);
   conn.close();
 }
-console.log("seeded three closed conversations + one quiet claimed row");
+function conversationExists(id) {
+  const conn = new DatabaseSync(DB_PATH);
+  const row = conn.prepare("SELECT COUNT(*) AS n FROM conversations WHERE id = ?").get(id);
+  conn.close();
+  return row.n > 0;
+}
+const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+const quietClaimedId = await seedEscalated("Where is the gym?", { claim: true });
+setLastActivity(quietClaimedId, twoDaysAgo);
+const quietWaitingId = await seedEscalated("Can I defer my offer?", { claim: false });
+setLastActivity(quietWaitingId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString());
+const liveId = await seedEscalated("Is the library open late?", { claim: true });
+console.log("seeded three closed + quiet claimed + quiet waiting + one live claimed");
+
+// --- The live row offers no Delete on the Conversations tab. ---------------
+await page.goto(`${BASE}/dashboard/inbox`);
+await page.waitForLoadState("domcontentloaded");
+await page.locator('nav[aria-label="Conversation list"]').waitFor({ timeout: 10000 });
+if ((await page.locator(`a[href="/dashboard/inbox/${liveId}"]`).count()) !== 1) {
+  throw new Error("the live conversation must be listed on the Conversations tab");
+}
+if ((await page.getByRole("button", { name: "Delete this conversation" }).count()) !== 0) {
+  throw new Error("live rows must never offer Delete");
+}
+console.log("ok: live rows carry no Delete control");
 
 await page.goto(HISTORY_URL);
 await page.waitForLoadState("domcontentloaded");
@@ -180,25 +215,27 @@ const rows = nav.locator('[class*="deskItemWrap"]');
 // For row-relative filtering, the has-locator is created from the page root
 // (relative to whatever element filters with it).
 const rowHasDelete = page.getByRole("button", { name: "Delete this conversation" });
+const rowFor = (id) => rows.filter({ has: page.locator(`a[href="/dashboard/inbox/${id}"]`) });
 
-if ((await deleteButtons.count()) !== 3) {
-  throw new Error(
-    `closed rows must render exactly three Delete controls, found ${await deleteButtons.count()}`,
-  );
+if ((await rows.count()) !== 5) {
+  throw new Error(`expected five History rows (3 closed + 2 quiet), found ${await rows.count()}`);
 }
-if ((await rows.count()) !== 4) {
-  throw new Error(`expected four history rows (3 closed + 1 claimed), found ${await rows.count()}`);
+if ((await deleteButtons.count()) !== 5) {
+  throw new Error(`every History row must offer Delete, found ${await deleteButtons.count()} of 5`);
+}
+if ((await rowFor(liveId).count()) !== 0) {
+  throw new Error("the live conversation must not appear in History");
 }
 const clearButton = page.getByRole("button", { name: "Clear history" });
 if ((await clearButton.count()) !== 1) {
-  throw new Error("the owner must see Clear history with closed rows present");
+  throw new Error("the owner must see Clear history while History has rows");
 }
-console.log("ok: Delete on closed rows only; Clear history visible for the owner");
+console.log("ok: Delete on all five History rows (closed and quiet); Clear history visible");
 
 const dialog = page.locator('[role="dialog"]');
 
-async function openDialog() {
-  await deleteButtons.first().click();
+async function openDialog(trigger = deleteButtons.first()) {
+  await trigger.click();
   await dialog.waitFor({ timeout: 5000 });
 }
 async function closeAndCheckFocus() {
@@ -221,14 +258,14 @@ if (
 // Headings render uppercased by the dashboard's h2 style, so match case-
 // insensitively against innerText.
 const dialogText = (await dialog.innerText()).toLowerCase();
-for (const phrase of ["delete this conversation?", "permanently", "contact details", "closed"]) {
+for (const phrase of ["delete this conversation?", "permanently", "contact details", "closed or inactive"]) {
   if (!dialogText.includes(phrase)) {
-    throw new Error(`the delete dialog never says "${phrase}"; text: ${dialogText.slice(0, 160)}`);
+    throw new Error(`the delete dialog never says "${phrase}"; text: ${dialogText.slice(0, 200)}`);
   }
 }
 await page.keyboard.press("Escape");
 await closeAndCheckFocus();
-if ((await deleteButtons.count()) !== 3) {
+if ((await deleteButtons.count()) !== 5) {
   throw new Error("Escape must not delete");
 }
 console.log("ok: focus enters on open; Escape closes, focus returns, nothing deleted");
@@ -245,28 +282,62 @@ await dialog.getByRole("button", { name: "Cancel" }).click();
 await closeAndCheckFocus();
 console.log("ok: Cancel closes safely");
 
-// --- Confirm deletes the row. ------------------------------------------------
-await openDialog();
+// --- A quiet row waiting for staff deletes like a closed one. --------------
+await openDialog(rowFor(quietWaitingId).getByRole("button", { name: "Delete this conversation" }));
+const waitingText = (await dialog.innerText()).toLowerCase();
+if (!waitingText.includes("waiting")) {
+  throw new Error(`the dialog must identify the waiting conversation (text: ${waitingText.slice(0, 200)})`);
+}
 await dialog.getByRole("button", { name: "Delete", exact: true }).click();
 await page.waitForFunction(
-  () => document.querySelectorAll('[aria-label="Delete this conversation"]').length === 2,
+  () => document.querySelectorAll('[aria-label="Delete this conversation"]').length === 4,
   { timeout: 10000 },
 );
 if ((await dialog.count()) !== 0) {
   throw new Error("the dialog must close after a successful delete");
 }
-console.log("ok: confirming deletes the row and closes the dialog");
+if (conversationExists(quietWaitingId)) {
+  throw new Error("the quiet waiting conversation was not deleted");
+}
+console.log("ok: a quiet waiting-for-staff row deleted after confirming");
 await page.screenshot({ path: join(OUT, "after-delete-row-1280.png"), fullPage: true });
 
-// --- Clear history: dialog names the count; claimed row survives. -----------
+// --- A row that turned live after the list rendered is refused and kept. ---
+await openDialog(rowFor(quietClaimedId).getByRole("button", { name: "Delete this conversation" }));
+setLastActivity(quietClaimedId, new Date().toISOString());
+await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+await dialog.locator('[role="alert"]').waitFor({ timeout: 10000 });
+const refusal = (await dialog.locator('[role="alert"]').innerText()).toLowerCase();
+if (!refusal.includes("live")) {
+  throw new Error(`the refusal must explain the conversation is live (found: ${refusal})`);
+}
+await page.screenshot({ path: join(OUT, "after-delete-refused-live-1280.png"), fullPage: false });
+await dialog.getByRole("button", { name: "Cancel" }).click();
+await dialog.waitFor({ state: "detached", timeout: 5000 });
+if (!conversationExists(quietClaimedId)) {
+  throw new Error("a conversation that turned live must survive the refused delete");
+}
+console.log("ok: a row that turned live mid-dialog is refused inline and kept");
+
+// --- Clear history: the count covers every History row; live rows stay. ---
+// Back to quiet: the claimed row returns to History for the clear.
+setLastActivity(quietClaimedId, twoDaysAgo);
+await page.goto(HISTORY_URL);
+await page.waitForLoadState("domcontentloaded");
+await rows.first().waitFor({ timeout: 10000 });
+if ((await rows.count()) !== 4) {
+  throw new Error(`expected four History rows before the clear, found ${await rows.count()}`);
+}
 await clearButton.click();
 await dialog.waitFor({ timeout: 5000 });
 const clearText = (await dialog.innerText()).toLowerCase();
-if (!clearText.includes("2 closed conversations")) {
-  throw new Error(`the clear dialog must state the count (found: ${clearText.slice(0, 120)})`);
+if (!clearText.includes("4 history conversations")) {
+  throw new Error(`the clear dialog must state the full History count (found: ${clearText.slice(0, 200)})`);
 }
-if (!clearText.includes("claimed")) {
-  throw new Error("the clear dialog must say claimed conversations are kept");
+for (const phrase of ["closed or inactive", "live conversations"]) {
+  if (!clearText.includes(phrase)) {
+    throw new Error(`the clear dialog never says "${phrase}" (found: ${clearText.slice(0, 200)})`);
+  }
 }
 await page.screenshot({ path: join(OUT, "after-clear-dialog-1280.png"), fullPage: false });
 await dialog.getByRole("button", { name: "Clear history" }).click();
@@ -275,13 +346,19 @@ await page.waitForFunction(
   () => document.querySelectorAll('[aria-label="Delete this conversation"]').length === 0,
   { timeout: 10000 },
 );
-if ((await rows.count()) !== 1) {
-  throw new Error(`only the claimed row may remain after clear (found ${await rows.count()})`);
+if ((await rows.count()) !== 0) {
+  throw new Error(`History must be empty after the clear (found ${await rows.count()})`);
 }
 if ((await clearButton.count()) !== 0) {
-  throw new Error("Clear history must hide when no closed conversations remain");
+  throw new Error("Clear history must hide when History is empty");
 }
-console.log("ok: clear history removed the closed rows; the claimed row survived");
+if (conversationExists(quietClaimedId)) {
+  throw new Error("the quiet claimed row must be cleared with the rest of History");
+}
+if (!conversationExists(liveId)) {
+  throw new Error("the live conversation must survive Clear history");
+}
+console.log("ok: clear history removed every History row (closed and quiet); the live one survived");
 await page.screenshot({ path: join(OUT, "after-clear-history-1280.png"), fullPage: true });
 
 // --- Deleting the currently open transcript returns to the list. ------------
@@ -312,7 +389,13 @@ await page.waitForURL("**/dashboard/inbox/history", { timeout: 10000 });
 console.log("ok: deleting the open transcript returns staff to the History list");
 
 // --- Narrow widths: the Delete control fits beside the row. -----------------
-// The ticket names 360px; 390 (iPhone) is swept alongside it.
+// The ticket names 360px; 390 (iPhone) is swept alongside it. History is
+// empty by now (ticket 62's clear leaves no quiet survivor), so one closed
+// and one quiet row are seeded for the narrow shots.
+await seedClosed("history62 narrow: Where do I collect my ID card?");
+setLastActivity(await seedEscalated("Who handles housing?", { claim: true }), twoDaysAgo);
+await page.goto(HISTORY_URL);
+await page.waitForLoadState("domcontentloaded");
 for (const width of [360, 390]) {
   await page.setViewportSize({ width, height: 850 });
   await page.waitForTimeout(350);
@@ -335,4 +418,4 @@ if (pageErrors.length > 0) {
   throw new Error(`page errors during the run: ${pageErrors.join(" | ")}`);
 }
 await browser.close();
-console.log("ticket 51 checks passed; screenshots in", OUT);
+console.log("ticket 51 + 62 checks passed; screenshots in", OUT);

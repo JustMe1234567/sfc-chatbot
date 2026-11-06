@@ -89,7 +89,8 @@ export function DeleteConversationButton({
         >
           <p>
             This permanently removes the conversation and its transcript,
-            including the visitor&apos;s contact details. This cannot be
+            including the visitor&apos;s contact details. Any History
+            conversation can be deleted, closed or inactive. This cannot be
             undone. Conversation being deleted: {description}.
           </p>
         </ConfirmDialog>
@@ -155,10 +156,10 @@ export function ClearHistoryButton({
           onCancel={close}
         >
           <p>
-            This permanently removes {count} closed conversation
-            {count === 1 ? "" : "s"} — their transcripts and visitor contact
-            details cannot be recovered. Conversations still claimed or
-            waiting are kept.
+            This permanently removes {count} History conversation
+            {count === 1 ? "" : "s"}, closed or inactive — their transcripts
+            and visitor contact details cannot be recovered. Live
+            conversations on the Conversations tab are kept.
           </p>
         </ConfirmDialog>
       ) : null}

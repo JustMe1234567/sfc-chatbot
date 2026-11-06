@@ -204,7 +204,7 @@ describe("the owner configures transcript retention", () => {
   });
 });
 
-describe("cleanup removes only closed conversations past the period", () => {
+describe("cleanup removes expired History conversations and keeps live ones", () => {
   it("keeps active and recent conversations, removes the expired one with its data", async () => {
     const ownerJar = new CookieJar();
     await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);

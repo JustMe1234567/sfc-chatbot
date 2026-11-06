@@ -263,34 +263,44 @@ export function createSqliteStore(db: DatabaseSync): Store {
       }
     },
 
-    async listConversationsClosedBefore(cutoffIso) {
+    async listExpiredHistoryConversations(closedBefore, quietBefore) {
       const rows = db
         .prepare(
           `SELECT ${CONVERSATION_COLUMNS} FROM conversations
-           WHERE state = 'closed' AND closed_at IS NOT NULL AND closed_at < ?
-           ORDER BY closed_at`,
+           WHERE (state = 'closed' AND closed_at IS NOT NULL AND closed_at < ?)
+              OR (state <> 'closed' AND COALESCE(last_activity_at, created_at) < ?)
+           ORDER BY COALESCE(closed_at, last_activity_at, created_at)`,
         )
-        .all(cutoffIso) as unknown as ConversationRow[];
+        .all(closedBefore, quietBefore) as unknown as ConversationRow[];
       return rows.map(rowToConversation);
     },
 
     // One transaction removes the transcript together with every path back to
     // it. The audit rows are detached, not deleted: accountability must
     // outlive the transcript, and the explicit UPDATE (rather than a cascade)
-    // keeps the foreign key strict for every other deletion path. The
-    // conditional final DELETE re-verifies the closed state so a conversation
-    // that reopened between listing and purging survives untouched.
-    async purgeClosedConversation(id) {
+    // keeps the foreign key strict for every other deletion path. History
+    // membership is checked first (ticket 62), so a conversation that is or
+    // became live — or is already gone — is refused before anything is
+    // touched; the final DELETE repeats the condition as a backstop.
+    async purgeHistoryConversation(id, quietBefore) {
+      const HISTORY = "(state = 'closed' OR COALESCE(last_activity_at, created_at) < ?)";
       db.exec("BEGIN");
       try {
+        const eligible = db
+          .prepare(`SELECT 1 AS ok FROM conversations WHERE id = ? AND ${HISTORY}`)
+          .get(id, quietBefore);
+        if (!eligible) {
+          db.exec("ROLLBACK");
+          return false;
+        }
         db.prepare("UPDATE audit_log SET conversation_id = NULL WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM notifications WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM return_tokens WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM visitor_sessions WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
         const removed = db
-          .prepare("DELETE FROM conversations WHERE id = ? AND state = 'closed'")
-          .run(id);
+          .prepare(`DELETE FROM conversations WHERE id = ? AND ${HISTORY}`)
+          .run(id, quietBefore);
         if (removed.changes === 0) {
           db.exec("ROLLBACK");
           return false;

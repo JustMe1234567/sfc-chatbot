@@ -39,6 +39,33 @@ export function isConversationActive(conversation: Conversation, now: Date = new
 }
 
 /**
+ * The History boundary as the stores read it (ticket 62): a conversation
+ * whose last meaningful activity is strictly before this instant is quiet —
+ * in History in any stored state. Exactly isConversationActive's window,
+ * expressed as an ISO cutoff the purge can recheck inside its transaction.
+ */
+export function historyQuietBefore(now: Date = new Date()): string {
+  return new Date(now.getTime() - conversationInactivityMs()).toISOString();
+}
+
+/**
+ * When the conversation entered History (ticket 62), or null while it is
+ * still live: closure for a closed conversation, otherwise the end of its
+ * inactivity window. The retention period counts from this instant.
+ */
+export function historyEnteredAt(conversation: Conversation, now: Date = new Date()): string | null {
+  if (conversation.state === "closed") {
+    return conversation.closedAt ?? conversationLastActivity(conversation);
+  }
+  if (isConversationActive(conversation, now)) {
+    return null;
+  }
+  return new Date(
+    new Date(conversationLastActivity(conversation)).getTime() + conversationInactivityMs(),
+  ).toISOString();
+}
+
+/**
  * A visitor message is meaningful (ticket 12): the inactivity clock and the
  * visitor's credentials slide forward together, and the staff desk is
  * alerted once (not per message) that something new awaits.

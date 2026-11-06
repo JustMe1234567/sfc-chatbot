@@ -114,7 +114,8 @@ export const MAX_RETENTION_DAYS = 3650;
 
 /**
  * The retention period in effect while the college has not set one (ticket
- * 47): closed transcripts expire 30 days after closure. An explicit owner
+ * 47): History transcripts expire 30 days after they enter History (closure,
+ * or the end of the inactivity window — ticket 62). An explicit owner
  * setting always wins; the wire format keeps reporting null for "no explicit
  * period" so the dashboard can say which value is the default.
  */

@@ -109,17 +109,21 @@ async function conversationExists(id: string): Promise<boolean> {
   );
 }
 
-describe("the purge contract stays closed-only (ticket 51)", () => {
-  it("refuses a claimed conversation and removes a closed one with its data", async () => {
+describe("the purge contract refuses live conversations (ticket 51, widened by 62)", () => {
+  it("refuses a live claimed conversation and removes a closed one with its data", async () => {
     const { getChatbotService } = await import("../src/db/service");
+    const { historyQuietBefore } = await import("../src/domain/activity");
     const { store } = await getChatbotService();
 
+    // Freshly active: History membership (closed, or quiet past the window)
+    // is what makes a conversation deletable — tests/history-eligibility
+    // covers the quiet non-closed rows.
     const claimed = await seedConversation("claimed");
-    expect(await store.purgeClosedConversation(claimed)).toBe(false);
+    expect(await store.purgeHistoryConversation(claimed, historyQuietBefore())).toBe(false);
     expect(await conversationExists(claimed)).toBe(true);
 
     const closed = await seedConversation("closed");
-    expect(await store.purgeClosedConversation(closed)).toBe(true);
+    expect(await store.purgeHistoryConversation(closed, historyQuietBefore())).toBe(true);
     expect(await conversationExists(closed)).toBe(false);
     const { db } = await getChatbotService();
     expect(
@@ -148,13 +152,13 @@ describe("POST /api/staff/conversations/[id]/delete (ticket 51)", () => {
     expect((await deleteRequest(jar, id)).status).toBe(404);
   });
 
-  it("refuses conversations that are not closed", async () => {
+  it("refuses conversations that are still live", async () => {
     const jar = await staffJar();
     const claimed = await seedConversation("claimed");
     const response = await deleteRequest(jar, claimed);
     expect(response.status).toBe(409);
     const body = (await response.json()) as { error?: { message?: string } };
-    expect(body.error?.message).toMatch(/closed/i);
+    expect(body.error?.message).toMatch(/live/i);
     expect(await conversationExists(claimed)).toBe(true);
   });
 });
@@ -165,7 +169,7 @@ describe("POST /api/staff/conversations/clear-history (ticket 51)", () => {
     expect((await clearRequest(await staffJar())).status).toBe(403);
   });
 
-  it("removes every closed conversation and leaves claimed ones listed", async () => {
+  it("removes every closed conversation and leaves live claimed ones listed", async () => {
     const closedA = await seedConversation("closed");
     const closedB = await seedConversation("closed");
     const claimed = await seedConversation("claimed");
@@ -226,11 +230,11 @@ describe("the confirmation dialog and row structure (ticket 51)", () => {
     expect(entry.lastIndexOf("</Link>")).toBeLessThan(entry.indexOf("<DeleteConversationButton"));
     // Ticket 42's pending hint still consumes useLinkStatus inside the Link.
     expect(entry).toContain("useLinkStatus");
-    // Only closed rows offer deletion.
-    expect(entry).toContain('item.state === "closed"');
+    // Every History row offers deletion; live rows never do (ticket 62).
+    expect(entry).toContain("const deletable = !item.active;");
   });
 
-  it("gates Clear history to owners with the closed count", async () => {
+  it("gates Clear history to owners with the History count", async () => {
     const { readFile } = await import("node:fs/promises");
     const path = await import("node:path");
     const { repoRoot } = await import("../src/paths");
@@ -240,7 +244,7 @@ describe("the confirmation dialog and row structure (ticket 51)", () => {
     );
     expect(desk).toContain('guard.staff.role === "owner"');
     expect(desk).toContain("ClearHistoryButton");
-    expect(desk).toMatch(/\.filter\(\(item\) => item\.state === "closed"\)/);
+    expect(desk).toContain("count={history.length}");
   });
 
   it("uses the ticket-42 pending verbs for both destructive actions", async () => {

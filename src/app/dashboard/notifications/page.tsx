@@ -72,7 +72,7 @@ export default async function NotificationsPage({
                 <p className={styles.eyebrow}>Delivery setup</p>
                 <h2 id="delivery-settings-title">How email alerts work</h2>
                 <p>
-                  Choose who receives handoff alerts, when staff are available, and how long closed
+                  Choose who receives handoff alerts, when staff are available, and how long History
                   transcripts are retained.
                 </p>
               </div>
@@ -102,8 +102,8 @@ export default async function NotificationsPage({
                   <dt>Transcript retention</dt>
                   <dd>
                     {retentionDays !== null
-                      ? `${retentionDays} days after closure`
-                      : `${DEFAULT_RETENTION_DAYS} days after closure (the default)`}
+                      ? `${retentionDays} days in History`
+                      : `${DEFAULT_RETENTION_DAYS} days in History (the default)`}
                   </dd>
                 </div>
               </dl>
