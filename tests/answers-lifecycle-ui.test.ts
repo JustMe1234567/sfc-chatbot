@@ -14,6 +14,7 @@ import type { RuleView } from "../src/api/staffAnswerRules";
  */
 
 const HEADER = "src/app/dashboard/header.tsx";
+const SIDEBAR_PREFERENCE = "src/app/dashboard/sidebar-preference.ts";
 const CSS = "src/app/dashboard/dashboard.module.css";
 const WORKSPACE = "src/app/dashboard/answers/answers-workspace.tsx";
 const ACTIONS = "src/app/dashboard/answers/answer-actions.tsx";
@@ -135,6 +136,7 @@ describe("the reference rail (ticket 58)", () => {
 
   it("keeps the toggle control leading the rail without breaking ticket 57", async () => {
     const header = await read(HEADER);
+    const preference = await read(SIDEBAR_PREFERENCE);
 
     // Ticket 60 supersedes ticket 58's bottom slot: the control renders
     // first — under the crest, before the nav — and the identity stays last.
@@ -145,9 +147,10 @@ describe("the reference rail (ticket 58)", () => {
     // callout so the two can never drift.)
     expect(header).toMatch(/const toggleLabel = collapsed \? "Expand navigation" : "Collapse navigation";/);
     expect(header).toContain("aria-label={toggleLabel}");
-    expect(header).toContain("COLLAPSED_KEY");
+    expect(preference).toContain("dashboard.sidebar.collapsed");
     // Compact-by-default with one-at-a-time callouts is untouched.
-    expect(header).toContain("useState(true)");
+    expect(header).toContain("useState(initialSidebarCollapsed)");
+    expect(preference).toContain("return sessionCollapsed ?? true");
     expect(header).toContain('calloutProps("Sign out")');
   });
 

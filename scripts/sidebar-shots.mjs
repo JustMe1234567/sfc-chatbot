@@ -29,9 +29,11 @@ for (let attempt = 0; ; attempt++) {
   }
 }
 
-// Light slate: wipe only the enrollment (conversations are irrelevant to
-// the chrome and the retention default from ticket 47 may sweep them, which
-// this script never asserts on).
+// Initialize the service (healthz alone does not migrate the database), then
+// wipe only enrollment. Conversations are irrelevant to the chrome.
+const warm = await fetch(`${BASE}/api/v1/topics`);
+if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
+
 const db = new DatabaseSync(DB_PATH);
 const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
 if (owner) {
@@ -43,9 +45,6 @@ if (owner) {
   console.log("no prior enrollment to wipe");
 }
 db.close();
-
-const warm = await fetch(`${BASE}/api/v1/topics`);
-if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
 
 const browser = await chromium.launch();
 const context = await browser.newContext();
@@ -83,14 +82,22 @@ await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
 console.log("signed in; enrollment complete");
 mkdirSync(OUT, { recursive: true });
-// Start every run from the default: expanded.
+// Start every run from the compact default, then explicitly expand for the
+// desktop navigation checks.
 await page.evaluate(() => window.localStorage.removeItem("dashboard.sidebar.collapsed"));
+await page.reload();
+await page.waitForLoadState("domcontentloaded");
 
 const rail = page.locator('aside[data-collapsed], aside:not([data-collapsed])').first();
 const railNav = page.locator('nav[aria-label="Dashboard"]').first();
+await rail.waitFor({ timeout: 10000 });
+if ((await rail.getAttribute("data-collapsed")) === null) {
+  throw new Error("a browser with no saved choice must start compact");
+}
+await page.getByRole("button", { name: "Expand navigation" }).click();
+await page.waitForTimeout(350);
 
 // --- The desktop rail: brand, five items, icons, active state. ------------
-await rail.waitFor({ timeout: 10000 });
 const labels = await railNav.locator(".sideItem, [class*='sideItem']").allInnerTexts();
 const expected = ["Conversations", "Analytics", "Answers", "Staff", "Email alerts"];
 const flat = labels.map((text) => text.replace(/\s+/g, " ").trim());
@@ -208,6 +215,48 @@ console.log("ok: tooltips answer keyboard focus as well");
 // Restore expanded for the drawer pass.
 await page.getByRole("button", { name: "Expand navigation" }).click();
 await page.waitForTimeout(350);
+
+// --- Ticket 64: route changes never remount a contradictory compact rail. -
+await page.evaluate(() => {
+  window.__sidebarStates = [];
+  const record = () => {
+    const sidebar = document.querySelector("aside:not([class*='sideDrawer'])");
+    if (sidebar) window.__sidebarStates.push(sidebar.hasAttribute("data-collapsed"));
+  };
+  new MutationObserver(record).observe(document.body, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+    attributeFilter: ["data-collapsed"],
+  });
+  record();
+});
+
+async function assertExpandedThrough(action, destination) {
+  await page.evaluate(() => { window.__sidebarStates = []; });
+  await action();
+  await page.waitForURL(`**${destination}`, { timeout: 15000 });
+  const states = await page.evaluate(() => window.__sidebarStates);
+  if (states.length === 0 || states.some(Boolean)) {
+    throw new Error(`the sidebar flashed compact during navigation to ${destination}: ${states}`);
+  }
+  const width = await rail.evaluate((el) => el.getBoundingClientRect().width);
+  if (width < 200) {
+    throw new Error(`the sidebar did not stay expanded at ${destination}: ${width}px`);
+  }
+}
+
+await assertExpandedThrough(
+  () => railNav.getByRole("link", { name: "Analytics" }).click(),
+  "/dashboard/analytics",
+);
+await assertExpandedThrough(() => page.goBack(), "/dashboard/inbox");
+await assertExpandedThrough(
+  () => railNav.getByRole("link", { name: "Visitor emails" }).click(),
+  "/dashboard/emails",
+);
+await assertExpandedThrough(() => page.goBack(), "/dashboard/inbox");
+console.log("ok: expanded rail stays continuous through links and browser history");
 
 // --- Narrow screens: drawer replaces the rail. -----------------------------
 async function assertNoOverflow(width) {

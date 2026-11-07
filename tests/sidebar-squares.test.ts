@@ -16,6 +16,7 @@ import { repoRoot } from "../src/paths";
 
 const HEADER = "src/app/dashboard/header.tsx";
 const CSS = "src/app/dashboard/dashboard.module.css";
+const PREFERENCE = "src/app/dashboard/sidebar-preference.ts";
 
 describe("the relocated control joins the callout system (ticket 60)", () => {
   it("gives the toggle the rail's hover callout on its swapped name", async () => {
@@ -81,8 +82,10 @@ describe("the icon rhythm tightens (ticket 60)", () => {
 describe("nothing else about the rail moves (ticket 60)", () => {
   it("keeps compact-by-default, the drawer, and the nav contract", async () => {
     const header = await readFile(path.join(repoRoot(), HEADER), "utf8");
-    expect(header).toContain("useState(true)");
-    expect(header).toContain("COLLAPSED_KEY");
+    const preference = await readFile(path.join(repoRoot(), PREFERENCE), "utf8");
+    expect(header).toContain("useState(initialSidebarCollapsed)");
+    expect(preference).toContain("return sessionCollapsed ?? true");
+    expect(preference).toContain("COLLAPSED_KEY");
     expect(header).toContain("collapsed={false}");
     // Role filtering is the NAV seam other tickets coordinate against.
     expect(header).toContain(

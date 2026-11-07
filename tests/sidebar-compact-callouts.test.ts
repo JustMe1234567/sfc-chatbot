@@ -12,24 +12,27 @@ import { repoRoot } from "../src/paths";
 
 const HEADER = "src/app/dashboard/header.tsx";
 const CSS = "src/app/dashboard/dashboard.module.css";
+const PREFERENCE = "src/app/dashboard/sidebar-preference.ts";
 
 describe("the compact-by-default rail (ticket 57)", () => {
   it("renders collapsed by default and expands only on the explicit marker", async () => {
     const header = await readFile(path.join(repoRoot(), HEADER), "utf8");
+    const preference = await readFile(path.join(repoRoot(), PREFERENCE), "utf8");
 
     // The server render and hydration agree on compact; no flash for staff
     // without a saved preference.
-    expect(header).toContain("useState(true)");
+    expect(header).toContain("useState(initialSidebarCollapsed)");
+    expect(preference).toContain("return sessionCollapsed ?? true");
     // Only the exact expanded marker (written on expand) restores labels;
     // missing, "1", or stale junk stays compact.
-    expect(header).toMatch(/getItem\([^)]*\) === "0"/);
-    expect(header).not.toMatch(/getItem\([^)]*\) === "1"/);
+    expect(preference).toMatch(/getItem\([^)]*\) !== "0"/);
+    expect(preference).not.toMatch(/getItem\([^)]*\) === "1"/);
     // The expand control and persisted preference survive from ticket 52.
     // (Ticket 60 hoisted the swapped name into toggleLabel, shared with the
     // rail's callout so the two can never drift.)
     expect(header).toMatch(/const toggleLabel = collapsed \? "Expand navigation" : "Collapse navigation";/);
     expect(header).toContain("aria-label={toggleLabel}");
-    expect(header).toContain("COLLAPSED_KEY");
+    expect(preference).toContain("COLLAPSED_KEY");
   });
 });
 

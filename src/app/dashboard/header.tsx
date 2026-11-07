@@ -4,6 +4,11 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import SignOutButton from "./inbox/sign-out-button";
+import {
+  initialSidebarCollapsed,
+  persistSidebarCollapsed,
+  restoreSidebarCollapsed,
+} from "./sidebar-preference";
 import styles from "./dashboard.module.css";
 
 export type HeaderArea = "inbox" | "emails" | "answers" | "staff" | "alerts" | "analytics";
@@ -107,8 +112,6 @@ const SIGN_OUT_MARK = (
     <path d="M17 12H8" />
   </svg>
 );
-
-const COLLAPSED_KEY = "dashboard.sidebar.collapsed";
 
 const CHEVRON = (
   <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -288,7 +291,7 @@ export default function DashboardHeader({
   // The desktop default is the compact icon rail (ticket 57): the server
   // render and the hydration pass agree on collapsed, so default staff see
   // no flash. A stored explicit preference re-expands after mount.
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(initialSidebarCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -299,9 +302,7 @@ export default function DashboardHeader({
     // junk stays on the compact default. (Ticket 52 stored "1" for collapsed;
     // under the new default that reading is unchanged for those staff.)
     try {
-      if (window.localStorage.getItem(COLLAPSED_KEY) === "0") {
-        setCollapsed(false);
-      }
+      setCollapsed(restoreSidebarCollapsed(window.localStorage));
     } catch {
       // Storage unavailable (private mode); stay compact.
     }
@@ -324,12 +325,13 @@ export default function DashboardHeader({
 
   function toggleCollapsed() {
     setCollapsed((value) => {
+      const next = !value;
       try {
-        window.localStorage.setItem(COLLAPSED_KEY, value ? "0" : "1");
+        persistSidebarCollapsed(window.localStorage, next);
       } catch {
         // Persistence is best-effort; the toggle still works this session.
       }
-      return !value;
+      return next;
     });
   }
 

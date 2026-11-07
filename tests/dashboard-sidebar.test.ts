@@ -5,6 +5,7 @@ import { repoRoot } from "../src/paths";
 
 const HEADER = "src/app/dashboard/header.tsx";
 const CSS = "src/app/dashboard/dashboard.module.css";
+const PREFERENCE = "src/app/dashboard/sidebar-preference.ts";
 
 /**
  * Ticket 52: the dashboard's top navigation bar becomes a collapsible dark
@@ -58,12 +59,14 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
 
   it("persists the collapse choice and falls back to compact (ticket 57)", async () => {
     const header = await readHeader();
-    expect(header).toContain("dashboard.sidebar.collapsed");
+    const preference = await readFile(path.join(repoRoot(), PREFERENCE), "utf8");
+    expect(preference).toContain("dashboard.sidebar.collapsed");
     // Ticket 57 makes the compact rail the desktop default: only the exact
     // expanded marker ("0", written on expand) restores labels; anything
     // else — missing, "1", or a stale junk value — stays compact. (Ticket
     // 52 stored "1" for collapsed; those staff keep the same rail.)
-    expect(header).toMatch(/getItem\([^)]*\) === "0"/);
+    expect(preference).toMatch(/getItem\([^)]*\) !== "0"/);
+    expect(header).toContain("restoreSidebarCollapsed(window.localStorage)");
     expect(header).toMatch(/catch/);
   });
 
