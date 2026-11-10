@@ -132,7 +132,12 @@ console.log("ok: recipients save persists through the new layout");
     ["failed", 2, "SMTP 451 temporary failure"],
     ["pending", 0, null],
   ].entries()) {
-    const started = await fetch(`${BASE}/api/v1/conversations`, { method: "POST" });
+    const started = await fetch(`${BASE}/api/v1/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Ticket 66: every new chat starts with the required contact details.
+      body: JSON.stringify({ fullName: "Jane Doe", email: "jane.doe@example.org", phone: "(555) 010-0199" }),
+    });
     if (!started.ok) throw new Error(`conversation start failed: ${started.status}`);
     const conversationId = ((await started.json())).id;
     insert.run(

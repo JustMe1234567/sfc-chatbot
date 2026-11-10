@@ -12,6 +12,9 @@ export function roleLabel(role: MessageRole): string {
 export interface DeskItem {
   id: string;
   state: string;
+  /** The visitor's full name from the contact form (ticket 66); null on
+   *  conversations from before the gate, which read as "Visitor". */
+  visitorName: string | null;
   /** Whether the conversation still sits in Incoming or Active. */
   active: boolean;
   /** The in-dashboard alert: something new for staff to read. */
@@ -35,6 +38,7 @@ async function toDeskItem(
   return {
     id: conversation.id,
     state: conversation.state,
+    visitorName: conversation.visitorName,
     active: isConversationActive(conversation),
     attention: conversation.attentionAt !== null,
     attentionAt: conversation.attentionAt,
@@ -93,6 +97,19 @@ export const DESK_STATE_LABELS: Record<string, string> = {
   claimed: "claimed",
   closed: "closed",
 };
+
+/** What a conversation from before the contact gate is called (ticket 66). */
+export const VISITOR_FALLBACK_NAME = "Visitor";
+
+/**
+ * The staff lists' primary label (ticket 66): the visitor's full name beside
+ * the existing state — "Jane Doe · claimed" — shared by the Conversations
+ * and History rows and the selected pane. Older conversations without a
+ * name stay readable as "Visitor · bot".
+ */
+export function deskLabel(item: { visitorName: string | null; state: string }): string {
+  return `${item.visitorName ?? VISITOR_FALLBACK_NAME} · ${DESK_STATE_LABELS[item.state] ?? item.state}`;
+}
 
 /**
  * The three-tier status every live desk surface shares (ticket 44): the

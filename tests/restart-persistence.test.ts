@@ -91,7 +91,15 @@ describeSqliteOnly("visitor journey across a Next.js process restart", () => {
   }, 60_000);
 
   it("asks a seeded question and receives the approved answer", async () => {
-    const start = await fetch(`${firstRunBaseUrl}/api/v1/conversations`, { method: "POST" });
+    const start = await fetch(`${firstRunBaseUrl}/api/v1/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullName: "Restart Visitor",
+        email: "restart@example.org",
+        phone: "555 010 0142",
+      }),
+    });
     expect(start.status).toBe(201);
     conversation = (await start.json()) as { id: string; token: string };
 

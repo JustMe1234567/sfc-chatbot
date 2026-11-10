@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { retryNotificationById } from "@/mail/notifications";
-import { mintReturnLink } from "@/mail/visitorReturn";
 import { getChatbotService } from "@/db/service";
 
 interface RouteContext {
@@ -10,8 +9,9 @@ interface RouteContext {
 }
 
 /**
- * Staff retry of a failed alert. Never duplicates a success; a visitor-return
- * retry mints a fresh single-use link so the re-sent email is never stale.
+ * Staff retry of a failed alert. Never duplicates a success. Visitor-return
+ * notifications are retired (ticket 66): no new return link is minted or
+ * mailed, so their legacy failed rows answer with a clear refusal instead.
  */
 export async function POST(request: Request, context: RouteContext) {
   const blocked = sameOriginGuard(request);
@@ -24,10 +24,8 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const { store, db, mail } = await getChatbotService();
-  const result = await retryNotificationById(db, mail, id, (conversationId) =>
-    mintReturnLink(store, conversationId),
-  );
+  const { db, mail } = await getChatbotService();
+  const result = await retryNotificationById(db, mail, id);
   if (result === "not_found") {
     return NextResponse.json(
       { error: { code: "not_found", message: "Notification not found." } },
@@ -37,6 +35,17 @@ export async function POST(request: Request, context: RouteContext) {
   if (result === "already_sent") {
     return NextResponse.json(
       { error: { code: "already_sent", message: "This alert was already delivered." } },
+      { status: 409 },
+    );
+  }
+  if (result === "visitor_return_retired") {
+    return NextResponse.json(
+      {
+        error: {
+          code: "visitor_return_retired",
+          message: "Visitor return links are no longer sent.",
+        },
+      },
       { status: 409 },
     );
   }

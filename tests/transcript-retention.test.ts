@@ -80,25 +80,12 @@ async function inboxGet(jar: CookieJar): Promise<Response> {
   );
 }
 
-/** Escalate (optionally leave an email), claim, and close — a finished conversation. */
+/** Escalate (with the contact details a start now requires), claim, and
+ *  close — a finished conversation. The email overrides the default
+ *  contact's address when a test needs a specific one. */
 async function closedConversation(email?: string): Promise<ConversationStart> {
-  const conversation = await startConversation();
+  const conversation = await startConversation(email ? { email } : {});
   await ask(conversation, "Nothing approved covers this; I need to speak to a human.");
-  if (email) {
-    const { POST } = await import("../src/app/api/v1/conversations/[id]/email/route");
-    const response = await POST(
-      new Request(`${TEST_ORIGIN}/api/v1/conversations/${conversation.id}/email`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${conversation.token}`,
-        },
-        body: JSON.stringify({ email }),
-      }),
-      { params: Promise.resolve({ id: conversation.id }) },
-    );
-    expect(response.status).toBe(200);
-  }
   const jar = new CookieJar();
   await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
   expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);

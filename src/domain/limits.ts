@@ -61,23 +61,84 @@ export function validateVisitorEmail(input: unknown): EmailValidation {
   return { ok: true, email };
 }
 
-/** How long after the last visitor request the visitor counts as departed. */
-export const VISITOR_PRESENCE_WINDOW_MS = 60_000;
+/** The visitor contact details required before every new chat (ticket 66). */
+export const MAX_NAME_LENGTH = 80;
+export const MAX_PHONE_LENGTH = 24;
+/** Formatting characters only; the digit floor and ceiling do the real work. */
+const PHONE_PATTERN = /^[+()\-.\s\d]+$/;
 
-export function visitorPresenceWindowMs(): number {
-  // VISITOR_PRESENCE_WINDOW_MS lets tests shrink the window so departure is
-  // deterministic regardless of machine speed. Production keeps the default.
-  return envMs("VISITOR_PRESENCE_WINDOW_MS", VISITOR_PRESENCE_WINDOW_MS);
+export type NameValidation =
+  | { ok: true; name: string }
+  | { ok: false; code: "invalid_name"; message: string };
+
+export function validateVisitorName(input: unknown): NameValidation {
+  if (typeof input !== "string") {
+    return { ok: false, code: "invalid_name", message: "Enter your full name." };
+  }
+  const name = input.trim();
+  if (name.length === 0) {
+    return { ok: false, code: "invalid_name", message: "Enter your full name." };
+  }
+  if (name.length > MAX_NAME_LENGTH) {
+    return {
+      ok: false,
+      code: "invalid_name",
+      message: `Names are limited to ${MAX_NAME_LENGTH} characters.`,
+    };
+  }
+  return { ok: true, name };
 }
 
-/** Whether the visitor is gone: presence older than the window, or never seen. */
-export function visitorDeparted(conversation: {
-  visitorLastSeenAt: string | null;
-}): boolean {
-  if (!conversation.visitorLastSeenAt) {
-    return true;
+export type PhoneValidation =
+  | { ok: true; phone: string }
+  | { ok: false; code: "invalid_phone"; message: string };
+
+export function validateVisitorPhone(input: unknown): PhoneValidation {
+  if (typeof input !== "string") {
+    return { ok: false, code: "invalid_phone", message: "Enter a phone number." };
   }
-  return Date.now() - new Date(conversation.visitorLastSeenAt).getTime() > visitorPresenceWindowMs();
+  const phone = input.trim();
+  const digits = phone.replace(/\D/g, "");
+  // ITU numbering plans cap at 15 digits; the floor keeps "1234" out while
+  // the character ceiling rejects excessively long values.
+  if (
+    phone.length === 0 ||
+    phone.length > MAX_PHONE_LENGTH ||
+    digits.length < 7 ||
+    digits.length > 15 ||
+    !PHONE_PATTERN.test(phone)
+  ) {
+    return { ok: false, code: "invalid_phone", message: "Enter a valid phone number." };
+  }
+  return { ok: true, phone };
+}
+
+export interface VisitorContact {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+export type ContactValidation =
+  | { ok: true; contact: VisitorContact }
+  | { ok: false; code: "invalid_name" | "invalid_email" | "invalid_phone"; message: string };
+
+/** Validates the chat-start form's three required fields in order (ticket 66). */
+export function validateVisitorContact(body: unknown): ContactValidation {
+  const fields = (body ?? {}) as { fullName?: unknown; email?: unknown; phone?: unknown };
+  const name = validateVisitorName(fields.fullName);
+  if (!name.ok) {
+    return name;
+  }
+  const email = validateVisitorEmail(fields.email);
+  if (!email.ok) {
+    return email;
+  }
+  const phone = validateVisitorPhone(fields.phone);
+  if (!phone.ok) {
+    return phone;
+  }
+  return { ok: true, contact: { name: name.name, email: email.email, phone: phone.phone } };
 }
 
 function windowMs(): number {

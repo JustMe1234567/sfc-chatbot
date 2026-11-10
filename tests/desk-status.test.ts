@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deskAttentionEvents,
+  deskLabel,
   deskStatus,
   DESK_STATUS_LABELS,
   type DeskItem,
@@ -20,6 +21,7 @@ function item(overrides: Partial<DeskItem>): DeskItem {
   return {
     id: "conv-1",
     state: "bot_active",
+    visitorName: "Jane Doe",
     active: true,
     attention: false,
     attentionAt: null,
@@ -187,6 +189,96 @@ describe("attention cue storage (ticket 44)", () => {
     expect(seen["conv-old:t1"]).toBeUndefined();
     expect(seen["conv-keep:t1"]).toBe(1_000 - 60);
     expect(seen["conv-new:t1"]).toBe(1_000);
+  });
+});
+
+describe("the Name · state label (ticket 66)", () => {
+  it("leads with the visitor's full name beside the existing state", () => {
+    expect(deskLabel({ visitorName: "Jane Doe", state: "claimed" })).toBe("Jane Doe · claimed");
+    expect(deskLabel({ visitorName: "Jane Doe", state: "bot_active" })).toBe("Jane Doe · bot");
+    expect(deskLabel({ visitorName: "Jane Doe", state: "awaiting_staff" })).toBe(
+      "Jane Doe · waiting",
+    );
+    expect(deskLabel({ visitorName: "Jane Doe", state: "closed" })).toBe("Jane Doe · closed");
+  });
+
+  it("falls back to Visitor for conversations from before the contact gate", () => {
+    expect(deskLabel({ visitorName: null, state: "bot_active" })).toBe("Visitor · bot");
+    expect(deskLabel({ visitorName: null, state: "closed" })).toBe("Visitor · closed");
+  });
+
+  it("is what the list rows and the selected pane render", async () => {
+    const row = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/inbox/desk-entry.tsx"),
+      "utf8",
+    );
+    const desk = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/inbox/conversation-desk.tsx"),
+      "utf8",
+    );
+    expect(row).toContain("{deskLabel(item)}");
+    expect(desk).toContain("<h2>{deskLabel(selected)}</h2>");
+    // The time and the latest-message preview keep their places in the row.
+    expect(row).toContain("<time dateTime={item.lastActivityAt}>");
+    expect(row).toContain("styles.deskItemPreview");
+    // History rows are the archive: no tier, so no status color at all.
+    expect(row).toContain("item.active ? deskStatus(item) : null");
+    // The phone number gains no display or action anywhere on the desk.
+    expect(row).not.toContain("visitorPhone");
+    expect(desk).not.toContain("visitorPhone");
+  });
+
+  it("truncates a long name so the time and preview stay readable", async () => {
+    const css = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/dashboard.module.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/\.deskItemState \{[^}]*text-overflow: ellipsis/s);
+    expect(css).toMatch(/\.deskItemTop time \{[^}]*flex-shrink: 0/s);
+  });
+});
+
+describe("the re-colored tiers (ticket 66)", () => {
+  it("makes waiting green, active yellow, and new messages red on every surface", async () => {
+    const css = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/dashboard.module.css"),
+      "utf8",
+    );
+    const rule = (selector: string): string => {
+      const start = css.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThanOrEqual(0);
+      return css.slice(start, css.indexOf("}", start));
+    };
+    // Waiting for staff (the needs-human tier) is green everywhere.
+    expect(rule(".chipNeedsHuman")).toContain("var(--ok)");
+    expect(rule(".dotNeedsHuman")).toContain("var(--ok-bright)");
+    expect(rule(".needsHumanBadge")).toContain("background: var(--ok)");
+    expect(rule(".countNeedsHuman")).toContain("background: var(--ok)");
+    expect(rule('.deskItem[data-status="needs_human"]')).toContain("var(--ok-bright)");
+    expect(rule(".chipWaiting")).toContain("var(--ok)");
+    // An active bot or claimed chat is yellow.
+    expect(rule(".chipActive")).toContain("var(--sfc-gold-soft)");
+    expect(rule(".dotActive")).toContain("var(--sfc-gold)");
+    expect(rule(".chipBot")).toContain("var(--sfc-gold-soft)");
+    expect(rule(".chipClaimed")).toContain("var(--sfc-gold-soft)");
+    // New unread visitor activity is red.
+    expect(rule(".chipAttention")).toContain("background: var(--danger)");
+    expect(rule(".dotAttention")).toContain("var(--danger-bright)");
+    expect(rule(".attentionBadge")).toContain("background: var(--danger)");
+    expect(rule(".countAttention")).toContain("background: var(--danger)");
+    expect(rule('.deskItem[data-status="attention"]')).toContain("var(--danger-bright)");
+    // Closed stays neutral.
+    expect(rule(".chipClosed")).toContain("var(--muted)");
+  });
+
+  it("keeps a text label or accessible name beside every color", async () => {
+    const row = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/inbox/desk-entry.tsx"),
+      "utf8",
+    );
+    expect(row).toContain("aria-label={DESK_STATUS_LABELS[status]}");
+    expect(row).toContain("Needs human");
+    expect(row).toContain("New message");
   });
 });
 

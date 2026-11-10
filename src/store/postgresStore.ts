@@ -44,8 +44,8 @@ function changesOf(result: unknown): number {
 export function createPostgresStore(sql: PostgresSql): Store {
   return {
     async createConversation(conversation) {
-      await sql`INSERT INTO conversations (id, state, created_at, visitor_last_seen_at, last_activity_at)
-                VALUES (${conversation.id}, ${conversation.state}, ${conversation.createdAt}, ${conversation.createdAt}, ${conversation.createdAt})`;
+      await sql`INSERT INTO conversations (id, state, created_at, visitor_name, visitor_email, visitor_phone, visitor_last_seen_at, last_activity_at)
+                VALUES (${conversation.id}, ${conversation.state}, ${conversation.createdAt}, ${conversation.visitorName}, ${conversation.visitorEmail}, ${conversation.visitorPhone}, ${conversation.createdAt}, ${conversation.createdAt})`;
     },
 
     async getConversation(id) {
@@ -61,8 +61,8 @@ export function createPostgresStore(sql: PostgresSql): Store {
       await sql`UPDATE conversations SET state = ${state} WHERE id = ${id}`;
     },
 
-    async setConversationEmail(id, email) {
-      await sql`UPDATE conversations SET visitor_email = ${email} WHERE id = ${id}`;
+    async setConversationContact(id, contact) {
+      await sql`UPDATE conversations SET visitor_name = ${contact.name}, visitor_email = ${contact.email}, visitor_phone = ${contact.phone} WHERE id = ${id}`;
     },
 
     // The Visitor emails list (ticket 53): the SQLite store's live-derived

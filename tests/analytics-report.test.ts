@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { startConversation, ask, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import { startConversation, startConversationRaw, TEST_CONTACT, ask, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -284,10 +284,7 @@ describe("purge and expiry keep reported history stable", () => {
     const chatsBefore = (await readReport(ownerJar, "today")).totals.chats;
 
     // A real chat start puts its creation into the daily rollup…
-    const { POST: startChat } = await import("../src/app/api/v1/conversations/route");
-    const startResponse = await startChat(
-      new Request(`${TEST_ORIGIN}/api/v1/conversations`, { method: "POST" }),
-    );
+    const startResponse = await startConversationRaw(TEST_CONTACT);
     expect(startResponse.status).toBe(201);
     const { id } = (await startResponse.json()) as { id: string };
 

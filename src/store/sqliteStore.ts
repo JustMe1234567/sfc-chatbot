@@ -29,11 +29,14 @@ export function createSqliteStore(db: DatabaseSync): Store {
   return {
     async createConversation(conversation) {
       db.prepare(
-        "INSERT INTO conversations (id, state, created_at, visitor_last_seen_at, last_activity_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO conversations (id, state, created_at, visitor_name, visitor_email, visitor_phone, visitor_last_seen_at, last_activity_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(
         conversation.id,
         conversation.state,
         conversation.createdAt,
+        conversation.visitorName,
+        conversation.visitorEmail,
+        conversation.visitorPhone,
         conversation.createdAt,
         conversation.createdAt,
       );
@@ -50,8 +53,10 @@ export function createSqliteStore(db: DatabaseSync): Store {
       db.prepare("UPDATE conversations SET state = ? WHERE id = ?").run(state, id);
     },
 
-    async setConversationEmail(id, email) {
-      db.prepare("UPDATE conversations SET visitor_email = ? WHERE id = ?").run(email, id);
+    async setConversationContact(id, contact) {
+      db.prepare(
+        "UPDATE conversations SET visitor_name = ?, visitor_email = ?, visitor_phone = ? WHERE id = ?",
+      ).run(contact.name, contact.email, contact.phone, id);
     },
 
     // The Visitor emails list (ticket 53): derived live from the email

@@ -9,8 +9,9 @@ import type { Conversation } from "../src/domain/types";
  * Ticket 53: the Visitor emails page. The list derives live from
  * `conversations.visitor_email` — the store's page queries return only
  * conversations that carry an address, newest activity first, in page-size
- * windows; a re-entered address surfaces its latest value and a purged
- * conversation drops out with no extra bookkeeping. The page and the nav
+ * windows; each conversation is one entry with its stored address, and a
+ * purged conversation drops out with no extra bookkeeping. Since ticket 66
+ * the address arrives with the required contact details at chat start. The page and the nav
  * entry are owner+staff (the roles that work handoffs), and the admin
  * conversation pane shows the address in its header meta, never inside the
  * transcript.
@@ -30,7 +31,9 @@ function conversation(id: string, state: Conversation["state"], createdAt: strin
     createdAt,
     claimedBy: null,
     claimedAt: null,
+    visitorName: null,
     visitorEmail: null,
+    visitorPhone: null,
     visitorLastSeenAt: null,
     closedAt: null,
     replacedBy: null,
@@ -57,7 +60,11 @@ async function seedConversations(): Promise<string[]> {
     // One closed conversation at the far end of the list gives the purge
     // test a real retention-shaped row to remove.
     await store.createConversation(conversation(id, index === 0 ? "closed" : "awaiting_staff", createdAt));
-    await store.setConversationEmail(id, `visitor${String(index).padStart(2, "0")}@example.edu`);
+    await store.setConversationContact(id, {
+      name: `Visitor ${String(index).padStart(2, "0")}`,
+      email: `visitor${String(index).padStart(2, "0")}@example.edu`,
+      phone: "555 010 0100",
+    });
     await store.touchConversationActivity(
       id,
       new Date(base + index * 1_000).toISOString(),
@@ -111,7 +118,7 @@ describe("the store's email page queries (ticket 53)", () => {
     expect(await store.countConversationsWithEmail()).toBe(13);
   });
 
-  it("surfaces the latest value after a visitor re-enters an email", async () => {
+  it("keeps one entry per conversation, carrying its stored contact email", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { store } = await getChatbotService();
     const id = seededNewestFirst[0];
@@ -119,8 +126,12 @@ describe("the store's email page queries (ticket 53)", () => {
       throw new Error("the seed's newest conversation is missing");
     }
 
-    // The store overwrites on re-submit: same single entry, new value.
-    await store.setConversationEmail(id, "latest@example.edu");
+    // The list reads the column live: same single entry, the stored value.
+    await store.setConversationContact(id, {
+      name: "Latest Visitor",
+      email: "latest@example.edu",
+      phone: "555 010 0100",
+    });
     const rows = await store.listConversationsWithEmail(1, 10);
     expect(await store.countConversationsWithEmail()).toBe(13);
     expect(rows.filter((row) => row.id === id)).toHaveLength(1);
@@ -220,10 +231,14 @@ describe("the Visitor emails page (ticket 53)", () => {
     expect(source).toContain("{conversation.visitorEmail}");
     expect(source).not.toContain("mailto:");
 
-    // The empty state explains when entries appear; no pager renders with it.
+    // The copy states the required capture on every new chat (ticket 66);
+    // the empty state explains when entries appear, and no pager renders
+    // with it.
+    expect(source).toContain("Every new chat starts with the visitor&apos;s name, email");
     expect(source).toContain("total === 0");
     expect(source).toContain("No visitor emails yet");
-    expect(source).toContain("asks for a human and");
+    expect(source).toContain("shares their contact");
+    expect(source).not.toContain("asks for a human and");
   });
 
   it("joins the shared nav list for owners and staff", async () => {

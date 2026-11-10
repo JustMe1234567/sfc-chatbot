@@ -5,6 +5,7 @@ import { useLinkStatus } from "next/link";
 import {
   DESK_STATE_LABELS,
   DESK_STATUS_LABELS,
+  deskLabel,
   deskStatus,
   roleLabel,
   type DeskItem,
@@ -93,7 +94,7 @@ function RowBody({
               aria-label={DESK_STATUS_LABELS[status]}
             />
           ) : null}
-          {DESK_STATE_LABELS[item.state] ?? item.state}
+          {deskLabel(item)}
         </span>
         <time dateTime={item.lastActivityAt}>
           {new Date(item.lastActivityAt).toLocaleString("en-GB", {

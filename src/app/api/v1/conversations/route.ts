@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { publicClientKey } from "@/api/visitor";
-import { createRateLimiter, CREATE_RATE_LIMIT } from "@/domain/limits";
+import { createRateLimiter, CREATE_RATE_LIMIT, validateVisitorContact } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
 import { recordChatStarted } from "@/domain/analytics";
 import type { Conversation } from "@/domain/types";
 
 const createLimiter = createRateLimiter(CREATE_RATE_LIMIT);
 
+/**
+ * Starts a chat (ticket 66): every new conversation is created with the
+ * visitor's full name, email, and phone, validated here so a direct request
+ * can never open one without them. A rejected submission creates nothing,
+ * which is what makes the widget's retry safe.
+ */
 export async function POST(request: Request) {
   const { store, db } = await getChatbotService();
   if (!createLimiter.check(publicClientKey(request))) {
@@ -21,13 +27,22 @@ export async function POST(request: Request) {
       { status: 429 },
     );
   }
+  const validation = validateVisitorContact(await request.json().catch(() => null));
+  if (!validation.ok) {
+    return NextResponse.json(
+      { error: { code: validation.code, message: validation.message } },
+      { status: 400 },
+    );
+  }
   const conversationCreatedAt = new Date().toISOString();
   const conversation: Conversation = {
     id: crypto.randomUUID(),
     state: "bot_active",
     claimedBy: null,
     claimedAt: null,
-    visitorEmail: null,
+    visitorName: validation.contact.name,
+    visitorEmail: validation.contact.email,
+    visitorPhone: validation.contact.phone,
     visitorLastSeenAt: null,
     closedAt: null,
     replacedBy: null,

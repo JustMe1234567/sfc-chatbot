@@ -7,8 +7,15 @@ export interface Conversation {
   /** User id of the staff member who claimed the conversation, if any. */
   claimedBy: string | null;
   claimedAt: string | null;
-  /** Optional follow-up address the visitor left at handoff (ticket 07). */
+  /**
+   * The contact details the visitor submitted before their first message
+   * (ticket 66): required on every new chat, validated and stored
+   * server-side. Null on legacy rows from before the gate; a conversation
+   * without all three accepted details cannot receive visitor messages.
+   */
+  visitorName: string | null;
   visitorEmail: string | null;
+  visitorPhone: string | null;
   /** Last authenticated visitor request; stale means the visitor departed. */
   visitorLastSeenAt: string | null;
   /** When staff closed the conversation; the retention clock starts here. */
@@ -173,8 +180,13 @@ export interface Store {
   setConversationAttention(id: string, at: string): Promise<void>;
   /** Clears the alert: the conversation has been viewed or handled. */
   clearConversationAttention(id: string): Promise<void>;
-  /** Records the optional follow-up address the visitor left at handoff. */
-  setConversationEmail(id: string, email: string): Promise<void>;
+  /**
+   * Accepts the visitor's contact details on an existing conversation
+   * (ticket 66): the unlock path for a locked successor after Clear chat or
+   * a legacy session predating the gate. The visitor credential authorizes
+   * the write.
+   */
+  setConversationContact(id: string, contact: { name: string; email: string; phone: string }): Promise<void>;
   /**
    * One page of conversations that carry a follow-up email (ticket 53),
    * newest activity first — the Visitor emails list's rows. Derived live

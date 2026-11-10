@@ -213,12 +213,14 @@ describe("WordPress embed smoke check", () => {
     // topicless fallback remains.
     expect(frame).toContain("Ask us your question.");
     expect(frame).not.toContain("Pick a topic");
-    // The saved/declined email confirmations dismiss themselves after a
-    // fixed stay, with a reduced-motion-gated exit fade (ticket 15 tokens).
-    expect(frame).toContain("EMAIL_NOTE_TTL_MS = 10_000");
-    expect(frame).toContain("clearTimeout(timer)");
-    expect(frame).toContain("noteLeave");
-    expect(frameCss).toContain("sfcw-depart");
+    // The saved/declined email confirmations are gone (ticket 66): email is
+    // captured with the required contact details before the chat starts,
+    // and return-link emails are no longer sent.
+    expect(frame).not.toContain("EMAIL_NOTE_TTL_MS");
+    expect(frame).not.toContain("Email me a link later");
+    expect(frame).not.toContain("No thanks");
+    expect(frame).not.toContain("/email");
+    expect(frameCss).not.toContain("sfcw-depart");
     // The message log keeps its flex growth: it is the widget's primary
     // surface and absorbs the space the compacted handoff chrome frees.
     // Pinned on the .log block itself — other rules flex too.

@@ -17,7 +17,9 @@ export interface ConversationRow {
   created_at: string;
   claimed_by: string | null;
   claimed_at: string | null;
+  visitor_name: string | null;
   visitor_email: string | null;
+  visitor_phone: string | null;
   visitor_last_seen_at: string | null;
   closed_at: string | null;
   last_activity_at: string | null;
@@ -26,7 +28,7 @@ export interface ConversationRow {
 }
 
 export const CONVERSATION_COLUMNS =
-  "id, state, created_at, claimed_by, claimed_at, visitor_email, visitor_last_seen_at, closed_at, last_activity_at, attention_at, replaced_by";
+  "id, state, created_at, claimed_by, claimed_at, visitor_name, visitor_email, visitor_phone, visitor_last_seen_at, closed_at, last_activity_at, attention_at, replaced_by";
 
 export function rowToConversation(row: ConversationRow): Conversation {
   return {
@@ -35,7 +37,9 @@ export function rowToConversation(row: ConversationRow): Conversation {
     createdAt: row.created_at,
     claimedBy: row.claimed_by,
     claimedAt: row.claimed_at,
+    visitorName: row.visitor_name,
     visitorEmail: row.visitor_email,
+    visitorPhone: row.visitor_phone,
     visitorLastSeenAt: row.visitor_last_seen_at,
     closedAt: row.closed_at,
     replacedBy: row.replaced_by,

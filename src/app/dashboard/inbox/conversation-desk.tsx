@@ -7,6 +7,7 @@ import {
   DESK_STATE_LABELS,
   DESK_STATUS_LABELS,
   deskAttentionEvents,
+  deskLabel,
   deskStatus,
   roleLabel,
   summarizeConversationDesk,
@@ -219,7 +220,9 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
             {selected ? (
               <>
                 <div className={styles.paneHead}>
-                  <h2>Conversation</h2>
+                  {/* The visitor's name beside the state (ticket 66), the
+                      same label the list row carries. */}
+                  <h2>{deskLabel(selected)}</h2>
                   <span className={styles.paneHeadMeta}>
                     {selectedTier ? (
                       <span className={`${styles.chip} ${TIER_CHIPS[selectedTier]}`}>
@@ -247,9 +250,8 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                         : null}
                     </span>
                   </span>
-                  {/* The follow-up address the visitor left at handoff
-                      (ticket 53): header meta on its own line, never a
-                      transcript row. */}
+                  {/* The visitor's contact email (ticket 66): header meta on
+                      its own line, never a transcript row. */}
                   {selected.visitorEmail ? (
                     <span className={styles.paneEmail}>
                       <strong>Follow-up email</strong> {selected.visitorEmail}

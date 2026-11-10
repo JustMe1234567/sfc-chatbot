@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { ask, loadHistory, startConversation, submitContact, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -93,7 +93,12 @@ describe("clearing a bot-active conversation", () => {
     expect(fresh.token).toBeTruthy();
     expect(fresh.expiresAt).toBeTruthy();
 
-    // The fresh conversation works and is a distinct chat.
+    // The fresh conversation is a distinct chat that requires the contact
+    // form again (ticket 66): nothing is accepted until details are.
+    const locked = await ask({ id: fresh.id, token: fresh.token }, "And what about the fees?");
+    expect(locked.status).toBe(409);
+    expect(((await locked.json()) as { error: { code: string } }).error.code).toBe("contact_required");
+    expect((await submitContact({ id: fresh.id, token: fresh.token })).status).toBe(200);
     const freshAsk = await ask({ id: fresh.id, token: fresh.token }, "And what about the fees?");
     expect(freshAsk.status).toBe(200);
 
@@ -207,6 +212,7 @@ describe("clearing after escalation and while claimed", () => {
     expect(desk.active.some((item) => item.id === old.id)).toBe(false);
     expect(desk.active.some((item) => item.id === fresh.id)).toBe(true);
 
+    expect((await submitContact({ id: fresh.id, token: fresh.token })).status).toBe(200);
     const freshAsk = await ask({ id: fresh.id, token: fresh.token }, "Clear test: starting over; speak to a human.");
     expect(freshAsk.status).toBe(200);
     // And staff can work the successor: claim it.
@@ -295,6 +301,7 @@ describe("repeated and racing clears", () => {
     expect(
       (await sql<{ closed_at: string }>("SELECT closed_at FROM conversations WHERE id = ?", old.id)).closed_at,
     ).toBe(closedAtBefore);
+    expect((await submitContact({ id: fresh.id, token: fresh.token })).status).toBe(200);
     expect((await ask({ id: fresh.id, token: fresh.token }, "Clear test: fresh after staff closure.")).status).toBe(200);
   });
 });

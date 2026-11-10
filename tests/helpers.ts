@@ -99,15 +99,53 @@ export interface ConversationStart {
   token: string;
 }
 
-export async function startConversation(): Promise<ConversationStart> {
+/** Valid contact details for the chat-start gate (ticket 66). */
+export const TEST_CONTACT = {
+  fullName: "Jane Doe",
+  email: "jane.doe@example.org",
+  phone: "+1 (555) 010-0199",
+};
+
+/** POSTs the create route with the given body: the gate's raw surface. */
+export async function startConversationRaw(body: unknown): Promise<Response> {
   const { POST } = await import("../src/app/api/v1/conversations/route");
-  const response = await POST(
-    new Request(`${TEST_ORIGIN}/api/v1/conversations`, { method: "POST" }),
+  return POST(
+    new Request(`${TEST_ORIGIN}/api/v1/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }),
   );
+}
+
+/** Starts a chat the way the widget does: with accepted contact details. */
+export async function startConversation(
+  contact: Partial<typeof TEST_CONTACT> = {},
+): Promise<ConversationStart> {
+  const response = await startConversationRaw({ ...TEST_CONTACT, ...contact });
   if (!response.ok) {
     throw new Error(`conversation start failed: ${response.status}`);
   }
   return (await response.json()) as ConversationStart;
+}
+
+/** Submits contact details to an existing conversation: the unlock path. */
+export async function submitContact(
+  conversation: ConversationStart,
+  contact: unknown = TEST_CONTACT,
+): Promise<Response> {
+  const { POST } = await import("../src/app/api/v1/conversations/[id]/contact/route");
+  return POST(
+    new Request(`${TEST_ORIGIN}/api/v1/conversations/${conversation.id}/contact`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${conversation.token}`,
+      },
+      body: JSON.stringify(contact),
+    }),
+    { params: Promise.resolve({ id: conversation.id }) },
+  );
 }
 
 function messagesUrl(conversation: ConversationStart): string {

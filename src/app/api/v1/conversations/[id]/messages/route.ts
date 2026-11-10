@@ -6,6 +6,7 @@ import { getEscalationPhrases, getSupportHours } from "@/settings";
 import { handoffReply } from "@/domain/hours";
 import { recordEscalation } from "@/domain/analytics";
 import { isConversationActive, recordVisitorActivity } from "@/domain/activity";
+import { hasAcceptedContact } from "@/domain/conversations";
 import {
   createRateLimiter,
   HISTORY_RATE_LIMIT,
@@ -126,6 +127,18 @@ function awaitingStaffResponse(): NextResponse {
   );
 }
 
+/** The contact gate (ticket 66): nothing a visitor submits — a typed
+ *  question, a topic choice, or the human-handoff offer — is accepted until
+ *  this conversation carries accepted contact details. The widget shows its
+ *  form first; this stable error stops a direct request or a legacy session
+ *  from getting past it. */
+function contactRequiredResponse(): NextResponse {
+  return conflictResponse(
+    "contact_required",
+    "Share your name, email, and phone number to start chatting.",
+  );
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
@@ -139,11 +152,17 @@ export async function GET(request: Request, context: RouteContext) {
     );
   }
   const { store } = await getChatbotService();
-  // Every authorized read refreshes presence: the widget's polling keeps the
-  // visitor marked as on the page, so staff replies don't email them (07).
+  // Every authorized read refreshes presence (ticket 07): the widget's
+  // polling keeps the visitor marked as on the page.
   await store.touchVisitorPresence(conversation.id);
   const messages = await store.listMessages(conversation.id);
-  return NextResponse.json({ conversation, messages });
+  // The widget shows its contact form instead of the composer while this
+  // conversation has no accepted details (ticket 66).
+  return NextResponse.json({
+    conversation,
+    messages,
+    contactRequired: !hasAcceptedContact(conversation),
+  });
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -151,6 +170,9 @@ export async function POST(request: Request, context: RouteContext) {
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
     return visitorAuthFailure(request);
+  }
+  if (!hasAcceptedContact(conversation)) {
+    return contactRequiredResponse();
   }
   const body = (await request.json().catch(() => null)) as {
     text?: unknown;
@@ -218,15 +240,15 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
   if (conversation.state === "closed") {
-    // The staff side closed this conversation; the visitor's next question
-    // starts a fresh one with a new credential.
+    // The staff side closed this conversation; the widget's contact form
+    // returns and the visitor's next submission starts a fresh one (66).
     return conflictResponse(
       "conversation_closed",
       "This conversation was closed. Ask a new question to start again.",
     );
   }
   // Quiet for a day: the conversation is history now. The widget treats this
-  // exactly like a closure — fresh conversation, question carried over.
+  // exactly like a closure — the contact form returns for a fresh chat (66).
   if (!isConversationActive(conversation)) {
     return inactiveResponse();
   }

@@ -47,7 +47,12 @@ if (owner) {
 db.close();
 
 async function startChat() {
-  const response = await fetch(`${BASE}/api/v1/conversations`, { method: "POST" });
+  const response = await fetch(`${BASE}/api/v1/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // Ticket 66: every new chat starts with the required contact details.
+    body: JSON.stringify({ fullName: "Jane Doe", email: "jane.doe@example.org", phone: "(555) 010-0199" }),
+  });
   if (!response.ok) throw new Error(`conversation start failed: ${response.status}`);
   return response.json();
 }

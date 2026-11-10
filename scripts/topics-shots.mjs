@@ -1,9 +1,9 @@
 // Ticket 18 + 38 verification + screenshots (headless Chromium, one-off).
 // Opens the widget on the demo page against a scratch database, flips the
 // published-topic set by direct SQL while the server runs (many → one →
-// none), and exercises click-through, handoff state, the self-dismissing
-// email-declined note, transcript dominance, long transcript, and three
-// viewport widths. Usage: node scripts/topics-shots.mjs <outdir> [port]
+// none), and exercises the contact gate (ticket 66), click-through, handoff
+// state, transcript dominance, long transcript, and three viewport widths.
+// Usage: node scripts/topics-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -80,13 +80,31 @@ const page = await context.newPage();
 mkdirSync(OUT, { recursive: true });
 
 const frame = page.frameLocator(".sfcw-frame");
+const composer = frame.locator('textarea[placeholder="Type your question"]');
+const gate = frame.locator("#sfcw-name");
+
+/** Ticket 66: every new chat starts at the contact form. Fills and submits
+    it, then waits for the composer the accepted details unlock. */
+async function passContactGate() {
+  await gate.waitFor({ timeout: 10000 });
+  await frame.locator("#sfcw-name").fill("Jane Doe");
+  await frame.locator("#sfcw-email").fill("jane.doe@example.org");
+  await frame.locator("#sfcw-phone").fill("(555) 010-0199");
+  await frame.getByRole("button", { name: "Start chat" }).click();
+  await composer.waitFor({ timeout: 10000 });
+}
 
 async function openWidget(width, height) {
   await page.setViewportSize({ width, height });
   await page.goto(`${BASE}/demo/wordpress-test-page.html`);
   await page.waitForLoadState("domcontentloaded");
   await page.locator(".sfcw-launcher").click();
-  await frame.locator('textarea[placeholder="Type your question"]').waitFor({ timeout: 10000 });
+  // A stored session resumes straight into the chat; anything else meets
+  // the contact gate first.
+  await gate.or(composer).first().waitFor({ timeout: 10000 });
+  if (await gate.isVisible()) {
+    await passContactGate();
+  }
   await frame.locator('[aria-label="Suggested questions"]').waitFor({ timeout: 10000 });
   await page.waitForTimeout(600);
 }
@@ -116,20 +134,31 @@ async function assertMenuWithinFrame(label) {
 }
 
 // --- Fresh state (ticket 46): the reference-led start layout. --------------
-await openWidget(1280, 800);
-// The first open is a genuinely fresh chat (no stored session): the
-// greeting (ticket 41) leads the transcript as a composed row.
-await frame.getByText("Hi! How can I help you today?").waitFor({ timeout: 10000 });
-console.log("fresh open greets the visitor");
-// The greeting is presentation-only: opening the widget must not have
-// minted a conversation or visitor credential (ticket 41).
+// The first open is a genuinely fresh chat (no stored session): the contact
+// gate (ticket 66) leads, and merely opening the widget must not have minted
+// a conversation or visitor credential.
+await page.setViewportSize({ width: 1280, height: 800 });
+await page.goto(`${BASE}/demo/wordpress-test-page.html`);
+await page.waitForLoadState("domcontentloaded");
+await page.locator(".sfcw-launcher").click();
+await gate.waitFor({ timeout: 10000 });
 if (
   await frame
     .locator("body")
     .evaluate(() => sessionStorage.getItem("sfc_chatbot_v1_session") !== null)
 ) {
-  throw new Error("the fresh open minted a visitor credential; the greeting must not");
+  throw new Error("the fresh open minted a visitor credential before the contact form");
 }
+if ((await composer.count()) !== 0) {
+  throw new Error("the composer is reachable before contact details are accepted");
+}
+await passContactGate();
+await frame.locator('[aria-label="Suggested questions"]').waitFor({ timeout: 10000 });
+await page.waitForTimeout(600);
+// Accepted details greet (ticket 41): the greeting leads the transcript as
+// a composed row.
+await frame.getByText("Hi! How can I help you today?").waitFor({ timeout: 10000 });
+console.log("accepted contact details greet the visitor");
 // The reference hierarchy: the greeting row carries its crest avatar and a
 // local timestamp, then suggestions stack toward the visitor.
 if ((await frame.locator('[aria-label="Messages"] time').count()) !== 1) {
@@ -302,6 +331,12 @@ if (revoked.status !== 401 && revoked.status !== 404) {
   throw new Error(`cleared conversation's old credential still works (${revoked.status})`);
 }
 console.log("header menu clear flow reset the visitor and revoked the old credential");
+// The fresh successor asks for the contact details again (ticket 66) before
+// anything can be typed.
+if ((await composer.count()) !== 0) {
+  throw new Error("the cleared chat's successor skipped the contact form");
+}
+await passContactGate();
 
 // A long transcript keeps the strip pinned above the composer. This runs
 // before the handoff section: once staff help is requested the composer
@@ -368,15 +403,13 @@ if ((await strip.locator("button:disabled").count()) !== waitingChips) {
 console.log("composer and chips locked while waiting for staff");
 await shot("after-widget-topics-handoff");
 
-// Ticket 38: the transcript is the widget's dominant region, and the
-// declined-email note dismisses itself after ten seconds.
+// Ticket 38: the transcript is the widget's dominant region.
 async function transcriptShare() {
   const panel = await frame.locator("main").boundingBox();
   const log = await frame.locator('[role="log"]').boundingBox();
   if (!panel || !log) throw new Error("could not measure transcript share");
   return log.height / panel.height;
 }
-console.log("transcript share with full handoff chrome:", (await transcriptShare()).toFixed(3));
 // Full handoff state + long transcript must leave every control visible at
 // once: composer and strip stay inside the panel, nothing clips (ticket 38).
 const panelBox = await frame.locator("main").boundingBox();
@@ -386,19 +419,16 @@ for (const region of ['[role="log"]', '[aria-label="Suggested questions"]', 'for
     throw new Error(`full handoff state clips ${region}`);
   }
 }
-await frame.getByText("No thanks").click();
-await frame.getByText("No email saved").waitFor({ timeout: 5000 });
-await shot("after-widget-topics-email-declined");
-await page.waitForTimeout(10_800);
-if ((await frame.getByText("No email saved").count()) !== 0) {
-  throw new Error("declined note did not dismiss itself after ~10s (ticket 38)");
+// The handoff no longer asks for an email (ticket 66): it was captured with
+// the contact details, so no prompt or confirmation competes for the space.
+if ((await frame.getByText("No thanks").count()) !== 0) {
+  throw new Error("the retired handoff email prompt is still rendered");
 }
 const share = await transcriptShare();
-console.log("transcript share after note dismissal:", share.toFixed(3));
+console.log("transcript share in the handoff state:", share.toFixed(3));
 if (share < 0.45) {
-  throw new Error(`transcript is not dominant after the note leaves: ${(share * 100).toFixed(1)}%`);
+  throw new Error(`transcript is not dominant in the handoff state: ${(share * 100).toFixed(1)}%`);
 }
-await shot("after-widget-topics-note-dismissed");
 
 // --- Narrow widths. -------------------------------------------------------
 await openWidget(390, 760);
@@ -423,10 +453,12 @@ async function reopenAfterTopicsChange() {
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
   await page.locator(".sfcw-launcher").click();
-  await frame.locator('textarea[placeholder="Type your question"]').waitFor({ timeout: 10000 });
+  await composer.waitFor({ timeout: 10000 });
   await page.waitForTimeout(600);
-  // These reopens resume the existing conversation, so the fresh-chat
-  // greeting (ticket 41) must not appear above the restored history.
+  // These reopens resume the existing conversation, so neither the contact
+  // gate (ticket 66) nor the fresh-chat greeting (ticket 41) may appear
+  // above the restored history.
+  if ((await gate.count()) !== 0) throw new Error("resumed conversation must not ask for contact details again");
   const greetings = await frame.getByText("Hi! How can I help you today?").count();
   if (greetings !== 0) throw new Error("resumed conversation must not greet again");
 }

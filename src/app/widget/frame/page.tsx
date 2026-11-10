@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_MESSAGE_LENGTH } from "@/domain/limits";
+import { MAX_MESSAGE_LENGTH, MAX_NAME_LENGTH } from "@/domain/limits";
 import type { MessageChoice, MessageRole } from "@/domain/types";
 import {
   dropSession as dropStoredSession,
@@ -36,11 +36,6 @@ interface TopicButton {
 function isHttpLink(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
-
-/** How long the email saved/declined confirmations stay on screen before
-    removing themselves (ticket 38): one glance is enough, and the transcript
-    reclaims the space for the rest of the conversation. */
-const EMAIL_NOTE_TTL_MS = 10_000;
 
 /**
  * The suggested-questions strip (ticket 18): a two-row, horizontally
@@ -128,15 +123,14 @@ export default function WidgetFrame() {
   const [topics, setTopics] = useState<TopicButton[]>([]);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
-  const [emailPrompt, setEmailPrompt] = useState<"asking" | "saved" | "declined">("asking");
-  const [emailAddress, setEmailAddress] = useState("");
-  const [emailError, setEmailError] = useState("");
-  // Once the saved/declined confirmation has outlived its stay (ticket 38),
-  // it stays gone for the conversation; a fresh chat shows it again. The
-  // leaving flag plays the exit fade before the unmount (one frame of slack
-  // past the 180ms motion, the loader's convention).
-  const [emailNoteExpired, setEmailNoteExpired] = useState(false);
-  const [emailNoteLeaving, setEmailNoteLeaving] = useState(false);
+  // The contact gate (ticket 66): every chat starts at the required contact
+  // form, and the composer, topics, and suggestions stay hidden until the
+  // server has accepted the details. A stored session flips it off
+  // optimistically on mount; the first authorized read confirms it.
+  const [contactRequired, setContactRequired] = useState(true);
+  const [contact, setContact] = useState({ fullName: "", email: "", phone: "" });
+  const [contactError, setContactError] = useState("");
+  const [contactBusy, setContactBusy] = useState(false);
   const sessionRef = useRef<StoredSession | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -146,6 +140,9 @@ export default function WidgetFrame() {
   // Synchronous mirror of the sending flag: state updates land after React
   // renders, but the duplicate-send guard must hold during awaits.
   const sendingRef = useRef(false);
+  // Synchronous mirror of the gate's pending flag: the duplicate-submit
+  // guard must hold during awaits, exactly like the send guard.
+  const contactBusyRef = useRef(false);
   // Arrival bookkeeping (ticket 15): which messages have ever been on
   // screen, so entrance animations run once for genuinely new messages and
   // never for history restores, polling refreshes, or the persisted twin of
@@ -154,9 +151,9 @@ export default function WidgetFrame() {
   const [arrivingIds, setArrivingIds] = useState<Set<string>>(new Set());
   const [noticesArrive, setNoticesArrive] = useState(false);
   const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
-  // The fresh-chat greeting (ticket 41): null until this mount has decided
-  // the widget is genuinely empty and the published text has settled. The
-  // timestamp rides along (ticket 46) so the pair stays atomic.
+  // The fresh-chat greeting (ticket 41): null until a conversation the
+  // visitor can actually use starts out empty and the published text has
+  // settled. The timestamp rides along (ticket 46) so the pair stays atomic.
   const [welcome, setWelcome] = useState<{ text: string; at: string } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -198,10 +195,18 @@ export default function WidgetFrame() {
   }
 
   const applyHistory = useCallback(
-    (body: { conversation: { state: string }; messages: DisplayedMessage[] }, animate: boolean) => {
+    (body: {
+      conversation: { state: string };
+      messages: DisplayedMessage[];
+      contactRequired?: boolean;
+    }, animate: boolean) => {
       applyArrivals(body.messages, animate);
       setMessages(body.messages);
       applyConversationState(body.conversation.state, animate);
+      // The server owns the gate (ticket 66): a conversation without
+      // accepted contact details brings the form back, whatever the client
+      // assumed.
+      setContactRequired(body.contactRequired === true);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -236,6 +241,7 @@ export default function WidgetFrame() {
         }
         if (response.status === 401 || response.status === 404) {
           dropSession();
+          setContactRequired(true);
           return;
         }
         if (!response.ok) {
@@ -264,14 +270,12 @@ export default function WidgetFrame() {
   );
 
   // Load the surviving history once on mount: a reload of the WordPress page
-  // reloads this iframe, which re-reads chatbot-origin session storage. A
-  // mount with no stored session is a genuinely fresh chat, eligible for the
-  // greeting (ticket 41).
-  const welcomeEligibleRef = useRef(false);
+  // reloads this iframe, which re-reads chatbot-origin session storage. The
+  // gate stays on until the server confirms the conversation's accepted
+  // details (ticket 66) — a stored session alone proves nothing.
   useEffect(() => {
     const session = readSession();
     if (!session) {
-      welcomeEligibleRef.current = true;
       return;
     }
     sessionRef.current = session;
@@ -339,34 +343,6 @@ export default function WidgetFrame() {
     });
   }
 
-  // The fresh-chat greeting (ticket 41): fetched from the published setting
-  // so a dashboard edit reaches the next widget open without a redeploy.
-  // Only a genuinely empty widget greets — an existing conversation restores
-  // its history instead — and the greeting never opens a conversation or
-  // mints a visitor credential; the first question does that.
-  useEffect(() => {
-    if (!welcomeEligibleRef.current) {
-      return;
-    }
-    greet();
-  }, []);
-
-  // The saved/declined email confirmations leave on their own (ticket 38):
-  // the timer starts when the visitor's choice renders the note, plays the
-  // exit fade, then unmounts; each stage's cleanup cancels it if the note's
-  // reason disappears mid-stay.
-  useEffect(() => {
-    if (emailPrompt === "asking" || emailNoteExpired) {
-      return;
-    }
-    if (emailNoteLeaving) {
-      const unmount = setTimeout(() => setEmailNoteExpired(true), 200);
-      return () => clearTimeout(unmount);
-    }
-    const timer = setTimeout(() => setEmailNoteLeaving(true), EMAIL_NOTE_TTL_MS);
-    return () => clearTimeout(timer);
-  }, [emailPrompt, emailNoteExpired, emailNoteLeaving]);
-
   // Anonymous presence (ticket 17): the embedded page beats while it is
   // actually visible, so staff see browsers on the site — not only visitors
   // who opened the chat, and never a background tab. This iframe is mounted
@@ -408,8 +384,10 @@ export default function WidgetFrame() {
   }, [messages]);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (!contactRequired) {
+      inputRef.current?.focus();
+    }
+  }, [contactRequired]);
 
   useEffect(() => {
     if (menuOpen) {
@@ -453,51 +431,18 @@ export default function WidgetFrame() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [clearState, menuOpen]);
 
-  async function ensureSession(): Promise<StoredSession | null> {
-    const existing = sessionRef.current ?? readSession();
-    if (existing) {
-      sessionRef.current = existing;
-      return existing;
-    }
-    try {
-      const response = await fetch("/api/v1/conversations", { method: "POST" });
-      if (!response.ok) {
-        showError();
-        return null;
-      }
-      const session = (await response.json()) as StoredSession;
-      writeSession(session);
-      sessionRef.current = session;
-      return session;
-    } catch {
-      showError();
-      return null;
-    }
-  }
-
   function dropSession(): void {
-    // The stored credential stopped working; the next question starts fresh.
+    // The stored credential stopped working; the contact form returns
+    // (ticket 66) and the next accepted submission starts fresh.
     dropStoredSession();
     sessionRef.current = null;
   }
 
-  /** A fresh conversation asks about the email again, with the note's
-      lifecycle state reset alongside the prompt (they always travel). */
-  function resetEmailPrompt(): void {
-    setEmailPrompt("asking");
-    setEmailNoteLeaving(false);
-    setEmailNoteExpired(false);
-  }
-
   async function postMessage(
-    session: StoredSession | null,
+    session: StoredSession,
     text: string,
     choice?: string,
   ): Promise<Response> {
-    if (!session) {
-      showError();
-      return new Response(null, { status: 400 });
-    }
     return fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
       method: "POST",
       headers: {
@@ -510,11 +455,127 @@ export default function WidgetFrame() {
     });
   }
 
+  /**
+   * The contact gate's submission (ticket 66). A conversation this mount
+   * already holds a credential for — the successor after Clear chat, or a
+   * legacy session — is unlocked in place; otherwise the same details start
+   * exactly one fresh conversation. A credential that died, or a
+   * conversation that closed or went quiet, falls through to the fresh
+   * start, so no retry path can duplicate a conversation.
+   */
+  async function submitContact(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (contactBusyRef.current) {
+      return;
+    }
+    contactBusyRef.current = true;
+    setContactBusy(true);
+    setContactError("");
+    const details = {
+      fullName: contact.fullName.trim(),
+      email: contact.email.trim(),
+      phone: contact.phone.trim(),
+    };
+    try {
+      const existing = sessionRef.current ?? readSession();
+      if (existing) {
+        const response = await fetch(
+          `/api/v1/conversations/${encodeURIComponent(existing.id)}/contact`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${existing.token}`,
+            },
+            body: JSON.stringify(details),
+          },
+        );
+        if (response.ok) {
+          contactAccepted();
+          return;
+        }
+        if (response.status === 401 || response.status === 404 || response.status === 409) {
+          // Nothing here is resumable — the credential died or the
+          // conversation closed or went quiet: start fresh instead.
+          dropSession();
+        } else {
+          const failure = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+          } | null;
+          setContactError(failure?.error?.message ?? "Could not save your details. Try again.");
+          return;
+        }
+      }
+      const response = await fetch("/api/v1/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(details),
+      });
+      if (!response.ok) {
+        const failure = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setContactError(failure?.error?.message ?? "Could not start the chat. Try again.");
+        return;
+      }
+      const session = (await response.json()) as StoredSession;
+      writeSession(session);
+      sessionRef.current = session;
+      showLockedFreshChat();
+      contactAccepted();
+    } catch {
+      setContactError("Could not start the chat. Try again.");
+    } finally {
+      contactBusyRef.current = false;
+      setContactBusy(false);
+    }
+  }
+
+  /** The gate opens: the entered values carry into the transcript's labels,
+      and a conversation that starts (or unlocks) empty greets (ticket 41).
+      An unlocked chat with a transcript keeps its history instead. */
+  function contactAccepted(): void {
+    setContactRequired(false);
+    setContactError("");
+    setError("");
+    if (messages.length === 0) {
+      greet();
+    }
+    inputRef.current?.focus();
+  }
+
+  /** Returns a dead conversation to the gate with the visitor's words kept
+      in the composer (ticket 66): the form comes back, the transcript view
+      starts empty like any fresh chat, and nothing is auto-submitted. */
+  function returnToGate(text: string, choice?: string): void {
+    dropSession();
+    showLockedFreshChat();
+    setError("");
+    if (!choice) {
+      setQuestion(text);
+    }
+  }
+
+  /** A fresh, locked view: empty transcript, clean arrivals, the gate on.
+      Every path that ends a usable conversation funnels here. */
+  function showLockedFreshChat(): void {
+    setMessages([]);
+    setWelcome(null);
+    resetArrivals();
+    applyConversationState("bot_active", false);
+    setContactRequired(true);
+  }
+
   async function send(text: string, choice?: string): Promise<void> {
     // The ref guard closes the pending-send race (ticket 18): the state flag
-    // alone only flips after ensureSession's await, so a second chip click
-    // during the very first message's session setup could double-send.
-    if (text.length === 0 || text.length > MAX_MESSAGE_LENGTH || sendingRef.current) {
+    // alone only flips after awaits, so a second chip click during a slow
+    // request could double-send.
+    if (
+      text.length === 0 ||
+      text.length > MAX_MESSAGE_LENGTH ||
+      sendingRef.current ||
+      contactRequired
+    ) {
       return;
     }
     sendingRef.current = true;
@@ -534,67 +595,54 @@ export default function WidgetFrame() {
     // A failed send must not leave a ghost bubble (ticket 43's failure
     // recovery): the optimistic entry is removed on every final failure
     // path, and the poller restores the truth if the request actually
-    // landed. The carried-over paths (closure, inactive) keep it on purpose.
+    // landed.
     const dropOptimistic = () =>
       setMessages((current) => current.filter((message) => message.id !== localMessage.id));
     try {
-      const session = await ensureSession();
+      const session = sessionRef.current ?? readSession();
       if (!session) {
         dropOptimistic();
+        returnToGate(text, choice);
         return;
       }
-      let response = await postMessage(session, text, choice);
+      const response = await postMessage(session, text, choice);
       if (generationRef.current !== generation) {
         return; // The chat was cleared mid-send; the message dies with it.
       }
       if (response.status === 401 || response.status === 404) {
-        // The stored credential stopped working: start over once. The old
-        // transcript belongs to the lapsed session, so the fresh chat view
-        // starts empty (ticket 12).
-        dropSession();
-        setMessages([]);
-        resetArrivals();
-        response = await postMessage(await ensureSession(), text, choice);
-        if (generationRef.current !== generation) {
-          return;
-        }
-        if (!response || !response.ok) {
-          showError();
-          return;
-        }
+        // The stored credential stopped working: the gate returns (66) and
+        // the visitor's words stay in the composer for the fresh chat.
+        dropOptimistic();
+        returnToGate(text, choice);
+        return;
       }
       if (response.status === 409) {
         const conflict = (await response.json()) as {
           error?: { code?: string; message?: string };
         };
+        if (conflict.error?.code === "contact_required") {
+          // The server demanded the details on the conversation this mount
+          // already holds: the gate returns, but the credential stays — the
+          // form's submission unlocks this conversation in place (66).
+          dropOptimistic();
+          setError("");
+          if (!choice) {
+            setQuestion(text);
+          }
+          setContactRequired(true);
+          return;
+        }
         if (
           conflict.error?.code === "conversation_closed" ||
-          // Quiet for a day: the old conversation is history; the visitor's
-          // question starts a fresh chat instead (ticket 12).
+          // Quiet for a day: the old conversation is history (ticket 12) —
+          // the gate returns, and the next chat starts with a submission.
           conflict.error?.code === "conversation_inactive"
         ) {
-          // Staff closed this conversation: drop the credential, start a
-          // fresh one, and carry the visitor's question over so it is not
-          // swallowed by the closure.
-          dropSession();
-          setMessages([]);
-          resetArrivals();
-          applyConversationState("bot_active", false);
-          setError("");
-          resetEmailPrompt();
-          const fresh = await ensureSession();
-          if (!fresh || generationRef.current !== generation) {
-            return;
-          }
-          response = await postMessage(fresh, text, choice);
-          if (generationRef.current !== generation) {
-            return;
-          }
-          if (!response || !response.ok) {
-            showError();
-            return;
-          }
-        } else if (conflict.error?.code === "awaiting_staff") {
+          dropOptimistic();
+          returnToGate(text, choice);
+          return;
+        }
+        if (conflict.error?.code === "awaiting_staff") {
           // The waiting lock (ticket 43): the escalation landed while this
           // message was in flight. Drop the bubble and hand the words back.
           dropOptimistic();
@@ -605,12 +653,12 @@ export default function WidgetFrame() {
             conflict.error.message ?? "Waiting for a staff member to take over.",
           );
           return;
-        } else {
-          dropOptimistic();
-          showError();
-          return;
         }
-      } else if (!response.ok) {
+        dropOptimistic();
+        showError();
+        return;
+      }
+      if (!response.ok) {
         dropOptimistic();
         const failure = (await response.json().catch(() => null)) as {
           error?: { message?: string };
@@ -645,44 +693,6 @@ export default function WidgetFrame() {
     }
   }
 
-  async function submitEmail(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    const session = sessionRef.current ?? readSession();
-    const trimmed = emailAddress.trim();
-    if (!session) {
-      setEmailError("Your chat session expired. Start a new chat to reach staff.");
-      return;
-    }
-    if (trimmed.length === 0) {
-      setEmailError("Enter an email address, or choose \u2018No thanks\u2019.");
-      return;
-    }
-    try {
-      const response = await fetch(
-        `/api/v1/conversations/${encodeURIComponent(session.id)}/email`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.token}`,
-          },
-          body: JSON.stringify({ email: trimmed }),
-        },
-      );
-      if (response.ok) {
-        setEmailPrompt("saved");
-        setEmailError("");
-        return;
-      }
-      const failure = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setEmailError(failure?.error?.message ?? "Could not save the email. Try again.");
-    } catch {
-      setEmailError("Could not save the email. Try again.");
-    }
-  }
-
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     await send(question.trim());
@@ -690,11 +700,13 @@ export default function WidgetFrame() {
 
   /**
    * The visitor's Clear conversation (ticket 14): ends this chat server-side
-   * and swaps in the one fresh conversation the server returns, blanking the
-   * view. A request that fails with 401/404 already ended server-side (the
-   * credential was revoked or expired), so the fallback starts a plain fresh
-   * conversation instead — the visitor still sees exactly one new chat. The
-   * generation bump strands every in-flight request from the old chat.
+   * and swaps in the one fresh conversation the server returns. That
+   * successor starts without contact details (ticket 66), so the gate
+   * returns before anything can be asked. A request that fails with 401/404
+   * already ended server-side (the credential was revoked or expired), so
+   * the gate simply returns — the visitor still starts exactly one new
+   * chat. The generation bump strands every in-flight request from the old
+   * chat.
    */
   async function confirmClear(): Promise<void> {
     const session = sessionRef.current ?? readSession();
@@ -704,17 +716,23 @@ export default function WidgetFrame() {
     const generation = generationRef.current;
     setClearState("busy");
     try {
-      let response = await fetch(
+      const response = await fetch(
         `/api/v1/conversations/${encodeURIComponent(session.id)}/clear`,
         { method: "POST", headers: { Authorization: `Bearer ${session.token}` } },
       );
       if (response.status === 401 || response.status === 404) {
-        response = await fetch("/api/v1/conversations", { method: "POST" });
-      }
-      if (generationRef.current !== generation) {
+        // The credential was already dead (revoked or expired): the clear
+        // ended server-side either way, so the gate's next accepted
+        // submission starts the one fresh chat.
+        dropSession();
+        generationRef.current = generation + 1;
+        showLockedFreshChat();
+        setQuestion("");
+        setError("");
         return;
       }
       if (!response.ok) {
+        // The conversation survives server-side; the visitor stays in it.
         showError();
         return;
       }
@@ -726,28 +744,18 @@ export default function WidgetFrame() {
       generationRef.current = generation + 1;
       writeSession(fresh);
       sessionRef.current = fresh;
-      setMessages([]);
-      resetArrivals();
-      applyConversationState("bot_active", false);
-      resetEmailPrompt();
+      // The successor starts without contact details (ticket 66), so the
+      // gate returns before anything can be asked.
+      showLockedFreshChat();
       setQuestion("");
       setError("");
-      // A fresh conversation greets again (ticket 41): fetch the published
-      // wording so the visitor sees the current setting, timestamp fresh
-      // with it (ticket 46).
-      greet();
     } catch {
       showError();
     } finally {
       setClearState("idle");
-      inputRef.current?.focus();
     }
   }
 
-  // The confirmations render only while a handoff/claim stands and their
-  // stay has not run out (ticket 38); the leaving flag plays the exit fade.
-  const showEmailNote = (handoff || claimed) && !emailNoteExpired;
-  const emailNoteClass = `${styles.emailNote} ${emailNoteLeaving ? styles.noteLeave : ""}`;
   // Staff help requested but nobody claimed yet: the composer locks (ticket
   // 43). Claiming — or a fresh conversation after Clear — re-enables it.
   const composerLocked = handoff && !claimed;
@@ -900,7 +908,7 @@ export default function WidgetFrame() {
               Visit the college page
             </a>
           )}
-          {index === messages.length - 1 && message.choices ? (
+          {index === messages.length - 1 && message.choices && !contactRequired ? (
             <div className={styles.choices}>
               {message.choices.map((choice) => (
                 <button
@@ -969,7 +977,7 @@ export default function WidgetFrame() {
           </span>
         </header>
       )}
-      {topics.length === 0 ? (
+      {topics.length === 0 && !contactRequired ? (
         // Only the topicless widget needs the guidance line (ticket 38): with
         // chips visible they are the affordance, and during a handoff the
         // notice below already says the bot has paused.
@@ -990,54 +998,6 @@ export default function WidgetFrame() {
           A college staff member has joined the conversation and will reply here.
         </p>
       ) : null}
-      {(handoff || claimed) && emailPrompt === "asking" ? (
-        <div className={`${styles.emailBox} ${noticesArrive ? styles.arrive : ""}`}>
-          <p className={styles.emailText}>
-            Leaving? Add your email and staff can send you a secure one-time
-            link back to this conversation if they reply after you go.
-          </p>
-          <form className={styles.emailForm} onSubmit={submitEmail}>
-            <label className={styles.srOnly} htmlFor="sfcw-email">
-              Your email (optional)
-            </label>
-            <input
-              id="sfcw-email"
-              type="email"
-              className={styles.emailInput}
-              placeholder="you@example.org"
-              value={emailAddress}
-              onChange={(event) => setEmailAddress(event.target.value)}
-            />
-            <button type="submit" className={styles.emailSave}>
-              Email me a link later
-            </button>
-          </form>
-          <button
-            type="button"
-            className={styles.emailDecline}
-            onClick={() => setEmailPrompt("declined")}
-          >
-            No thanks — I&apos;ll stay in the chat
-          </button>
-          {emailError ? (
-            <p className={styles.emailError} role="alert">
-              {emailError}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {showEmailNote && emailPrompt === "saved" ? (
-        <p className={emailNoteClass}>
-          Thanks — if staff reply after you leave, you&apos;ll get an email with a
-          one-time link back to this chat.
-        </p>
-      ) : null}
-      {showEmailNote && emailPrompt === "declined" ? (
-        <p className={emailNoteClass}>
-          No email saved: staff can reply only while this chat stays open on
-          your device. If you leave the page, they cannot follow up with you.
-        </p>
-      ) : null}
       {freshStart ? (
         // The fresh start area (ticket 46): greeting and stacked suggestions
         // scroll together while the composer stays put below.
@@ -1051,7 +1011,7 @@ export default function WidgetFrame() {
           >
             {logContent}
           </ol>
-          {topics.length > 0 ? (
+          {!contactRequired && topics.length > 0 ? (
             <div
               className={`${styles.freshSuggestions} ${styles.arrive}`}
               role="group"
@@ -1089,7 +1049,7 @@ export default function WidgetFrame() {
           Waiting for a staff member to take over…
         </p>
       ) : null}
-      {!freshStart && topics.length > 0 ? (
+      {!freshStart && !contactRequired && topics.length > 0 ? (
         // The compact persistent strip is the conversation's suggestion rail
         // (ticket 18); the fresh state stacks its own instead (ticket 46).
         <TopicsStrip
@@ -1098,46 +1058,122 @@ export default function WidgetFrame() {
           onPick={(question) => void send(question)}
         />
       ) : null}
-      <form className={styles.form} onSubmit={submit}>
-        <label className={styles.srOnly} htmlFor="sfcw-question">
-          Your question
-        </label>
-        <textarea
-          id="sfcw-question"
-          ref={inputRef}
-          className={styles.input}
-          rows={2}
-          maxLength={MAX_MESSAGE_LENGTH}
-          placeholder="Type your question"
-          value={question}
-          disabled={composerLocked}
-          onChange={(event) => setQuestion(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
+      {contactRequired ? (
+        // The gate (ticket 66): every new chat starts here — three clearly
+        // labeled required fields and brief copy, with no way to dismiss it.
+        // Closing the widget changes nothing: reopening shows the same form.
+        <form className={styles.contactForm} onSubmit={submitContact}>
+          <p className={styles.contactIntro}>
+            Please share your contact details to start this chat.
+          </p>
+          <label className={styles.contactLabel} htmlFor="sfcw-name">
+            Full name
+          </label>
+          <input
+            id="sfcw-name"
+            className={styles.contactInput}
+            autoComplete="name"
+            required
+            maxLength={MAX_NAME_LENGTH}
+            placeholder="Jane Doe"
+            value={contact.fullName}
+            onChange={(event) =>
+              setContact({ ...contact, fullName: event.target.value })
             }
-          }}
-        />
-        <button
-          type="submit"
-          className={styles.send}
-          disabled={sending || composerLocked}
-          aria-busy={sending || undefined}
-        >
-          {sending ? (
-            // Conversation-first pending feedback (ticket 42): the active
-            // verb plus the shared spinner pattern, locally styled because
-            // the iframe is self-contained (ticket 16).
-            <>
-              <span className={styles.pendingSpinner} aria-hidden="true" />
-              Sending…
-            </>
-          ) : (
-            "Send"
-          )}
-        </button>
-      </form>
+          />
+          <label className={styles.contactLabel} htmlFor="sfcw-email">
+            Email
+          </label>
+          <input
+            id="sfcw-email"
+            type="email"
+            className={styles.contactInput}
+            autoComplete="email"
+            required
+            placeholder="you@example.org"
+            value={contact.email}
+            onChange={(event) =>
+              setContact({ ...contact, email: event.target.value })
+            }
+          />
+          <label className={styles.contactLabel} htmlFor="sfcw-phone">
+            Phone
+          </label>
+          <input
+            id="sfcw-phone"
+            type="tel"
+            className={styles.contactInput}
+            autoComplete="tel"
+            required
+            placeholder="(555) 555-0100"
+            value={contact.phone}
+            onChange={(event) =>
+              setContact({ ...contact, phone: event.target.value })
+            }
+          />
+          <button
+            type="submit"
+            className={styles.contactSubmit}
+            disabled={contactBusy}
+            aria-busy={contactBusy || undefined}
+          >
+            {contactBusy ? (
+              <>
+                <span className={styles.pendingSpinner} aria-hidden="true" />
+                Starting…
+              </>
+            ) : (
+              "Start chat"
+            )}
+          </button>
+          {contactError ? (
+            <p className={styles.contactError} role="alert">
+              {contactError}
+            </p>
+          ) : null}
+        </form>
+      ) : (
+        <form className={styles.form} onSubmit={submit}>
+          <label className={styles.srOnly} htmlFor="sfcw-question">
+            Your question
+          </label>
+          <textarea
+            id="sfcw-question"
+            ref={inputRef}
+            className={styles.input}
+            rows={2}
+            maxLength={MAX_MESSAGE_LENGTH}
+            placeholder="Type your question"
+            value={question}
+            disabled={composerLocked}
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <button
+            type="submit"
+            className={styles.send}
+            disabled={sending || composerLocked}
+            aria-busy={sending || undefined}
+          >
+            {sending ? (
+              // Conversation-first pending feedback (ticket 42): the active
+              // verb plus the shared spinner pattern, locally styled because
+              // the iframe is self-contained (ticket 16).
+              <>
+                <span className={styles.pendingSpinner} aria-hidden="true" />
+                Sending…
+              </>
+            ) : (
+              "Send"
+            )}
+          </button>
+        </form>
+      )}
     </main>
   );
 }

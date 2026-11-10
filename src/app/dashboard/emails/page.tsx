@@ -17,11 +17,12 @@ const STATE_CHIPS: Record<string, string | undefined> = {
 };
 
 /**
- * The Visitor emails list (ticket 53): every conversation where a visitor
- * left a follow-up address during the chat-with-a-human flow, derived live
- * from `conversations.visitor_email` — no copied rows, so retention and
- * deletion remove entries with their conversations. Owners and staff, the
- * roles that work handoffs; each row is one link to the conversation itself.
+ * The Visitor emails list (ticket 53): every conversation that carries a
+ * visitor email — required on every new chat since the contact gate (ticket
+ * 66) — derived live from `conversations.visitor_email`. No copied rows, so
+ * retention and deletion remove entries with their conversations. Owners and
+ * staff, the roles that work handoffs; each row is one link to the
+ * conversation itself.
  */
 export default async function VisitorEmailsPage({
   searchParams,
@@ -40,8 +41,8 @@ export default async function VisitorEmailsPage({
 
   const { store } = await getChatbotService();
   // The pager's total is one aggregate count; the rows are the page slice
-  // only (ticket 50's shape). The email column holds the latest value a
-  // visitor re-entered — the store overwrites on re-submit.
+  // only (ticket 50's shape). The email column holds the address the
+  // visitor submitted at the contact gate (ticket 66).
   const total = await store.countConversationsWithEmail();
   const { page, totalPages } = resolveEmailsPage((await searchParams).page, total);
   const conversations = await store.listConversationsWithEmail(page, EMAILS_PAGE_SIZE);
@@ -64,10 +65,11 @@ export default async function VisitorEmailsPage({
                 <p className={styles.eyebrow}>Follow-up contacts</p>
                 <h2 id="emails-title">Visitor emails</h2>
                 <p>
-                  A visitor who asks for a human can leave an address for the
-                  college to reply to. Each entry opens the conversation it came
-                  from; addresses disappear when their conversation is removed by
-                  retention or deletion.
+                  Every new chat starts with the visitor&apos;s name, email
+                  address, and phone number, captured before the first message.
+                  Each entry opens the conversation it came from; addresses
+                  disappear when their conversation is removed by retention or
+                  deletion.
                 </p>
               </div>
             </div>
@@ -76,8 +78,8 @@ export default async function VisitorEmailsPage({
               <div className={styles.alertEmpty}>
                 <strong>No visitor emails yet</strong>
                 <p>
-                  An entry appears here when a visitor asks for a human and
-                  leaves an email address for follow-up.
+                  An entry appears here once a visitor shares their contact
+                  details and starts a chat.
                 </p>
               </div>
             ) : (

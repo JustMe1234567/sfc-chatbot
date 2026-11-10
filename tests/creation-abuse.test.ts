@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import { startConversationRaw, TEST_CONTACT, useTempDatabase, warmChatbotService } from "./helpers";
 
 beforeAll(async () => {
   useTempDatabase();
@@ -11,12 +11,9 @@ beforeAll(async () => {
 
 describe("unauthenticated conversation creation", () => {
   it("throttles creation bursts", { timeout: 120_000 }, async () => {
-    const { POST } = await import("../src/app/api/v1/conversations/route");
     const statuses: number[] = [];
     for (let i = 0; i < 101; i++) {
-      const response = await POST(
-        new Request(`${TEST_ORIGIN}/api/v1/conversations`, { method: "POST" }),
-      );
+      const response = await startConversationRaw(TEST_CONTACT);
       statuses.push(response.status);
     }
     expect(statuses.filter((status) => status === 201)).toHaveLength(100);

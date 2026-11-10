@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { startConversation, submitContact, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
 
 const STAFF_EMAIL = "lock-staff@example.edu";
@@ -99,7 +99,7 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
     expect(after.status).toBe(200);
   });
 
-  it("a fresh conversation after Clear starts unlocked", async () => {
+  it("a fresh conversation after Clear requires contact details again", async () => {
     const conversation = await startConversation();
     await postMessage(conversation, { text: "I need to speak to a human, please." });
     const locked = await postMessage(conversation, { text: "Still waiting?" });
@@ -118,6 +118,11 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
     expect(clear.status).toBe(200);
     const successor = (await clear.json()) as ConversationStart;
 
+    // The successor starts locked (ticket 66): nothing is accepted until
+    // the contact form's details land on it — then it chats normally.
+    const gated = await postMessage(successor, { text: "Fresh chat works again" });
+    expect(gated.status).toBe(409);
+    expect((await submitContact(successor)).status).toBe(200);
     const fresh = await postMessage(successor, { text: "Fresh chat works again" });
     expect(fresh.status).toBe(200);
   });

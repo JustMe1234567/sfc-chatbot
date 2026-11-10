@@ -29,7 +29,7 @@ Whether a conversation is still live on the desk, judged from its latest meaning
 The in-dashboard signal that a conversation has something new for staff — a fresh escalation or a visitor message while staff help is active. Viewing, replying, or claiming clears it; it never duplicates while standing.
 
 **Status treatment**:
-The conversation desk's three-tier coloring (ticket 44): Needs human (an escalation waiting for a claim) outranks New message (standing attention) outranks Active (live, nothing unread). Every tier pairs its color with visible text or a dot carrying an accessible name, applied consistently to list rows, badges, counts, and the selected conversation's header. History rows are the archive and carry no treatment.
+The conversation desk's three-tier coloring (ticket 44, re-colored in ticket 66): Needs human (an escalation waiting for a claim, green) outranks New message (standing attention, red) outranks Active (a live bot or claimed chat with nothing unread, yellow). Every tier pairs its color with visible text or a dot carrying an accessible name, applied consistently to list rows, badges, counts, and the selected conversation's header. History rows are the archive and carry no treatment.
 
 **Notification sound**:
 The desk's optional cue (ticket 44): one short tone when a conversation newly needs staff — at most once per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
@@ -38,10 +38,13 @@ The desk's optional cue (ticket 44): one short tone when a conversation newly ne
 The staff-facing label for claiming (ticket 45) — the atomic assignment of a waiting conversation to exactly one staff member. Product copy says Take over/Taking over; the domain keeps claim/claimed in state values, API paths, and audit action ids.
 
 **Clear conversation**:
-The visitor's action to end the current chat and start a fresh one. Staff keep the old transcript in History under the retention policy; the visitor's credential and any unused return link are revoked immediately.
+The visitor's action to end the current chat and start a fresh one. Staff keep the old transcript in History under the retention policy; the visitor's credential and any unused return link are revoked immediately, and the fresh chat asks for contact details again before anything can be sent.
 
 **Welcome message**:
-The greeting shown at the top of a fresh chat before the visitor asks anything. It is presentation-only — rendered locally, never stored as a message, never part of the staff transcript — and its wording is a staff-published setting with a built-in default; opening the widget creates no conversation.
+The greeting shown at the top of a fresh chat once the visitor's contact details are accepted, before they ask anything. It is presentation-only — rendered locally, never stored as a message, never part of the staff transcript — and its wording is a staff-published setting with a built-in default; opening the widget creates no conversation.
+
+**Contact details**:
+The visitor's full name, email address, and phone number, required before every new chat (ticket 66). The widget asks for them first, and the server refuses visitor messages and topic choices on any conversation without accepted details — including conversations from before the requirement, which staff still read under the fallback name "Visitor". They are stored on the conversation and removed with it; the phone number is retained only, with no phone-specific workflow.
 
 **Conversation**:
 The message history shared by a visitor, the bot, and any administrator who takes over.
@@ -53,7 +56,7 @@ The named identity of a college employee who can sign in to the private dashboar
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.
 
 **Presence**:
-Whether a visitor is still on the page, judged from how recently their credential made an authorized request. A staff reply to a departed visitor emails the return link; a reply to a present visitor does not. Distinct from **analytics presence**, which needs no credential.
+Whether a visitor is still on the page, judged from how recently their credential made an authorized request. Distinct from **analytics presence**, which needs no credential.
 
 **Analytics presence**:
 The anonymous, credential-free signal the widget sends while the embedded page is visible, used only for counting (ticket 17). A browser counts as a **live visitor** while its latest beat is within the last two minutes, whatever the state of its chat. See ADR 0002 for the privacy bounds.
@@ -68,13 +71,13 @@ The calendar day an analytics event belongs to, drawn in the site's configured r
 The owner-configured number of days analytics rows (anonymous presence and daily rollups) are kept before expiry removes them; separate from the retention period that governs transcripts. Always on, like transcript cleanup since its 30-day default (ticket 47): expiring visitor identifiers never waits on a configuration that may never come.
 
 **Return link**:
-A short-lived, single-use link mailed to a visitor so they can resume their own conversation after leaving. Only its hash is stored; redeeming it grants a fresh visitor session.
+A short-lived, single-use link that was mailed to a visitor so they could resume their own conversation after leaving. No longer issued (ticket 66): staff replies wait in the chat. Links mailed earlier stay redeemable until they expire; only the hash is stored, and redeeming one grants a fresh visitor session.
 
 **Support hours**:
 The staff desk's open days and times, expressed in the college's own time zone. Handoff wording reflects them; while unconfigured, visitors get a general follow-up message that promises no response time.
 
 **Retention period**:
-The number of days a closed conversation's transcript and visitor contact details are kept. Once the period passes, cleanup removes the conversation, its messages, and every way back into it. While no owner period is configured, a default of 30 days after closure applies (ticket 47); an explicit owner setting always wins, and the clock runs only from closure — active conversations are never removed for age.
+The number of days a closed conversation's transcript and visitor contact details (name, email, and phone number) are kept. Once the period passes, cleanup removes the conversation, its messages, and every way back into it. While no owner period is configured, a default of 30 days after closure applies (ticket 47); an explicit owner setting always wins, and the clock runs only from closure — active conversations are never removed for age.
 
 **Retention run**:
 The operator-visible record of one cleanup pass that removed expired conversations. It carries counts only — never message text or contact details.
