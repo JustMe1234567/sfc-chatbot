@@ -107,6 +107,49 @@ export async function seedEscalationPhrases(db: AppDatabase): Promise<void> {
   }
 }
 
+const HANDOFF_OPTIONS_KEY = "handoff_options";
+
+/**
+ * The pictured click-to-handoff defaults (ticket 67), in the supplied order.
+ * Clicking one notifies staff and pauses the bot; typing the same wording
+ * keeps normal answer matching — only the click carries that meaning.
+ */
+export const DEFAULT_HANDOFF_OPTIONS: readonly string[] = [
+  "I want to speak to someone in admissions",
+  "I have a question about course prices",
+  "I have a question about financial aid",
+];
+
+export function getHandoffOptions(db: AppDatabase): Promise<string[]> {
+  return getStringListSetting(db, HANDOFF_OPTIONS_KEY);
+}
+
+export async function setHandoffOptions(db: AppDatabase, options: string[]): Promise<void> {
+  await setSetting(db, HANDOFF_OPTIONS_KEY, JSON.stringify(options));
+}
+
+/** Zero options is valid (feature off); each option must stay a real phrase. */
+export function isValidHandoffOptionList(options: unknown): options is string[] {
+  return (
+    Array.isArray(options) &&
+    options.length <= 50 &&
+    options.every(
+      (item) =>
+        typeof item === "string" &&
+        item.trim().length > 0 &&
+        item.trim().length <= 200 &&
+        normalizeText(item) !== "",
+    )
+  );
+}
+
+/** Insert-if-absent, mirroring the handoff-phrase seed (ticket 67). */
+export async function seedHandoffOptions(db: AppDatabase): Promise<void> {
+  if ((await getSetting(db, HANDOFF_OPTIONS_KEY)) === null) {
+    await setHandoffOptions(db, [...DEFAULT_HANDOFF_OPTIONS]);
+  }
+}
+
 const TRANSCRIPT_RETENTION_KEY = "transcript_retention_days";
 
 export const MIN_RETENTION_DAYS = 1;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_LENGTH, MAX_NAME_LENGTH } from "@/domain/limits";
+import { distinctOptions, topicLabelsShadowedByOptions } from "@/domain/handoffOptions";
 import type { MessageChoice, MessageRole } from "@/domain/types";
 import {
   dropSession as dropStoredSession,
@@ -121,6 +122,9 @@ export default function WidgetFrame() {
   const [claimed, setClaimed] = useState(false);
   const [question, setQuestion] = useState("");
   const [topics, setTopics] = useState<TopicButton[]>([]);
+  // The click-to-handoff options (ticket 67): configured wordings whose
+  // click hands off to staff, fetched with the topics on every mount.
+  const [handoffOptions, setHandoffOptions] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   // The contact gate (ticket 66): every chat starts at the required contact
@@ -315,6 +319,18 @@ export default function WidgetFrame() {
         }
       })
       .catch(() => {});
+    // The handoff options (ticket 67) ride along: same public, silent-failure
+    // contract, so an editor's change lands on the next widget open.
+    fetch("/api/v1/handoff-options")
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as { options: string[] }) : null,
+      )
+      .then((body) => {
+        if (body) {
+          setHandoffOptions(body.options);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   /** The published greeting text, or the default when the read fails —
@@ -442,6 +458,7 @@ export default function WidgetFrame() {
     session: StoredSession,
     text: string,
     choice?: string,
+    handoffClick = false,
   ): Promise<Response> {
     return fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
       method: "POST",
@@ -450,8 +467,10 @@ export default function WidgetFrame() {
         Authorization: `Bearer ${session.token}`,
       },
       // A selection is just the rule id: the transcript records the picked
-      // topic, exactly as the API does server-side.
-      body: JSON.stringify(choice ? { choice } : { text }),
+      // topic, exactly as the API does server-side. A handoff option (67)
+      // rides in its own field so the server can tell the deliberate click
+      // from typed text, which keeps normal answer matching.
+      body: JSON.stringify(choice ? { choice } : handoffClick ? { handoffOption: text } : { text }),
     });
   }
 
@@ -546,12 +565,14 @@ export default function WidgetFrame() {
 
   /** Returns a dead conversation to the gate with the visitor's words kept
       in the composer (ticket 66): the form comes back, the transcript view
-      starts empty like any fresh chat, and nothing is auto-submitted. */
-  function returnToGate(text: string, choice?: string): void {
+      starts empty like any fresh chat, and nothing is auto-submitted. A
+      handoff click (67) has no words to hand back — restoring the option
+      would invite a typed send, which deliberately does not hand off. */
+  function returnToGate(text: string, choice?: string, handoffClick = false): void {
     dropSession();
     showLockedFreshChat();
     setError("");
-    if (!choice) {
+    if (!choice && !handoffClick) {
       setQuestion(text);
     }
   }
@@ -566,7 +587,7 @@ export default function WidgetFrame() {
     setContactRequired(true);
   }
 
-  async function send(text: string, choice?: string): Promise<void> {
+  async function send(text: string, choice?: string, handoffClick = false): Promise<void> {
     // The ref guard closes the pending-send race (ticket 18): the state flag
     // alone only flips after awaits, so a second chip click during a slow
     // request could double-send.
@@ -602,10 +623,10 @@ export default function WidgetFrame() {
       const session = sessionRef.current ?? readSession();
       if (!session) {
         dropOptimistic();
-        returnToGate(text, choice);
+        returnToGate(text, choice, handoffClick);
         return;
       }
-      const response = await postMessage(session, text, choice);
+      const response = await postMessage(session, text, choice, handoffClick);
       if (generationRef.current !== generation) {
         return; // The chat was cleared mid-send; the message dies with it.
       }
@@ -613,7 +634,7 @@ export default function WidgetFrame() {
         // The stored credential stopped working: the gate returns (66) and
         // the visitor's words stay in the composer for the fresh chat.
         dropOptimistic();
-        returnToGate(text, choice);
+        returnToGate(text, choice, handoffClick);
         return;
       }
       if (response.status === 409) {
@@ -626,7 +647,7 @@ export default function WidgetFrame() {
           // form's submission unlocks this conversation in place (66).
           dropOptimistic();
           setError("");
-          if (!choice) {
+          if (!choice && !handoffClick) {
             setQuestion(text);
           }
           setContactRequired(true);
@@ -639,14 +660,14 @@ export default function WidgetFrame() {
           conflict.error?.code === "conversation_inactive"
         ) {
           dropOptimistic();
-          returnToGate(text, choice);
+          returnToGate(text, choice, handoffClick);
           return;
         }
         if (conflict.error?.code === "awaiting_staff") {
           // The waiting lock (ticket 43): the escalation landed while this
           // message was in flight. Drop the bubble and hand the words back.
           dropOptimistic();
-          if (!choice) {
+          if (!choice && !handoffClick) {
             setQuestion(text);
           }
           setError(
@@ -759,6 +780,32 @@ export default function WidgetFrame() {
   // Staff help requested but nobody claimed yet: the composer locks (ticket
   // 43). Claiming — or a fresh conversation after Clear — re-enables it.
   const composerLocked = handoff && !claimed;
+
+  // A configured option that spells the same suggestion as a published
+  // rule's topic wins the shared chip (ticket 67): clicking it must notify
+  // staff, so no duplicate chip renders for the same phrase. Repeated
+  // spellings inside the configured list collapse to their first occurrence.
+  const visibleHandoffOptions = distinctOptions(handoffOptions);
+  const shadowedTopics = topicLabelsShadowedByOptions(
+    topics.map((topic) => topic.topic),
+    visibleHandoffOptions,
+  );
+  const visibleTopics = topics.filter((topic) => !shadowedTopics.has(topic.topic));
+
+  // The click-to-handoff options (ticket 67): visible on the fresh chat and
+  // again after bot answers; hidden while the visitor types a nonblank
+  // question or a send/reply is pending — they return once the input is
+  // cleared or the bot has answered — and gone for good in the waiting and
+  // claimed states, where there is no second handoff to request. They
+  // hide rather than disable: a chip that invites a staff handoff must not
+  // linger as an affordance it can no longer honor.
+  const handoffOptionsVisible =
+    !contactRequired &&
+    !sending &&
+    !handoff &&
+    !claimed &&
+    question.trim().length === 0 &&
+    visibleHandoffOptions.length > 0;
 
   // The fresh state (ticket 46): no transcript yet. It gets the reference's
   // composed layout — substantial header, greeting with avatar and
@@ -977,7 +1024,7 @@ export default function WidgetFrame() {
           </span>
         </header>
       )}
-      {topics.length === 0 && !contactRequired ? (
+      {visibleTopics.length === 0 && !contactRequired ? (
         // Only the topicless widget needs the guidance line (ticket 38): with
         // chips visible they are the affordance, and during a handoff the
         // notice below already says the bot has paused.
@@ -1011,13 +1058,13 @@ export default function WidgetFrame() {
           >
             {logContent}
           </ol>
-          {!contactRequired && topics.length > 0 ? (
+          {!contactRequired && visibleTopics.length > 0 ? (
             <div
               className={`${styles.freshSuggestions} ${styles.arrive}`}
               role="group"
               aria-label="Suggested questions"
             >
-              {topics.map((topic) => (
+              {visibleTopics.map((topic) => (
                 <button
                   key={topic.id}
                   type="button"
@@ -1026,6 +1073,26 @@ export default function WidgetFrame() {
                   onClick={() => void send(topic.question)}
                 >
                   {topic.topic}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {handoffOptionsVisible ? (
+            // The click-to-handoff options (ticket 67), stacked in their
+            // configured order: a click notifies staff and pauses the bot.
+            <div
+              className={`${styles.freshSuggestions} ${styles.arrive}`}
+              role="group"
+              aria-label="Options to reach our staff"
+            >
+              {visibleHandoffOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={styles.freshSuggest}
+                  onClick={() => void send(option, undefined, true)}
+                >
+                  {option}
                 </button>
               ))}
             </div>
@@ -1049,14 +1116,33 @@ export default function WidgetFrame() {
           Waiting for a staff member to take over…
         </p>
       ) : null}
-      {!freshStart && !contactRequired && topics.length > 0 ? (
+      {!freshStart && !contactRequired && visibleTopics.length > 0 ? (
         // The compact persistent strip is the conversation's suggestion rail
         // (ticket 18); the fresh state stacks its own instead (ticket 46).
         <TopicsStrip
-          topics={topics}
+          topics={visibleTopics}
           disabled={sending || composerLocked}
           onPick={(question) => void send(question)}
         />
+      ) : null}
+      {!freshStart && handoffOptionsVisible ? (
+        // The ongoing options rail (ticket 67): the conversation's own
+        // click-to-handoff chips, in the same visual language as the
+        // suggestion rail above, appearing and hiding with the same rules.
+        <div className={styles.topicsShell}>
+          <div className={styles.topics} role="group" aria-label="Options to reach our staff">
+            {visibleHandoffOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={styles.topicButton}
+                onClick={() => void send(option, undefined, true)}
+              >
+                <span className={styles.topicLabel}>{option}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
       {contactRequired ? (
         // The gate (ticket 66): every new chat starts here — three clearly

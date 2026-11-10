@@ -4,7 +4,7 @@ import { requireStaff } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
 import { getChatbotService } from "@/db/service";
-import { getEscalationPhrases, getWelcomeMessage } from "@/settings";
+import { getEscalationPhrases, getHandoffOptions, getWelcomeMessage } from "@/settings";
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
 import AnswersWorkspace from "./answers-workspace";
 import styles from "../dashboard.module.css";
@@ -32,6 +32,7 @@ export default async function AnswersPage() {
   const { store, db } = await getChatbotService();
   const rules = await rulesWithPublisherNames(db, await store.listAnswerRules());
   const phrases = await getEscalationPhrases(db);
+  const options = await getHandoffOptions(db);
   const welcome = await getWelcomeMessage(db);
 
   return (
@@ -48,8 +49,8 @@ export default async function AnswersPage() {
           <div className={styles.answersHead}>
             <p className={styles.answersIntro}>
               Draft, publish, and review the answers the chat gives visitors —
-              plus the phrases that go straight to staff and the fresh-chat
-              greeting.
+              plus the phrases and clickable options that go straight to staff
+              and the fresh-chat greeting.
             </p>
             <Link className={`${styles.primaryButton} ${styles.answersNew}`} href="/dashboard/answers/new">
               <svg
@@ -68,7 +69,7 @@ export default async function AnswersPage() {
               New Answer
             </Link>
           </div>
-          <AnswersWorkspace rules={rules} phrases={phrases} welcome={welcome} />
+          <AnswersWorkspace rules={rules} phrases={phrases} options={options} welcome={welcome} />
         </div>
       </div>
     </main>

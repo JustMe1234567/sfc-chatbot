@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
-import { matchAnswerRules, matchesEscalationPhrase } from "@/domain/matcher";
-import { getEscalationPhrases, getSupportHours } from "@/settings";
+import { matchAnswerRules, matchesEscalationPhrase, normalizeText } from "@/domain/matcher";
+import { handoffOptionReply } from "@/domain/handoffOptions";
+import { getEscalationPhrases, getHandoffOptions, getSupportHours } from "@/settings";
 import { handoffReply } from "@/domain/hours";
 import { recordEscalation } from "@/domain/analytics";
 import { isConversationActive, recordVisitorActivity } from "@/domain/activity";
@@ -13,7 +14,7 @@ import {
   MESSAGE_RATE_LIMIT,
   validateVisitorText,
 } from "@/domain/limits";
-import type { Conversation, Message, Store } from "@/domain/types";
+import type { Conversation, Message, Store, SupportHours } from "@/domain/types";
 
 const messageLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
@@ -42,6 +43,10 @@ function newMessage(
 async function escalateConversation(
   target: Conversation,
   service: Awaited<ReturnType<typeof getChatbotService>>,
+  // The deliberate click of a configured option (ticket 67) acknowledges
+  // the chosen topic; the request-human choice keeps the "can't answer"
+  // handoff wording that fits an offer the visitor accepted.
+  replyFromHours: (hours: SupportHours | null) => string = handoffReply,
 ): Promise<Response> {
   const { store, db, mail } = service;
   const escalated: Conversation = { ...target, state: "awaiting_staff" };
@@ -50,7 +55,7 @@ async function escalateConversation(
   // report counts (ticket 17); releases from a claim never pass here.
   await recordEscalation(db, store, new Date());
   const hours = await getSupportHours(db);
-  const reply = newMessage(target.id, "bot", handoffReply(hours));
+  const reply = newMessage(target.id, "bot", replyFromHours(hours));
   await store.appendMessage(reply);
   try {
     const { recordEscalationAlert } = await import("@/mail/notifications");
@@ -177,6 +182,7 @@ export async function POST(request: Request, context: RouteContext) {
   const body = (await request.json().catch(() => null)) as {
     text?: unknown;
     choice?: unknown;
+    handoffOption?: unknown;
   } | null;
 
   // The visitor picked one of the bot's offered topics (ticket 06): the
@@ -230,6 +236,50 @@ export async function POST(request: Request, context: RouteContext) {
     const reply = newMessage(conversation.id, "bot", rule.response, rule.link);
     await store.appendMessage(reply);
     return NextResponse.json({ conversation, reply });
+  }
+
+  // The click of a configured click-to-handoff option (ticket 67): the
+  // label is recorded as the visitor's words and the conversation escalates
+  // through the existing path exactly once — a matching published rule is
+  // deliberately bypassed, because the visitor chose staff, not an answer.
+  // Only the click carries this meaning: typing the same wording never
+  // reaches this branch and keeps normal answer matching below.
+  if (body?.handoffOption !== undefined) {
+    // The waiting period locks visitor input (ticket 43): a click while
+    // staff help is requested but unclaimed can never be a second handoff.
+    if (conversation.state === "awaiting_staff") {
+      return awaitingStaffResponse();
+    }
+    const invalidOption = (): NextResponse =>
+      NextResponse.json(
+        {
+          error: {
+            code: "invalid_handoff_option",
+            message: "That option isn't available. Type your question instead.",
+          },
+        },
+        { status: 400 },
+      );
+    if (typeof body.handoffOption !== "string" || body.handoffOption.trim().length === 0) {
+      return invalidOption();
+    }
+    const service = await getChatbotService();
+    const { store, db } = service;
+    const option = (await getHandoffOptions(db)).find(
+      (candidate) => normalizeText(candidate) === normalizeText(body.handoffOption as string),
+    );
+    if (!option) {
+      return invalidOption();
+    }
+    const selection = await recordVisitorChoice(conversation, store, option);
+    if (!selection.recorded) {
+      // Under an active claim the label lands as the visitor's words to
+      // staff, exactly like a topic pick — with no new handoff raised.
+      return selection.response;
+    }
+    return escalateConversation(conversation, service, (hours) =>
+      handoffOptionReply(option, hours),
+    );
   }
 
   const validation = validateVisitorText(body?.text);

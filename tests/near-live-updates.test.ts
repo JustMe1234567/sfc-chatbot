@@ -75,7 +75,9 @@ describe("the visitor's polling cadence (ticket 61)", () => {
     // The send path (optimistic bubble, postMessage, inline reply) is
     // ticket 12/18/46 behavior and untouched by this ticket.
     expect(frame).toContain("sendingRef.current = true;");
-    expect(frame).toContain("postMessage(session, text, choice)");
+    // (Ticket 67 added the handoffClick flag; the send path is otherwise
+    // ticket 12/18/46 behavior and untouched by that ticket.)
+    expect(frame).toContain("postMessage(session, text, choice, handoffClick)");
     // The visitor's own send still rides the same session credential.
     expect(frame).toContain("Authorization: `Bearer ${session.token}`");
   });

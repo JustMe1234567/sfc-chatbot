@@ -11,7 +11,10 @@ A member of the public using the college website chat. The first release does no
 An approved question pattern and its associated response about the college, maintained by staff. A visitor question is unknown when no answer rule applies.
 
 **Escalation**:
-A request for staff help raised when a visitor accepts the human-chat offer after an unknown question, or immediately when their message matches a configured handoff phrase. Bot replies pause while the request is open.
+A request for staff help raised when a visitor accepts the human-chat offer after an unknown question, immediately when their message matches a configured handoff phrase, or when the visitor clicks a configured click-to-handoff option. Bot replies pause while the request is open.
+
+**Click-to-handoff option**:
+A staff-configured suggestion ("I want to speak to someone in admissions", by default) that the widget offers as a clickable button on the fresh chat and again after bot answers (ticket 67). Clicking one records its label as the visitor's words, acknowledges the chosen topic truthfully, and escalates through the existing path exactly once — deliberately bypassing any matching answer rule. Only the click carries that meaning: typing the same wording keeps normal answer matching unless it was separately configured as a typed handoff phrase. Editors add, edit, and remove options in the Answers admin area's Handoff Options tab.
 
 **Human takeover**:
 The point in a conversation when a named staff member claims it and begins replying to the visitor in the same chat.

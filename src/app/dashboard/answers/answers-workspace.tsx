@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import type { RuleView } from "@/api/staffAnswerRules";
 import type { AnswerRuleStatus } from "@/domain/types";
 import EscalationPhrasesForm from "./escalation-phrases-form";
+import HandoffOptionsForm from "./handoff-options-form";
 import WelcomeForm from "./welcome-form";
 import AnswerActions from "./answer-actions";
 import styles from "../dashboard.module.css";
@@ -21,11 +22,12 @@ import styles from "../dashboard.module.css";
  * save flows untouched.
  */
 
-type AnswersTab = "rules" | "phrases" | "welcome";
+type AnswersTab = "rules" | "phrases" | "options" | "welcome";
 
 const TABS: { id: AnswersTab; label: string }[] = [
   { id: "rules", label: "Answer Rules" },
   { id: "phrases", label: "Handoff Phrases" },
+  { id: "options", label: "Handoff Options" },
   { id: "welcome", label: "Welcome Message" },
 ];
 
@@ -435,10 +437,12 @@ function byRecentFirst(list: RuleView[]): RuleView[] {
 export default function AnswersWorkspace({
   rules: initialRules,
   phrases,
+  options,
   welcome,
 }: {
   rules: RuleView[];
   phrases: string[];
+  options: string[];
   welcome: string;
 }) {
   const [rules, setRules] = useState(initialRules);
@@ -565,6 +569,16 @@ export default function AnswersWorkspace({
         className={styles.answersPanel}
       >
         <EscalationPhrasesForm initialPhrases={phrases} />
+      </div>
+
+      <div
+        role="tabpanel"
+        id="answers-panel-options"
+        aria-labelledby="answers-tab-options"
+        hidden={tab !== "options"}
+        className={styles.answersPanel}
+      >
+        <HandoffOptionsForm initialOptions={options} />
       </div>
 
       <div

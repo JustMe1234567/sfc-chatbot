@@ -3,7 +3,7 @@ import { sqliteAppDatabase, postgresAppDatabase, type AppDatabase } from "./appD
 import { createSqliteStore } from "../store/sqliteStore";
 import { createPostgresStore } from "../store/postgresStore";
 import { seedAnswerRules } from "../store/seed";
-import { seedEscalationPhrases } from "../settings";
+import { seedEscalationPhrases, seedHandoffOptions } from "../settings";
 import { migratePostgres, openPostgres, type PostgresSql } from "./postgres";
 import { createAuth, type Auth } from "../auth/server";
 import { createMailTransportFromEnv } from "../mail/transport";
@@ -40,6 +40,7 @@ async function buildSqliteService(): Promise<ChatbotService> {
   const store = createSqliteStore(db);
   await seedAnswerRules(store);
   await seedEscalationPhrases(appDb);
+  await seedHandoffOptions(appDb);
   const mail = createMailTransportFromEnv(appDb);
   const auth = createAuth({
     db: appDb,
@@ -57,6 +58,7 @@ async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
   const store = createPostgresStore(sql);
   await seedAnswerRules(store);
   await seedEscalationPhrases(appDb);
+  await seedHandoffOptions(appDb);
   const mail = createMailTransportFromEnv(appDb);
   const auth = createAuth({
     db: appDb,

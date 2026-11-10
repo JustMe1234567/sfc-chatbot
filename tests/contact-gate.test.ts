@@ -520,8 +520,9 @@ describe("the widget's contact gate", () => {
     expect(form).not.toContain("setContactRequired(false)");
     expect(form).not.toMatch(/Skip|No thanks|Not now|Cancel/);
     // Suggestions, the topic strip, and offered choices all wait on it.
-    expect(frame).toContain("!contactRequired && topics.length > 0");
-    expect(frame).toContain("!freshStart && !contactRequired && topics.length > 0");
+    // (Ticket 67: the chip lists read `visibleTopics`, the deduped topics.)
+    expect(frame).toContain("!contactRequired && visibleTopics.length > 0");
+    expect(frame).toContain("!freshStart && !contactRequired && visibleTopics.length > 0");
     expect(frame).toContain("message.choices && !contactRequired");
     // A send can never start while the gate stands.
     expect(frame).toMatch(/sendingRef\.current \|\|\s*contactRequired/);
