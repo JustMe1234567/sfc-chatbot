@@ -2,7 +2,7 @@
 
 # 63: Bound the conversation desk height and align its page title
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 **Category:** enhancement
 **Priority:** P2
 **Reference:** [Conversation desk layout supplied by the user](../references/conversation-desk-bounded-layout-target.png)
