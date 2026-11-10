@@ -2,7 +2,7 @@
 
 # 66: Require visitor contact before chat and show names with revised status colors
 
-**Status:** ready-for-agent  
+**Status:** ready-for-human  
 **Category:** enhancement  
 **Priority:** P2  
 **Blocked by:** [62: Expire all History conversations](62-delete-and-expire-all-history-conversations.md)  
