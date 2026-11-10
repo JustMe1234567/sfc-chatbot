@@ -46,6 +46,7 @@ export default function DeskEntry({ item, selected }: { item: DeskItem; selected
     <span className={styles.deskItemWrap}>
       <Link
         href={`/dashboard/inbox/${item.id}`}
+        scroll={false}
         className={styles.deskItem}
         data-selected={selected || undefined}
         data-status={status ?? undefined}

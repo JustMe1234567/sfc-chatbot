@@ -21,6 +21,7 @@ import DashboardHeader from "../header";
 import AutoRefresh from "../conversations/[id]/auto-refresh";
 import { ClaimButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
 import DeskEntry from "./desk-entry";
+import ConversationList from "./conversation-list";
 import AttentionSounds from "./attention-sounds";
 import { ClearHistoryButton } from "./history-actions";
 import { TIER_CHIPS } from "./status-classes";
@@ -149,15 +150,20 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
       />
       <div className={styles.contentArea}>
         <div className={styles.desk}>
-          <nav className={styles.deskList} aria-label="Conversation list">
+          <ConversationList view={view}>
             <div className={styles.deskTabs}>
-              <Link href="/dashboard/inbox" aria-current={view === "active" ? "page" : undefined}>
+              <Link
+                scroll={false}
+                href="/dashboard/inbox"
+                aria-current={view === "active" ? "page" : undefined}
+              >
                 Conversations
                 {attentionTierCount > 0 ? (
                   <span className={styles.countAttention}>{attentionTierCount} new</span>
                 ) : null}
               </Link>
               <Link
+                scroll={false}
                 href="/dashboard/inbox/history"
                 aria-current={view === "history" ? "page" : undefined}
               >
@@ -208,7 +214,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 )}
               </>
             )}
-          </nav>
+          </ConversationList>
           <section className={styles.deskPane} aria-label="Selected conversation">
             {selected ? (
               <>
@@ -252,6 +258,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 </div>
                 <Link
                   className={styles.deskBack}
+                  scroll={false}
                   href={view === "history" ? "/dashboard/inbox/history" : "/dashboard/inbox"}
                 >
                   ← All conversations

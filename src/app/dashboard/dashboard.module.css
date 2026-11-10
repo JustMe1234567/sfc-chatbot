@@ -2701,7 +2701,10 @@ a:focus-visible {
   }
 
   .deskList {
-    max-height: none;
+    /* Keep the list as its own scroll boundary on narrow screens so its
+       Conversations and History offsets remain independent of the page and
+       transcript. */
+    max-height: calc(100dvh - 8rem);
   }
 
   .deskPane {
