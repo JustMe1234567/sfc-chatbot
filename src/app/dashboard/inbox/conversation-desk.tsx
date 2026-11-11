@@ -280,7 +280,20 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                   {mayReassign && selectedActive && (
                     <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />
                   )}
-                  <div className={styles.transcript} tabIndex={0} aria-label="Messages">
+                  {/* A live region (ticket 28): the authorized poll re-renders
+                      this stream every few seconds, and role="log" turns the
+                      appended messages into polite announcements — a
+                      screen-reader staff member hears the visitor's reply
+                      instead of polling the pane manually. Keys stay on the
+                      stable message id so polls append nodes rather than
+                      replace the stream. */}
+                  <div
+                    className={styles.transcript}
+                    role="log"
+                    aria-live="polite"
+                    tabIndex={0}
+                    aria-label="Messages"
+                  >
                     {messages.map((message) => (
                       <div key={message.id} className={bubbleClass(message.role)}>
                         <div className={styles.role}>

@@ -39,7 +39,7 @@ describe("the bounded conversation desk (ticket 63)", () => {
     expect(css).toMatch(/\.paneBody \{[^}]*min-height: 0/s);
     expect(css).toMatch(/\.paneBody \.transcript \{[^}]*overflow-y: auto/s);
     expect(css).toMatch(/\.paneBody \.transcript \{[^}]*border: 1px solid var\(--line\)/s);
-    expect(desk).toContain('className={styles.transcript} tabIndex={0} aria-label="Messages"');
+    expect(desk).toMatch(/className=\{styles\.transcript\}[\s\S]{0,200}?tabIndex=\{0\}[\s\S]{0,60}?aria-label="Messages"/);
   });
 
   it("returns to the existing stacked document flow on narrow screens", async () => {
