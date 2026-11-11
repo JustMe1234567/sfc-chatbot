@@ -4,6 +4,9 @@ import { trustedOrigins } from "@/config";
 import { DASHBOARD_ROLES, type StaffRole } from "@/auth/server";
 
 const GENERIC_AUTH_ERROR = { error: { code: "unauthorized", message: "Sign in required." } };
+const CROSS_ORIGIN_BLOCKED = {
+  error: { code: "cross_origin_blocked", message: "Request origin is not allowed." },
+};
 
 export interface StaffContext {
   userId: string;
@@ -68,19 +71,36 @@ export async function requireStaff(
 
 /**
  * CSRF protection for cookie-authenticated state-changing staff requests:
- * unsafe methods must carry an Origin header the app itself trusts. Used by
- * staff mutation routes as they arrive (claiming, replying in ticket 04).
+ * unsafe methods must carry an Origin header the app itself trusts, or —
+ * when Origin is absent (old browsers, some proxies strip it) — a Referer
+ * whose origin the app trusts (ticket 30). Both headers are set by the
+ * browser, so cross-site script can forge neither; an unsafe method
+ * carrying neither header is rejected. Used by staff mutation routes as
+ * they arrive (claiming, replying in ticket 04).
  */
 export function sameOriginGuard(request: Request): NextResponse | null {
   if (["GET", "HEAD", "OPTIONS"].includes(request.method)) {
     return null;
   }
+  const trusted = trustedOrigins();
   const origin = request.headers.get("origin");
-  if (origin && trustedOrigins().includes(origin)) {
-    return null;
+  if (origin) {
+    if (trusted.includes(origin)) {
+      return null;
+    }
+    return NextResponse.json(CROSS_ORIGIN_BLOCKED, { status: 403 });
   }
-  return NextResponse.json(
-    { error: { code: "cross_origin_blocked", message: "Request origin is not allowed." } },
-    { status: 403 },
-  );
+  // No Origin header: the Referer's origin is the remaining browser-set
+  // signal. Unparseable or untrusted — or no Referer at all — is refused.
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      if (trusted.includes(new URL(referer).origin)) {
+        return null;
+      }
+    } catch {
+      // A malformed Referer is not a signal to trust.
+    }
+  }
+  return NextResponse.json(CROSS_ORIGIN_BLOCKED, { status: 403 });
 }
