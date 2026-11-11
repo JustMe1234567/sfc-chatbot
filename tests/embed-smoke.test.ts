@@ -98,7 +98,9 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain("Waiting for a staff member to take over…");
     expect(frame).toContain("composerLocked");
     expect(frame).toContain('code === "awaiting_staff"');
-    // The lock's start and the takeover are each announced once.
+    // The lock's start and the takeover are each announced once — via the
+    // handoff and claimed notices' own live regions (ticket 25 moved the
+    // lock's announcer from this line to the notice).
     expect(frame).toContain('role="status"');
   });
 
@@ -139,9 +141,9 @@ describe("WordPress embed smoke check", () => {
     expect(introSlice).not.toMatch(/role=|aria-live/);
     // The error region stays a live region (ticket 38's persistent status
     // line); the email-capture box and its notes are gone with ticket 66.
-    expect(frame.slice(frame.indexOf("className={styles.status}"))).toMatch(
-      /role="status"/,
-    );
+    const statusStart = frame.indexOf("className={styles.status}");
+    const statusSlice = frame.slice(statusStart, frame.indexOf("</p>", statusStart));
+    expect(statusSlice).toMatch(/role="status"/);
     expect(frame).not.toContain("emailNote");
   });
 
