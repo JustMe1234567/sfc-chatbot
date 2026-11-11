@@ -20,6 +20,11 @@ in the repo or any client bundle:
 Local development keeps using SQLite (`CHATBOT_DB`, default `chatbot.db`) and
 needs none of these.
 
+[`.env.example`](../.env.example) lists every variable the application reads —
+including the Postgres tuning knobs, the test-mode URL, and the owner
+bootstrap above — with realistic example values; copy it as the starting
+point for either environment.
+
 ## 2. Provision Supabase
 
 1. Create the project; note the pooled connection string as `DATABASE_URL`.

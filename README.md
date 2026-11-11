@@ -21,6 +21,12 @@ The app seeds two published answer rules (admissions, fees) and one draft rule
 (scholarships) from `src/store/seed.ts` into SQLite at `CHATBOT_DB`
 (default `chatbot.db`, gitignored).
 
+No environment variables are needed for local development. Every variable
+the application reads — store selection, auth, email, Postgres tuning, the
+test-mode URL — is listed with realistic example values in
+[`.env.example`](.env.example); production configuration lives in
+[docs/deployment.md](docs/deployment.md).
+
 To exercise the embed exactly as a college site would — a different origin —
 serve `tests/fixtures/cross-origin-page.html` from another port (it points at
 `http://127.0.0.1:3000/widget/v1.js`).
