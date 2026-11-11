@@ -26,10 +26,15 @@ async function seedNotifications(): Promise<string[]> {
   const newestFirst: string[] = [];
   for (let index = 0; index < 23; index += 1) {
     const conversationId = crypto.randomUUID();
+    // Postgres's conversations.last_activity_at is NOT NULL (ticket 68); the
+    // stores create conversations with last_activity_at = created_at, so the
+    // raw seed mirrors that.
+    const conversationCreatedAt = new Date(base - 60_000).toISOString();
     await db.run(
-      "INSERT INTO conversations (id, state, created_at) VALUES (?, 'closed', ?)",
+      "INSERT INTO conversations (id, state, created_at, last_activity_at) VALUES (?, 'closed', ?, ?)",
       conversationId,
-      new Date(base - 60_000).toISOString(),
+      conversationCreatedAt,
+      conversationCreatedAt,
     );
     const status = index % 4 === 0 ? "failed" : index % 4 === 1 ? "pending" : "sent";
     const createdAt = new Date(base + index * 1_000).toISOString();

@@ -1,5 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import {
+  countQuery,
+  startConversation,
+  TEST_ORIGIN,
+  useTempDatabase,
+  warmChatbotService,
+} from "./helpers";
 import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
 
 /**
@@ -33,11 +39,16 @@ async function seedConversation(state: "closed" | "claimed"): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
   const id = crypto.randomUUID();
+  // Postgres's conversations.last_activity_at is NOT NULL (ticket 68); the
+  // stores create conversations with last_activity_at = created_at, so the
+  // raw seed mirrors that.
+  const createdAt = new Date().toISOString();
   await db.run(
-    "INSERT INTO conversations (id, state, created_at) VALUES (?, ?, ?)",
+    "INSERT INTO conversations (id, state, created_at, last_activity_at) VALUES (?, ?, ?, ?)",
     id,
     state,
-    new Date().toISOString(),
+    createdAt,
+    createdAt,
   );
   await db.run(
     "INSERT INTO messages (id, conversation_id, role, text, created_at) VALUES (?, ?, 'visitor', 'Please help me', ?)",
@@ -126,12 +137,29 @@ describe("the purge contract refuses live conversations (ticket 51, widened by 6
     expect(await store.purgeHistoryConversation(closed, historyQuietBefore())).toBe(true);
     expect(await conversationExists(closed)).toBe(false);
     const { db } = await getChatbotService();
+    // countQuery casts the PG bigint count to int — Postgres hands COUNT(*)
+    // back as a string, which .toBe(0) would reject (ticket 68).
     expect(
-      (await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?", closed))?.n,
+      (
+        await db.get<{ n: number }>(
+          countQuery(
+            "SELECT COUNT(*)::int AS n FROM messages WHERE conversation_id = ?",
+            "SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?",
+          ),
+          closed,
+        )
+      )?.n,
     ).toBe(0);
     expect(
-      (await db.get<{ n: number }>("SELECT COUNT(*) AS n FROM visitor_sessions WHERE conversation_id = ?", closed))
-        ?.n,
+      (
+        await db.get<{ n: number }>(
+          countQuery(
+            "SELECT COUNT(*)::int AS n FROM visitor_sessions WHERE conversation_id = ?",
+            "SELECT COUNT(*) AS n FROM visitor_sessions WHERE conversation_id = ?",
+          ),
+          closed,
+        )
+      )?.n,
     ).toBe(0);
   });
 });
