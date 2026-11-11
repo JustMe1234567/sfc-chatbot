@@ -2,7 +2,7 @@
 
 # 68: Fix Postgres test seeds that omit the NOT NULL last_activity_at column
 
-**Status:** ready-for-agent  
+**Status:** ready-for-human  
 **Category:** bug (tests only)  
 **Priority:** P3  
 **Blocked by:** none  
@@ -33,11 +33,11 @@ untouched by that ticket's diff, and the schema column predates them.
 
 ## Acceptance criteria
 
-- [ ] `CHATBOT_TEST_POSTGRES_URL=postgres://… npm test` passes with zero
+- [x] `CHATBOT_TEST_POSTGRES_URL=postgres://… npm test` passes with zero
   failures (restart-persistence excluded where the environment cannot boot
   a second `next dev`).
-- [ ] The SQLite suite still passes unchanged.
-- [ ] Seeds set `last_activity_at` (and any other NOT NULL columns they
+- [x] The SQLite suite still passes unchanged.
+- [x] Seeds set `last_activity_at` (and any other NOT NULL columns they
   rely on) explicitly, matching how the stores create conversations.
 
 ## Comments
@@ -45,3 +45,5 @@ untouched by that ticket's diff, and the schema column predates them.
 2026-11-11: Filed from ticket 66's Postgres parity run (395 passed / 5
 failed, every failure this cause). Left unfixed there to keep ticket 66's
 diff in scope.
+
+2026-11-12: Fixed in commit 49cf2e6. Both seeds now set `last_activity_at = created_at` (one `createdAt` binding per row), mirroring how the stores create conversations (`postgresStore.ts` createConversation and the restart-successor insert; same pattern as the already-correct `history-eligibility.test.ts` seed). Scope note per the spec review: the diff ALSO converts history-delete.test.ts's two bare `COUNT(*)` assertions to the repo's `countQuery(...)` helper — Postgres hands bigint counts back as strings, which `.toBe(0)` rejects. Those assertions were MASKED by the seed bug (the file died at setup before reaching them), so they are part of the same file's zero-failure requirement, not a separate fix. Verification: both files 17/17 under `CHATBOT_TEST_POSTGRES_URL=postgresql://postgres@127.0.0.1:5433/postgres` AND in SQLite mode; full PG-mode suite 464 passed / 1 failed / 3 skipped (restart-persistence PG-skipped by design). The one failure is tests/dashboard-sidebar.test.ts's `<Mark>` count pin (expects 6, header has 7) — caused by a concurrent session's UNCOMMITTED header.tsx drift in the shared tree at run time, unrelated to seeds; it resolves when that session commits its own test update. Repo-wide grep confirms no other raw `INSERT INTO conversations` in tests omits the column.

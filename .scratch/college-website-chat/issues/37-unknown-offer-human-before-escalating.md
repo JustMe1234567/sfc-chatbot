@@ -1,6 +1,6 @@
 # 37: Unknown questions offer "chat with a human" first; escalation happens on click
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **Reference screenshot:** [What the visitor sees after requesting a human: handoff notice + email capture](../references/visitor-widget-after-human-request.png).
 
@@ -27,3 +27,5 @@ The user wants the bot to admit gaps politely and let the visitor opt into human
 2026-11-01: Filed from the user's request: "when there are things not on the answers, it will be prompting 'i don't have knowledge of that, chat with a human' then when a user clicks that it will escalate and notify an admin and on the dashboard there will be indications of a chat waiting for a human agent." Screenshot shows the desired post-click state (handoff notice + email capture), which is today's post-escalation state — reused unchanged. Coordinate with issue 25 (the offer and the click's handoff notice must both be screen-reader announced).
 
 2026-11-01: Implementation decision: the existing persisted-choice UI carries a reserved `request-human` action. The API accepts it only when the latest bot message contains that offer, and the click is recorded in the transcript as the visitor message “Chat with a human,” making the staff-facing reason explicit without adding a new escalation-reason schema.
+
+2026-11-12: Status flipped to ready-for-human — commit 17813d2 (feat(chat): require consent for unknown handoff, 2026-11-01). Verified live today: an unmatched question posts "I don't have knowledge of that. You can chat with a human if you'd like." with a clickable Chat-with-a-human choice and NOTHING escalates — no staff email, no inbox entry, no bot pause — until the visitor clicks; the click runs the existing escalation pipeline (alert once, Incoming attention, handoff notice); configured escalation phrases still escalate immediately and ambiguity choices are untouched. The spec's Implementation Decision sentence was amended at commit time (spec.md in the commit). Presentation evolved through later tickets (38 compacted the handoff state, 66 replaced the email-capture with the pre-chat contact gate, 67 added click-to-handoff options alongside) but the consent contract is intact and pinned by tests/escalation-flow.test.ts (offer does not alert, click alerts exactly once, phrase bypasses the offer), tests/ambiguity-handoff.test.ts, tests/awaiting-lock.test.ts, and tests/contact-gate.test.ts.

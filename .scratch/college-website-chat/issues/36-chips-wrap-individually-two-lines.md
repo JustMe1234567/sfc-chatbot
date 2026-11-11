@@ -1,6 +1,6 @@
 # 36: Topic chips wrap individually — a long phrase takes two lines, a short phrase one
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **Reference screenshot:** [Current strip: Admissions and Fees stacked, chips single-line](../references/visitor-widget-chip-line-wrap-before.png).
 
@@ -24,3 +24,5 @@ The user reviewed the current strip (screenshot: "Admissions" and "Fees" stacked
 2026-11-01: Filed from the user's request and supplied screenshot. Builds on ticket 18 (`ready-for-human` — this ticket amends its layout, so ticket 18's human pass should follow 36 or be revisited after it lands). Coordinate with 35 (launcher toggle) if implemented together — both touch the widget frame's lower region.
 
 2026-11-01: Implementation decision: the strip uses a single non-wrapping horizontal flex flow. Each chip keeps its natural height; labels are capped at two lines, so short chips stay one line and long chips grow independently without creating a vertically stacked resting layout.
+
+2026-11-12: Status flipped to ready-for-human — commit 6dfb702 (fix(widget): flow topic chips horizontally, 2026-11-01). Verified live today: the strip is a single non-wrapping horizontal flex flow (flex-wrap: nowrap, align-items: flex-start — frame.module.css) where each chip owns its natural height with the two-line clamp as the cap: short phrases single-line, long phrases wrap within their own chip, no stacked-vertical resting layout, strip stays two rows tall and scrolls horizontally. All ticket-18 behaviors preserved (touch swipe, wheel scroll, focus scrollIntoView, hidden scrollbar + fades, reduced motion). Pins: the updated strip-contract block in tests/embed-smoke.test.ts; browser geometry evidence refreshed in scripts/topics-shots.mjs and references/shots-after at commit time.

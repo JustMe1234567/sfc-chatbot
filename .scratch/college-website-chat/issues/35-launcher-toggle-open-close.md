@@ -1,6 +1,6 @@
 # 35: Keep the chat launcher visible while the chat is open; clicking it again closes
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **What to build:** In the widget loader (`src/widget/loader.ts`, built to `public/widget/v1.js`), the launcher button currently **hides itself** while the chat frame is open (ticket 16's "one crest per view" decision), and closing is only possible via the frame's close button or Escape. Change it to a true toggle:
 
@@ -23,3 +23,5 @@ Ticket 16 deliberately hid the launcher while the frame was open to avoid repeat
 2026-11-01: Filed from the user's request: "when the icon of the chatbot is clicked, it will still show up when the chat is open. and clicking on the icon again will close the chatbot chat." Related: ticket 16 (launcher hide decision being reversed), ticket 15 (motion tokens in the loader), ticket 26 (focus-on-open — coordinate so toggle-open puts focus in the frame sensibly once 26 lands).
 
 2026-11-01: Implementation decision: the persistent launcher swaps its crest for a clear close “×” while the frame is open. The frame header keeps its crest, so exactly one brand crest remains visible in either state.
+
+2026-11-12: Status flipped to ready-for-human — commit a4e5ffe (feat(widget): keep launcher as chat toggle, 2026-11-01). Verified live today: the launcher stays visible while open and toggles; it swaps its crest for the close × (sfcw-launcher-close, aria-label Close chat) so exactly one crest shows per state — the implementation decision recorded below was followed; aria-expanded tracks state; Escape and launcher close both return focus to the launcher; the pending-hide timer keeps rapid toggling correct; reduced-motion and the mounted-hidden frame are unchanged. Pins: tests/embed-smoke.test.ts "keeps the launcher available as an honest open and close toggle (ticket 35)" + the ticket-40 block; live cert26 exercises the toggle (open → Escape → keyboard reopen → close → reopen) with focus assertions on every transition.
