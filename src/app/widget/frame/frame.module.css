@@ -689,6 +689,11 @@
 }
 
 .confirmClear {
+  /* Touch-target floor (ticket 27): the 12px font's metric-derived height
+     keeps only ~2-4px of headroom over the 24px minimum depending on the
+     platform's font metrics; the explicit floor holds it everywhere
+     (transparent padding counts, the visual stays compact). */
+  min-height: 24px;
   border: 0;
   border-radius: 6px;
   background: #a8342a;
@@ -705,6 +710,8 @@
 }
 
 .confirmKeep {
+  /* Touch-target floor (ticket 27), matching .confirmClear. */
+  min-height: 24px;
   border: 1px solid #cbd2dc;
   border-radius: 6px;
   background: #fff;

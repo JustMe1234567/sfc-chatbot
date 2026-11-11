@@ -303,6 +303,26 @@ describe("WordPress embed smoke check", () => {
     expect(browserProof).toContain('assertMenuWithinFrame("360px")');
   });
 
+  it("holds widget touch targets at the 24px minimum (ticket 27)", async () => {
+    const frameCss = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/frame.module.css"),
+      "utf8",
+    );
+    const browserProof = await readFile(
+      path.join(repoRoot(), "scripts/cert27-touch-targets.mjs"),
+      "utf8",
+    );
+
+    // The confirm pair is the metric-dependent floor (12px fonts, ~2-4px of
+    // headroom); everything else reaches 24px by fixed box or padding, and
+    // the cert script measures every control live across all widget states.
+    expect(frameCss).toMatch(/\.confirmClear \{[^}]*min-height: 24px/s);
+    expect(frameCss).toMatch(/\.confirmKeep \{[^}]*min-height: 24px/s);
+    expect(browserProof).toContain("24×24px minimum");
+    expect(browserProof).toContain("inline flow");
+    expect(browserProof).toContain("ticket 18 constraint");
+  });
+
   it("keeps service secrets out of the loader bundle", async () => {
     const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
     expect(script).not.toMatch(/process\.env/);
