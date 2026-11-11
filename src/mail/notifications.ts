@@ -88,12 +88,13 @@ function contactRequestBody(conversationId: string, receivedAt: string): string 
 /** Why a legacy visitor-return row is never delivered again (ticket 66). */
 const VISITOR_RETURN_RETIRED = "Visitor return links are no longer sent.";
 
-/** Subject and body for the staff alert rows. */
+/** Subject and body for the staff alert rows: escalation alerts and the
+ *  per-request contact alerts share the wrapper, not the copy. */
 function composeMail(record: NotificationRecord): {
   subject: string;
   body: string;
 } {
-  if (record.type === "contact_request") {
+  if (record.type.startsWith("contact_request")) {
     return {
       subject: "Visitor contact request needs staff (college chat)",
       body: contactRequestBody(record.conversation_id, record.created_at),
@@ -147,27 +148,29 @@ export async function recordEscalationAlert(
 }
 
 /**
- * The staff email alert for a contact request (ticket 69): same machinery
- * and dedup as the escalation alert, under its own "contact_request" type —
- * one alert per conversation (the unique index makes duplicate calls
- * no-ops), so a conversation's later requests never re-spam the inbox;
- * the desk's persistent Contact Me status is the standing signal. Requests
+ * The staff email alert for a contact request (ticket 69): same delivery
+ * machinery as the escalation alert, under a per-request type —
+ * `contact_request:<request id>` — so each of the visitor's requests alerts
+ * exactly once (the unique index makes duplicate calls no-ops) while a
+ * completed request never blocks a later one from alerting again. Requests
  * that happen before recipients are configured still get a pending row.
  */
 export async function recordContactRequestAlert(
   db: AppDatabase,
   mail: MailTransport,
   conversationId: string,
+  requestId: string,
 ): Promise<NotificationRow | null> {
   const recipients = await getAlertRecipients(db);
   const createdAt = new Date().toISOString();
   const id = crypto.randomUUID();
   const inserted = await db.get<{ id: string }>(
     `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
-     VALUES (?, 'contact_request', ?, ?, 'pending', 0, ?)
+     VALUES (?, ?, ?, ?, 'pending', 0, ?)
      ON CONFLICT(type, conversation_id) DO NOTHING
      RETURNING id`,
     id,
+    `contact_request:${requestId}`,
     conversationId,
     JSON.stringify(recipients),
     createdAt,

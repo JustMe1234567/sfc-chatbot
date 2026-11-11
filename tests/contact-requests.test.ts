@@ -68,8 +68,8 @@ function escalationAlerts(conversationId: string): Promise<number> {
 
 function contactAlerts(conversationId: string): Promise<number> {
   return count(
-    "SELECT COUNT(*)::int AS n FROM notifications WHERE type = 'contact_request' AND conversation_id = ?",
-    "SELECT COUNT(*) AS n FROM notifications WHERE type = 'contact_request' AND conversation_id = ?",
+    "SELECT COUNT(*)::int AS n FROM notifications WHERE type LIKE 'contact_request%' AND conversation_id = ?",
+    "SELECT COUNT(*) AS n FROM notifications WHERE type LIKE 'contact_request%' AND conversation_id = ?",
     conversationId,
   );
 }

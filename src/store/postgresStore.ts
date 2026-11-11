@@ -127,14 +127,18 @@ export function createPostgresStore(sql: PostgresSql): Store {
 
     // The one-open-request guarantee (ticket 69) is the guarded INSERT:
     // the row only lands when the conversation has no open request, and the
-    // partial unique index backs the same rule at the database level.
+    // partial unique index backs the same rule at the database level. Under
+    // READ COMMITTED two concurrent inserts can both pass the NOT EXISTS
+    // check, so the conflict clause turns the loser into a zero-row result
+    // (false) instead of a thrown constraint error.
     async createContactRequest(request) {
       const inserted = await sql`
         INSERT INTO contact_requests (id, conversation_id, medium, status, created_at, completed_at, completed_by)
         SELECT ${request.id}, ${request.conversationId}, ${request.medium}, 'open', ${request.createdAt}, NULL, NULL
         WHERE NOT EXISTS (
           SELECT 1 FROM contact_requests WHERE conversation_id = ${request.conversationId} AND status = 'open'
-        )`;
+        )
+        ON CONFLICT (conversation_id) WHERE status = 'open' DO NOTHING`;
       return changesOf(inserted) === 1;
     },
 

@@ -4,8 +4,8 @@ import { isConversationActive } from "./activity";
 
 export function roleLabel(role: MessageRole): string {
   if (role === "visitor") return "Visitor";
-  if (role === "bot") return "Staff";
-  return "Bot";
+  if (role === "bot") return "Bot";
+  return "Staff";
 }
 
 /**

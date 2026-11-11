@@ -152,7 +152,7 @@ async function recordMediumRequest(
   }
   try {
     const { recordContactRequestAlert } = await import("@/mail/notifications");
-    await recordContactRequestAlert(db, mail, conversation.id);
+    await recordContactRequestAlert(db, mail, conversation.id, request.id);
   } catch (error) {
     console.error("contact request alert recording failed:", error);
   }

@@ -123,7 +123,9 @@ export function createSqliteStore(db: DatabaseSync): Store {
 
     // The one-open-request guarantee (ticket 69) is the guarded INSERT:
     // the row only lands when the conversation has no open request, and the
-    // partial unique index backs the same rule at the database level.
+    // partial unique index backs the same rule at the database level. The
+    // conflict clause keeps a concurrent loser on the false return instead
+    // of a thrown constraint error.
     async createContactRequest(request) {
       const inserted = db
         .prepare(
@@ -131,7 +133,8 @@ export function createSqliteStore(db: DatabaseSync): Store {
            SELECT ?, ?, ?, 'open', ?, NULL, NULL
            WHERE NOT EXISTS (
              SELECT 1 FROM contact_requests WHERE conversation_id = ? AND status = 'open'
-           )`,
+           )
+           ON CONFLICT DO NOTHING`,
         )
         .run(
           request.id,
