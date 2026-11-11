@@ -18,6 +18,9 @@ export const BROWSER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 /** Modest by design: beats every 45 seconds while the page is visible. */
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 45_000;
 
+/** Expiry arithmetic for the id and its stored twin (ticket 34). */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export interface PresenceStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -72,7 +75,7 @@ export function browserId(storage: PresenceStorage, now: Date, retentionDays: nu
   const replacement: StoredId = {
     id: crypto.randomUUID(),
     createdAt,
-    expiresAt: new Date(now.getTime() + retentionDays * 24 * 60 * 60 * 1000).toISOString(),
+    expiresAt: new Date(now.getTime() + retentionDays * DAY_MS).toISOString(),
   };
   storage.setItem(BROWSER_ID_STORAGE_KEY, JSON.stringify(replacement));
   return replacement.id;
@@ -94,7 +97,7 @@ export function noteRetention(
   if (!stored || stored.id !== id || retentionDays <= 0) {
     return;
   }
-  const shortened = now.getTime() + retentionDays * 24 * 60 * 60 * 1000;
+  const shortened = now.getTime() + retentionDays * DAY_MS;
   if (shortened < new Date(stored.expiresAt).getTime()) {
     storage.setItem(
       BROWSER_ID_STORAGE_KEY,

@@ -3,6 +3,7 @@ import { getChatbotService } from "@/db/service";
 import { publicClientKey } from "@/api/visitor";
 import { topicButtonFor } from "@/domain/answerRules";
 import { createRateLimiter, TOPICS_RATE_LIMIT } from "@/domain/limits";
+import { withJsonErrors } from "@/api/serverError";
 
 const topicsLimiter = createRateLimiter(TOPICS_RATE_LIMIT);
 
@@ -13,7 +14,7 @@ const topicsLimiter = createRateLimiter(TOPICS_RATE_LIMIT);
  * click sends `question` (the rule's first phrase) through the normal
  * question path, where the deterministic matcher resolves it.
  */
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   if (!topicsLimiter.check(publicClientKey(request))) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many requests. Please try again shortly." } },
@@ -27,3 +28,5 @@ export async function GET(request: Request) {
     .sort((a, b) => a.topic.localeCompare(b.topic));
   return NextResponse.json({ topics });
 }
+
+export const GET = withJsonErrors(getHandler);

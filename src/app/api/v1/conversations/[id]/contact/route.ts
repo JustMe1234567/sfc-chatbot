@@ -4,6 +4,7 @@ import { createRateLimiter, MESSAGE_RATE_LIMIT, validateVisitorContact } from "@
 import { hasAcceptedContact } from "@/domain/conversations";
 import { isConversationActive } from "@/domain/activity";
 import { getChatbotService } from "@/db/service";
+import { withJsonErrors } from "@/api/serverError";
 
 const contactLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 
@@ -21,7 +22,7 @@ interface RouteContext {
  * Once accepted, details are settled for that conversation: a repeat is
  * answered without rewriting them, so a retried submission stays harmless.
  */
-export async function POST(request: Request, context: RouteContext) {
+async function postHandler(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
@@ -70,3 +71,5 @@ export async function POST(request: Request, context: RouteContext) {
   await store.touchVisitorPresence(conversation.id);
   return NextResponse.json({ id: conversation.id });
 }
+
+export const POST = withJsonErrors(postHandler);

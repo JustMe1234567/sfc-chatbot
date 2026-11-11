@@ -1,4 +1,4 @@
-import type { Store } from "./types";
+import type { ConversationState, Store } from "./types";
 import type { MessageRole } from "./types";
 import { isConversationActive } from "./activity";
 
@@ -21,7 +21,9 @@ export interface OpenContactRequestView {
 /** One left-side list entry on the conversation desk (ticket 12). */
 export interface DeskItem {
   id: string;
-  state: string;
+  /** The full conversation union (ticket 34): raw `string` forced the chip
+   *  and label maps to key off untyped strings. */
+  state: ConversationState;
   /** The visitor's full name from the contact form (ticket 66); null on
    *  conversations from before the gate, which read as "Visitor". */
   visitorName: string | null;
@@ -124,8 +126,9 @@ export async function summarizeConversationHistory(store: Store): Promise<DeskIt
 }
 
 /** The desk rows' short state names (ticket 12), shared by the server desk
- *  pane and the client row entries. */
-export const DESK_STATE_LABELS: Record<string, string> = {
+ *  pane and the client row entries. Keyed by the full union (ticket 34), so
+ *  a new state fails to compile until it is named here. */
+export const DESK_STATE_LABELS: Record<ConversationState, string> = {
   bot_active: "bot",
   awaiting_staff: "waiting",
   claimed: "claimed",
@@ -141,8 +144,11 @@ export const VISITOR_FALLBACK_NAME = "Visitor";
  * and History rows and the selected pane. Older conversations without a
  * name stay readable as "Visitor · bot".
  */
-export function deskLabel(item: { visitorName: string | null; state: string }): string {
-  return `${item.visitorName ?? VISITOR_FALLBACK_NAME} · ${DESK_STATE_LABELS[item.state] ?? item.state}`;
+export function deskLabel(item: {
+  visitorName: string | null;
+  state: ConversationState;
+}): string {
+  return `${item.visitorName ?? VISITOR_FALLBACK_NAME} · ${DESK_STATE_LABELS[item.state]}`;
 }
 
 /**

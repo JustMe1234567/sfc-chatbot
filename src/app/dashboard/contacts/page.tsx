@@ -4,6 +4,7 @@ import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
 import { DESK_STATE_LABELS } from "@/domain/inbox";
+import type { ConversationState } from "@/domain/types";
 import { getChatbotService } from "@/db/service";
 import { CONTACTS_PAGE_SIZE, contactsPageLinks, resolveContactsPage } from "./pagination";
 import styles from "../dashboard.module.css";
@@ -20,7 +21,7 @@ const MEDIUM_LABELS: Record<string, string> = {
 };
 
 /** Row chips share the desk's state family (ticket 12). */
-const STATE_CHIPS: Record<string, string | undefined> = {
+const STATE_CHIPS: Record<ConversationState, string | undefined> = {
   bot_active: styles.chipBot,
   awaiting_staff: styles.chipWaiting,
   claimed: styles.chipClaimed,

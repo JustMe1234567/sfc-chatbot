@@ -6,6 +6,7 @@ import { CREATE_RATE_LIMIT, validateVisitorContact } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
 import { recordChatStarted } from "@/domain/analytics";
 import type { Conversation } from "@/domain/types";
+import { withJsonErrors } from "@/api/serverError";
 
 const createLimiter = createSharedRateLimiter(CREATE_RATE_LIMIT, "conversation-create");
 
@@ -15,7 +16,7 @@ const createLimiter = createSharedRateLimiter(CREATE_RATE_LIMIT, "conversation-c
  * can never open one without them. A rejected submission creates nothing,
  * which is what makes the widget's retry safe.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const { store, db } = await getChatbotService();
   if (!(await createLimiter.check(publicClientKey(request)))) {
     return NextResponse.json(
@@ -67,3 +68,5 @@ export async function POST(request: Request) {
   await recordChatStarted(db, store, new Date(conversationCreatedAt));
   return NextResponse.json({ id: conversation.id, token, expiresAt }, { status: 201 });
 }
+
+export const POST = withJsonErrors(postHandler);

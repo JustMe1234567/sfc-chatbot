@@ -61,7 +61,7 @@ export default function DeskEntry({ item, selected }: { item: DeskItem; selected
           selected={selected}
           // Identifies the conversation by state + the row's own displayed
           // time — never by transcript text (ticket 51).
-          description={`${DESK_STATE_LABELS[item.state] ?? item.state} · ${new Date(item.lastActivityAt).toLocaleString("en-GB", {
+          description={`${DESK_STATE_LABELS[item.state]} · ${new Date(item.lastActivityAt).toLocaleString("en-GB", {
             weekday: "short",
             hour: "2-digit",
             minute: "2-digit",

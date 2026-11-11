@@ -4,6 +4,7 @@ import { createSharedRateLimiter } from "@/api/rateLimit";
 import { RETURN_RATE_LIMIT } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
 import { getChatbotService } from "@/db/service";
+import { withJsonErrors } from "@/api/serverError";
 
 const returnLimiter = createSharedRateLimiter(RETURN_RATE_LIMIT, "return");
 
@@ -14,7 +15,7 @@ const returnLimiter = createSharedRateLimiter(RETURN_RATE_LIMIT, "return");
  * nothing else. Unknown, used, or expired links all answer 410 — the link is
  * gone, not retryable.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   if (!(await returnLimiter.check(publicClientKey(request)))) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many attempts. Please try again shortly." } },
@@ -54,3 +55,5 @@ export async function POST(request: Request) {
   await store.touchVisitorPresence(conversationId);
   return NextResponse.json({ id: conversationId, token, expiresAt });
 }
+
+export const POST = withJsonErrors(postHandler);

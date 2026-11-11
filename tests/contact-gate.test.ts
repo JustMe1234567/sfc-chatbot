@@ -345,7 +345,7 @@ describe("staff see the name beside the state", () => {
     const response = await deskList(jar);
     expect(response.status).toBe(200);
     const desk = (await response.json()) as {
-      active: { id: string; state: string; visitorName: string | null }[];
+      active: { id: string; state: ConversationState; visitorName: string | null }[];
     };
     const namedRow = desk.active.find((item) => item.id === named.id);
     const legacyRow = desk.active.find((item) => item.id === legacy.id);

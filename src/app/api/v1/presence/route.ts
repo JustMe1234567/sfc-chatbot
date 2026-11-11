@@ -7,6 +7,7 @@ import { hashSessionToken } from "@/domain/tokens";
 import { getAnalyticsRetentionDays } from "@/settings";
 import { recordAnalyticsPresence } from "@/domain/analytics";
 import { BROWSER_ID_PATTERN } from "@/widget/presence";
+import { withJsonErrors } from "@/api/serverError";
 
 const presenceLimiter = createRateLimiter(PRESENCE_RATE_LIMIT);
 
@@ -19,7 +20,7 @@ const presenceLimiter = createRateLimiter(PRESENCE_RATE_LIMIT);
  * about the caller — no IP, header, or fingerprint — is ever persisted, and
  * only a SHA-256 of the id is stored.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const blocked = sameOriginGuard(request);
   if (blocked) {
     return blocked;
@@ -50,3 +51,5 @@ export async function POST(request: Request) {
   await recordAnalyticsPresence(db, store, visitorHash, new Date());
   return NextResponse.json({ retentionDays: await getAnalyticsRetentionDays(db) });
 }
+
+export const POST = withJsonErrors(postHandler);

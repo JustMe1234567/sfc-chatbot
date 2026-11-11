@@ -16,7 +16,8 @@ import { envMs } from "./limits";
 /** A browser is "live" while a beat arrived inside this window. */
 const LIVE_WINDOW_MS = 2 * 60 * 1000;
 
-export function analyticsLiveWindowMs(): number {
+/** Module-internal (ticket 34): only this file's summaries read it. */
+function analyticsLiveWindowMs(): number {
   // ANALYTICS_LIVE_WINDOW_MS lets tests shrink the window so liveness is
   // deterministic regardless of machine speed. Production keeps two minutes.
   return envMs("ANALYTICS_LIVE_WINDOW_MS", LIVE_WINDOW_MS);

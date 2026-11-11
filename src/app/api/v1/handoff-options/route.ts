@@ -3,6 +3,7 @@ import { getChatbotService } from "@/db/service";
 import { publicClientKey } from "@/api/visitor";
 import { getHandoffOptions } from "@/settings";
 import { createRateLimiter, TOPICS_RATE_LIMIT } from "@/domain/limits";
+import { withJsonErrors } from "@/api/serverError";
 
 const optionsLimiter = createRateLimiter(TOPICS_RATE_LIMIT);
 
@@ -15,7 +16,7 @@ const optionsLimiter = createRateLimiter(TOPICS_RATE_LIMIT);
  * deliberately distinct request from typed text, which keeps following
  * normal answer matching.
  */
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   if (!optionsLimiter.check(publicClientKey(request))) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many requests. Please try again shortly." } },
@@ -25,3 +26,5 @@ export async function GET(request: Request) {
   const { db } = await getChatbotService();
   return NextResponse.json({ options: await getHandoffOptions(db) });
 }
+
+export const GET = withJsonErrors(getHandler);

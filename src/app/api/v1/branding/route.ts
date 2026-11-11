@@ -4,6 +4,7 @@ import { createRateLimiter, TOPICS_RATE_LIMIT } from "@/domain/limits";
 import { chatheadForeground } from "@/domain/branding";
 import { getChatbotIconVersion, getChatheadConfig } from "@/settings";
 import { getChatbotService } from "@/db/service";
+import { withJsonErrors } from "@/api/serverError";
 
 const brandingLimiter = createRateLimiter(TOPICS_RATE_LIMIT);
 
@@ -16,7 +17,7 @@ const brandingLimiter = createRateLimiter(TOPICS_RATE_LIMIT);
  * values arrive as safe resolved defaults, so a failed fetch on the client
  * side changes nothing.
  */
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   if (!brandingLimiter.check(publicClientKey(request))) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many requests. Please try again shortly." } },
@@ -40,3 +41,5 @@ export async function GET(request: Request) {
     },
   });
 }
+
+export const GET = withJsonErrors(getHandler);

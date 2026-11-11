@@ -1,14 +1,16 @@
 import { normalizeText } from "./matcher";
 import type { AnswerRule } from "./types";
 
+// Only these two cross into the routes (ticket 34): the rest of the
+// length family stays module-private until a second consumer appears.
 export const MAX_TOPIC_LENGTH = 80;
 export const MAX_RESPONSE_LENGTH = 2000;
-export const MAX_PHRASES = 20;
-export const MAX_PHRASE_LENGTH = 200;
-export const MAX_KEYWORD_CONDITIONS = 10;
-export const MAX_KEYWORDS_PER_CONDITION = 10;
-export const MAX_KEYWORD_LENGTH = 60;
-export const MAX_LINK_LENGTH = 500;
+const MAX_PHRASES = 20;
+const MAX_PHRASE_LENGTH = 200;
+const MAX_KEYWORD_CONDITIONS = 10;
+const MAX_KEYWORDS_PER_CONDITION = 10;
+const MAX_KEYWORD_LENGTH = 60;
+const MAX_LINK_LENGTH = 500;
 
 /** Editor-maintained content of a rule, decoupled from storage fields. */
 export interface AnswerRuleContent {

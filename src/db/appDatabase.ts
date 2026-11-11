@@ -40,8 +40,9 @@ export function sqliteAppDatabase(db: DatabaseSync): AppDatabase {
   };
 }
 
-/** `?` placeholders become Postgres's positional `$1..$n`. */
-export function toPositionalParameters(query: string): string {
+/** `?` placeholders become Postgres's positional `$1..$n`. Module-internal
+ *  (ticket 34): only this file's adapters rewrite statements. */
+function toPositionalParameters(query: string): string {
   let index = 0;
   return query.replace(/\?/g, () => `$${++index}`);
 }

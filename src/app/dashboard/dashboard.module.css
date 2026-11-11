@@ -2173,7 +2173,7 @@ a:focus-visible {
   top: -64px;
   z-index: 2147483000;
   background: #fff;
-  color: #1d4e89;
+  color: var(--sfc-blue);
   font-weight: 600;
   padding: 10px 14px;
   border-radius: 10px;

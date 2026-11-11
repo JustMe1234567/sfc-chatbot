@@ -28,8 +28,11 @@ describe("the visitor's polling cadence (ticket 61)", () => {
   it("checks every second while open and the original three while closed", async () => {
     const frame = await read(FRAME);
     // One interval, two cadences, picked by the panel state the loader
-    // reports.
-    expect(frame).toContain("panelOpen ? 1000 : 3000");
+    // reports (the cadences are named constants since ticket 34, and the
+    // pin asserts their values so a quiet cadence change still fails here).
+    expect(frame).toContain("panelOpen ? OPEN_POLL_MS : CLOSED_POLL_MS");
+    expect(frame).toContain("const OPEN_POLL_MS = 1_000;");
+    expect(frame).toContain("const CLOSED_POLL_MS = 3_000;");
     // Ticket 59's closed tier must stay gone.
     expect(frame).not.toMatch(/30_000|30000/);
     expect(frame).not.toContain("historyPolling");

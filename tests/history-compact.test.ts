@@ -39,7 +39,7 @@ describe("history shows the same compact rows as the live desk (ticket 47)", () 
   it("keeps the compact row anatomy: state, time, clamped preview, one selection", async () => {
     const entry = await readFile(path.join(repoRoot(), ENTRY), "utf8");
     // State text and the latest-message preview with its role prefix.
-    expect(entry).toContain("{DESK_STATE_LABELS[item.state] ?? item.state}");
+    expect(entry).toContain("{DESK_STATE_LABELS[item.state]}");
     expect(entry).toContain("${roleLabel(item.lastMessage.role)}: ${item.lastMessage.text}");
     // The clamp is CSS, not JS slicing: the full text stays in the row for
     // assistive tech and never lands in a tooltip or accessible name.

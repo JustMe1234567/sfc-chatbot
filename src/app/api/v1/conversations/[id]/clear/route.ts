@@ -5,6 +5,7 @@ import { CLOSING_NOTICE } from "@/domain/conversations";
 import { recordChatStarted } from "@/domain/analytics";
 import { createSessionToken, hashSessionToken, sessionExpiryFrom } from "@/domain/tokens";
 import { getChatbotService } from "@/db/service";
+import { withJsonErrors } from "@/api/serverError";
 
 const clearLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
 
@@ -21,7 +22,7 @@ interface RouteContext {
  * ones. The visitor's view starts blank; staff keep the record in History
  * under the usual retention policy.
  */
-export async function POST(request: Request, context: RouteContext) {
+async function postHandler(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
@@ -57,3 +58,5 @@ export async function POST(request: Request, context: RouteContext) {
   }
   return NextResponse.json({ id: result.successorId, token, expiresAt });
 }
+
+export const POST = withJsonErrors(postHandler);

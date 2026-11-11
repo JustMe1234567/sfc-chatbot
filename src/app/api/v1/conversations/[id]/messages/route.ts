@@ -25,6 +25,7 @@ import {
 } from "@/domain/limits";
 import { createSharedRateLimiter } from "@/api/rateLimit";
 import type { ContactRequest, Conversation, Message, Store } from "@/domain/types";
+import { withJsonErrors } from "@/api/serverError";
 
 const messageLimiter = createSharedRateLimiter(MESSAGE_RATE_LIMIT, "message");
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
@@ -245,7 +246,7 @@ function contactRequiredResponse(): NextResponse {
   );
 }
 
-export async function GET(request: Request, context: RouteContext) {
+async function getHandler(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
@@ -271,7 +272,7 @@ export async function GET(request: Request, context: RouteContext) {
   });
 }
 
-export async function POST(request: Request, context: RouteContext) {
+async function postHandler(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const conversation = await visitorConversation(request, id);
   if (!conversation) {
@@ -534,3 +535,6 @@ export async function POST(request: Request, context: RouteContext) {
   await store.appendMessage(reply);
   return NextResponse.json({ conversation, reply });
 }
+
+export const GET = withJsonErrors(getHandler);
+export const POST = withJsonErrors(postHandler);

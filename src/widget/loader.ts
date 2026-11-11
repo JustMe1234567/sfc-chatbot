@@ -11,7 +11,7 @@
 const BOOT_MARKER = "sfc-chatbot-widget-v1";
 
 /* Motion values match the frame app and dashboard tokens (ticket 15): one
-   160ms ease-out for the panel. Under prefers-reduced-motion the panel
+   180ms ease-out for the panel. Under prefers-reduced-motion the panel
    lands immediately.
    The chathead's look (ticket 70, dimensions from ticket 71) rides CSS
    custom properties with the confirmed defaults inline — background

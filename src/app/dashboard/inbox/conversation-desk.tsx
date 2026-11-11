@@ -26,6 +26,7 @@ import ConversationList from "./conversation-list";
 import AttentionSounds from "./attention-sounds";
 import { ClearHistoryButton } from "./history-actions";
 import { TIER_CHIPS } from "./status-classes";
+import type { ConversationState } from "@/domain/types";
 import styles from "../dashboard.module.css";
 
 const ACTION_LABELS: Record<AuditView["action"], string> = {
@@ -48,7 +49,7 @@ const ACTION_LABELS: Record<AuditView["action"], string> = {
   staff_disabled: "disabled a staff account",
 };
 
-const STATE_CHIPS: Record<string, string | undefined> = {
+const STATE_CHIPS: Record<ConversationState, string | undefined> = {
   bot_active: styles.chipBot,
   awaiting_staff: styles.chipWaiting,
   claimed: styles.chipClaimed,
@@ -244,7 +245,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                       <span
                         className={`${styles.chip} ${STATE_CHIPS[selected.state] ?? styles.chipClosed}`}
                       >
-                        {DESK_STATE_LABELS[selected.state] ?? selected.state}
+                        {DESK_STATE_LABELS[selected.state]}
                       </span>
                     )}
                     <span>

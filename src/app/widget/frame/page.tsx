@@ -432,12 +432,17 @@ export default function WidgetFrame() {
 
   // An open chat checks every second (ticket 61). The closed frame keeps
   // its original three-second cadence, and opening a saved chat checks
-  // immediately.
+  // immediately. Named like the dashboard's AutoRefresh intervals (ticket 34).
+  const OPEN_POLL_MS = 1_000;
+  const CLOSED_POLL_MS = 3_000;
   useEffect(() => {
     if (panelOpen) {
       void refreshHistory();
     }
-    const timer = setInterval(() => void refreshHistory(), panelOpen ? 1000 : 3000);
+    const timer = setInterval(
+      () => void refreshHistory(),
+      panelOpen ? OPEN_POLL_MS : CLOSED_POLL_MS,
+    );
     return () => clearInterval(timer);
   }, [panelOpen, refreshHistory]);
 

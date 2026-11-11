@@ -9,6 +9,12 @@
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Brand colors share the dashboard's token names (ticket 34): the loader
+     keeps its own literal copy by documented self-containment, and the
+     demo embed page keeps its own because it emulates the college host
+     page, not the chatbot's brand system. */
+  --sfc-blue: #1d4e89;
+  --sfc-gold: #e3a739;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -63,7 +69,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #1d4e89;
+  background: var(--sfc-blue);
   color: #fff;
   padding: 10px 16px;
 }
@@ -260,12 +266,12 @@
 
 .topicButton:hover,
 .topicButton:active {
-  border-color: #e3a739;
+  border-color: var(--sfc-gold);
   color: #163c6b;
 }
 
 .topicButton:focus-visible {
-  outline: 2px solid #e3a739;
+  outline: 2px solid var(--sfc-gold);
   outline-offset: 2px;
 }
 
@@ -350,14 +356,14 @@
 }
 
 .contactInput:focus-visible {
-  outline: 2px solid #e3a739;
+  outline: 2px solid var(--sfc-gold);
 }
 
 .contactSubmit {
   margin-top: 8px;
   border: 0;
   border-radius: 8px;
-  background: #1d4e89;
+  background: var(--sfc-blue);
   color: #fff;
   font: 600 14px system-ui, sans-serif;
   padding: 8px 12px;
@@ -404,7 +410,7 @@
   display: inline-block;
   margin-top: 16px;
   border-radius: 8px;
-  background: #1d4e89;
+  background: var(--sfc-blue);
   color: #fff;
   font: 600 14px system-ui, sans-serif;
   padding: 10px 16px;
@@ -535,7 +541,7 @@
 .freshSuggest {
   max-width: 85%;
   background: #fff;
-  border: 1.5px solid #1d4e89;
+  border: 1.5px solid var(--sfc-blue);
   color: #1f2933;
   border-radius: 999px;
   font: 500 14px/1.4 system-ui, sans-serif;
@@ -551,7 +557,7 @@
 }
 
 .freshSuggest:focus-visible {
-  outline: 2px solid #e3a739;
+  outline: 2px solid var(--sfc-gold);
   outline-offset: 2px;
 }
 
@@ -569,12 +575,12 @@
 }
 
 .message a {
-  color: #1d4e89;
+  color: var(--sfc-blue);
 }
 
 .visitor {
   align-self: flex-end;
-  background: #1d4e89;
+  background: var(--sfc-blue);
   color: #fff;
   border-bottom-right-radius: 4px;
 }
@@ -613,13 +619,13 @@
 }
 
 .input:focus-visible {
-  outline: 2px solid #e3a739;
+  outline: 2px solid var(--sfc-gold);
 }
 
 .send {
   border: 0;
   border-radius: 8px;
-  background: #1d4e89;
+  background: var(--sfc-blue);
   color: #fff;
   font: 600 14px system-ui, sans-serif;
   padding: 0 16px;
@@ -668,7 +674,7 @@
 .menuItem:focus-visible,
 .confirmClear:focus-visible,
 .confirmKeep:focus-visible {
-  outline: 2px solid #e3a739;
+  outline: 2px solid var(--sfc-gold);
   outline-offset: 2px;
 }
 
