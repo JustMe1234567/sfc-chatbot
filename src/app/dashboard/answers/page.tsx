@@ -8,6 +8,11 @@ import { getEscalationPhrases, getHandoffOptions, getWelcomeMessage } from "@/se
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
 import AnswersWorkspace from "./answers-workspace";
 import styles from "../dashboard.module.css";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Answers" };
+
 
 /**
  * The answer library (tickets 55-58): the page shell — heading row with the
@@ -44,7 +49,7 @@ export default async function AnswersPage() {
         role={guard.staff.role}
       />
 
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.answersPage}>
           <div className={styles.answersHead}>
             <p className={styles.answersIntro}>

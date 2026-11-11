@@ -140,10 +140,11 @@ describe("WordPress embed smoke check", () => {
     const introSlice = frame.slice(introStart, frame.indexOf("</p>", introStart));
     expect(introSlice).not.toMatch(/role=|aria-live/);
     // The error region stays a live region (ticket 38's persistent status
-    // line); the email-capture box and its notes are gone with ticket 66.
+    // line), assertive since ticket 29 — a failed send is actionable now.
+    // The email-capture box and its notes are gone with ticket 66.
     const statusStart = frame.indexOf("className={styles.status}");
     const statusSlice = frame.slice(statusStart, frame.indexOf("</p>", statusStart));
-    expect(statusSlice).toMatch(/role="status"/);
+    expect(statusSlice).toMatch(/role="alert"/);
     expect(frame).not.toContain("emailNote");
   });
 

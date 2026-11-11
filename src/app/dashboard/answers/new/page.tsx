@@ -4,6 +4,11 @@ import { ANSWER_RULE_ROLES } from "@/auth/server";
 import DashboardHeader from "../../header";
 import RuleForm from "../rule-form";
 import styles from "../../dashboard.module.css";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "New rule" };
+
 
 export default async function NewAnswerPage() {
   const staffHeaders = await headers();
@@ -19,7 +24,7 @@ export default async function NewAnswerPage() {
   return (
     <main className={styles.shell}>
       <DashboardHeader area="answers" title="New answer" name={guard.staff.name} role={guard.staff.role} />
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <RuleForm mode="create" initial={{ topic: "", response: "", phrasesText: "", keywordsText: "", link: "" }} />
       </div>
     </main>

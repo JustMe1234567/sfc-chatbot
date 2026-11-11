@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import type { Metadata } from "next";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
@@ -25,6 +26,9 @@ import SupportHoursForm from "./support-hours-form";
 import RetentionForm from "./retention-form";
 import RetryButton from "./retry-button";
 import styles from "../dashboard.module.css";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Notifications" };
 
 export default async function NotificationsPage({
   searchParams,
@@ -64,7 +68,7 @@ export default async function NotificationsPage({
         role={guard.staff.role}
       />
 
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.alertsPage}>
           <section className={styles.alertsSection} aria-labelledby="delivery-settings-title">
             <div className={styles.sectionHeading}>

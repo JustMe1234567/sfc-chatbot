@@ -985,7 +985,8 @@ export default function WidgetFrame() {
           {message.text}
           {message.link && isHttpLink(message.link) && (
             <a href={message.link} target="_blank" rel="noopener noreferrer">
-              Visit the college page
+              Visit the college page{" "}
+              <span className={styles.srOnly}>(opens in a new tab)</span>
             </a>
           )}
           {index === messages.length - 1 && message.choices && !contactRequired ? (
@@ -1147,8 +1148,9 @@ export default function WidgetFrame() {
       )}
       {/* The live region stays mounted so announcements are reliable; an
           empty region is zero-height, so it costs the transcript nothing
-          while no error stands (ticket 38). */}
-      <p className={styles.status} role="status">
+          while no error stands (ticket 38). A failed send is actionable
+          now, not whenever (ticket 29), so it announces assertively. */}
+      <p className={styles.status} role="alert">
         {error}
       </p>
       {composerLocked ? (

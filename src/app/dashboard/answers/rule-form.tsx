@@ -169,7 +169,8 @@ export default function RuleForm({
             {response || "The approved response appears here."}
             {optionalLink(link) && link ? (
               <a href={link} target="_blank" rel="noopener noreferrer">
-                Visit the college page
+                Visit the college page{" "}
+                <span className={styles.srOnly}>(opens in a new tab)</span>
               </a>
             ) : null}
           </p>

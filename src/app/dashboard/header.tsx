@@ -342,6 +342,11 @@ export default function DashboardHeader({
 
   return (
     <>
+      {/* First focusable element on every dashboard route (ticket 29): one
+          Tab from the address bar jumps the rail straight to the content. */}
+      <a href="#sfc-content" className={styles.skipLink}>
+        Skip to content
+      </a>
       <aside className={styles.sidebar} data-collapsed={collapsed || undefined}>
         <SidebarChrome
           area={area}

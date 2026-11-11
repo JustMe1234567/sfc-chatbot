@@ -2165,6 +2165,25 @@ a:focus-visible {
   border: 0;
 }
 
+/* Off the page until a keyboard focus brings it up; no transition — the
+   affordance must appear the instant it is tabbed to (ticket 29). */
+.skipLink {
+  position: fixed;
+  left: 16px;
+  top: -64px;
+  z-index: 2147483000;
+  background: #fff;
+  color: #1d4e89;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.skipLink:focus {
+  top: 12px;
+}
+
 .replyArea {
   max-width: 52rem;
   margin: 0 auto 16px;

@@ -10,6 +10,11 @@ import RuleForm from "../rule-form";
 import { ruleToFormValues } from "../rule-values";
 import PublishControls from "../publish-controls";
 import styles from "../../dashboard.module.css";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Edit rule" };
+
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -51,7 +56,7 @@ export default async function EditAnswerPage({ params }: PageProps) {
     <main className={styles.shell}>
       <DashboardHeader area="answers" title={rule.topic} name={guard.staff.name} role={guard.staff.role} />
 
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.ruleCard}>
           <div className={styles.publishBar}>
             <PublishControls ruleId={rule.id} status={rule.status} />

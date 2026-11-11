@@ -6,6 +6,11 @@ import { getChatbotService } from "@/db/service";
 import InviteForm from "./invite-form";
 import DisableButton from "./disable-button";
 import styles from "../dashboard.module.css";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Staff" };
+
 
 /** The owner's staff roster (ticket 08): invite, review, disable. */
 export default async function StaffPage() {
@@ -26,7 +31,7 @@ export default async function StaffPage() {
     <main className={styles.shell}>
       <DashboardHeader area="staff" title="Staff" name={guard.staff.name} role={guard.staff.role} />
 
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.inbox}>
           <InviteForm />
         </div>

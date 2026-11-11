@@ -6,6 +6,11 @@ import { getAnalyticsRetentionDays, getReportingTimeZone } from "@/settings";
 import { getChatbotService } from "@/db/service";
 import AnalyticsView from "./analytics-view";
 import styles from "../dashboard.module.css";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Analytics" };
+
 
 /**
  * The staff analytics page (ticket 17): live visitors, period totals, and
@@ -40,7 +45,7 @@ export default async function AnalyticsPage() {
         name={guard.staff.name}
         role={guard.staff.role}
       />
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <AnalyticsView role={guard.staff.role} settings={settings} />
       </div>
     </main>

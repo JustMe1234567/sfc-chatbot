@@ -149,7 +149,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
         name={guard.staff.name}
         role={guard.staff.role}
       />
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.desk}>
           <ConversationList view={view}>
             <div className={styles.deskTabs}>

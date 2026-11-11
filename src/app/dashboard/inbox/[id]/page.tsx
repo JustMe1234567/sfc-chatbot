@@ -6,6 +6,11 @@ import { isConversationActive } from "@/domain/activity";
 import ConversationDesk from "../conversation-desk";
 import styles from "../../dashboard.module.css";
 import { getChatbotService } from "@/db/service";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Conversation" };
+
 
 interface PageProps {
   params: Promise<{ id: string }>;

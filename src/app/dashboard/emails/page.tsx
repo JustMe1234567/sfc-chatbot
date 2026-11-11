@@ -7,6 +7,11 @@ import { DESK_STATE_LABELS } from "@/domain/inbox";
 import { getChatbotService } from "@/db/service";
 import { EMAILS_PAGE_SIZE, emailsPageLinks, resolveEmailsPage } from "./pagination";
 import styles from "../dashboard.module.css";
+import type { Metadata } from "next";
+
+/** Route-specific document title (ticket 29). */
+export const metadata: Metadata = { title: "Email alerts" };
+
 
 /** Row chips share the desk's state family (ticket 12). */
 const STATE_CHIPS: Record<string, string | undefined> = {
@@ -57,7 +62,7 @@ export default async function VisitorEmailsPage({
         role={guard.staff.role}
       />
 
-      <div className={styles.contentArea}>
+      <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.alertsPage}>
           <section className={styles.alertsSection} aria-labelledby="emails-title">
             <div className={styles.sectionHeading}>
