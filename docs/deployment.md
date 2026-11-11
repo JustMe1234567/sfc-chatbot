@@ -54,6 +54,24 @@ Expected: `user`/`session`/`account`/`verification`/`twoFactor` carry staff
 identities; conversations, messages, visitor sessions, return tokens, rules,
 settings, notifications, audit, retention, and analytics all match the source.
 
+**Bootstrap the first owner.** Production seeds no accounts on first boot.
+With `DATABASE_URL` (or `POSTGRES_URL`) exported, run the bootstrap from a
+machine that can reach Supabase — it targets the store the running app
+would use, applying the tracked migrations first, so a fresh project works
+before any deploy:
+
+```
+npx tsx scripts/bootstrap-owner.ts --email owner@example.edu --password '…' --name 'College Owner'
+```
+
+Its output names the store it wrote (`Targeted store: Postgres database at
+…`, credentials never printed). Without `DATABASE_URL` the script
+provisions the local SQLite development file and says so in its output —
+that run never touches production. The owner signs in at
+`/dashboard/login`, enrolls an authenticator (TOTP) on first sign-in, and
+invites the remaining staff from the dashboard. An email that already
+exists fails the run without changing that account.
+
 **Rehearsal note:** run the whole flow suite against Postgres before cutover:
 
 ```
