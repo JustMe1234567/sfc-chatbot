@@ -29,12 +29,6 @@ The current app and demo use the text Example College and a generic navy treatme
 
 2026-10-26: Moved all three original PNGs from the project root to `public/brand/`; the application does not reference them yet.
 
-## Comments
-
-2026-10-26: Captured after inspecting the three image files added to the project root. No UI implementation requested in this turn.
-
-2026-10-26: Moved all three original PNGs from the project root to `public/brand/`; the application does not reference them yet.
-
 Implemented 2026-10-28 (ticket 16). The staff-dashboard share (header crest, branded sign-in and second-factor cards, the blue/gold token palette) landed with ticket 13; this change covers the visitor side and the placeholder sweep. Evidence: `references/shots-before/` (before-demo-launcher, before-widget-open) and `references/shots-after/` (after-demo-launcher, after-widget-open, after-widget-open-phone) — desktop and phone captures of the demo page with launcher, and the open widget.
 
 Asset-placement summary:

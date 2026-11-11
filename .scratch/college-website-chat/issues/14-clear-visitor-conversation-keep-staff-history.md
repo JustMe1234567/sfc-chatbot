@@ -22,10 +22,6 @@ Today the widget can drop an expired or closed visitor session, but it has no de
 
 2026-10-26: Captured from the user's request as a separate implementation ticket.
 
-## Comments
-
-2026-10-26: Captured from the user's request as a separate implementation ticket.
-
 Implemented 2026-10-28 (ticket 14). Tests in `tests/conversation-clear.test.ts` (8, all API-level) plus a headless-Chromium walkthrough of the real widget (evidence: `references/shots-after/after-widget-clear-{before,confirm,fresh}.png`). New public endpoint `POST /api/v1/conversations/[id]/clear` (visitor bearer, rate-limited) backed by one store transaction (`replaceConversation`): closes the old conversation unless already closed (staff closure's timestamp preserved, and the shared closing notice is appended), deletes its visitor sessions and unused return links, and gets-or-creates the single successor conversation, returning `{id, token, expiresAt}` in the create route's shape. Migration 0012 adds `conversations.replaced_by` — deliberately not a foreign key, so retention can purge a successor independently. The widget grows a quiet "Clear conversation" row under the composer: first click shows the inline confirmation ("Staff will keep a record of this chat on their side. You lose access to it here, and a fresh chat starts." with Clear chat / Keep chatting), and confirming swaps the stored session for the successor's, blanks the transcript (topic buttons return), and resets handoff/claim/email states. A generation counter in the frame strands every in-flight request from the old chat: polling responses and in-flight sends are discarded at every application point, including after the JSON parse, so a late response can neither repaint the fresh chat nor trigger the 409 carry-over into a second new conversation. Verified end to end in the browser: history rendered → confirm shown → clear → blank chat with swapped session → fresh question answered; server-side old row `closed`, `replaced_by` set, successor `bot_active`.
 
 Judgment calls:

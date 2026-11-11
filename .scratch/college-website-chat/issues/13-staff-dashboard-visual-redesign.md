@@ -34,12 +34,6 @@ The current inbox screenshot shows a heading split across two lines, navigation 
 
 2026-10-26: Added the supplied incoming-alert and conversation-workspace screenshots to `references/`. The user requested this layout without Groups or Direct Messages and explicitly prohibited saving IP addresses. Ticket 12 owns the notification behavior; this ticket owns its visual treatment.
 
-## Comments
-
-2026-10-26: Requested as a ticket. The supplied design-taste-frontend skill was copied into the project's `.agents/skills` directory and linked into `.zcode/skills` for implementation.
-
-2026-10-26: Added the supplied incoming-alert and conversation-workspace screenshots to `references/`. The user requested this layout without Groups or Direct Messages and explicitly prohibited saving IP addresses. Ticket 12 owns the notification behavior; this ticket owns its visual treatment.
-
 Implemented 2026-10-28 (ticket 13), on the user's explicit order while tickets 14/16 remain open; the dashboard's share of the brand application (ticket 16) lands here, and the visitor widget + demo embed keep their existing look until 16.
 
 Audit of the before state (screenshots in `references/shots-before/`, 18 captures at 1280/730/390 across inbox, conversation, answers, alerts, staff, and login): no design tokens — colors hardcoded per rule (#f3f5f9 page, #fff cards, #1d3a6b buttons), mixed radii (8/12/999); the header crammed title, underlined default links, identity text, and two sign-out buttons into one row that wrapped badly at the pictured 730px width ("Email alerts" broke over two lines, "Sign out" wrapped, identity wrapped to three); the desk's list column was visually indistinguishable from the workspace; red "New message" pills carried the only emphasis; the empty workspace was a blank canvas with one floating gray box; transcript bubbles had no speaker-side treatment; login/enroll were unbranded with the only heading doing identity work; no custom focus indicators; touch targets under 40px.

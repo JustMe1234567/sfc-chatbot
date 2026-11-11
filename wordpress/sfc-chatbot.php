@@ -25,6 +25,17 @@ function sfc_chatbot_widget_url(): string
     );
 }
 
+/**
+ * Cache-busting (ticket 32): the chatbot origin always serves the loader as
+ * /widget/v1.js — scripts/build-widget.ts overwrites that one file, and the
+ * URL is kept stable on purpose so embeds never break. The content inside
+ * v1.js may change freely within "v1", but browsers cache it by URL, so
+ * after shipping a loader change, bump the $ver argument in the
+ * wp_enqueue_script call below (for example from null to 'v1.1'): WordPress
+ * appends it to the URL as ?ver=v1.1, which is all that is needed for
+ * visitors' browsers to re-fetch. No renaming is required anywhere else.
+ */
+
 add_action('wp_enqueue_scripts', function (): void {
     wp_enqueue_script(
         'sfc-chatbot-widget-v1',

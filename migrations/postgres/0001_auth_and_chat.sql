@@ -1,6 +1,8 @@
 -- Postgres schema, part 1 of 3 (tickets 01-09): staff authentication and
--- the chat model. This mirrors migrations/0001-0009 on SQLite; the mapping
--- is documented in docs/deployment.md.
+-- the chat model. This mirrors migrations/0001-0007 on SQLite with the
+-- ticket-12 desk columns and the ticket-14 successor link folded into the
+-- conversations CREATE TABLE (see migrations/README.md for the full
+-- mapping, the skipped 0009, and the intentional dialect differences).
 --
 -- Timestamps in the application's own tables are ISO-8601 UTC text, exactly
 -- as the SQLite schema stores them: every comparison in the application is
