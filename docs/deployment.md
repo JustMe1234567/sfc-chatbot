@@ -11,7 +11,7 @@ in the repo or any client bundle:
 
 | Variable | Purpose | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | Supabase Postgres connection string | Use the **connection pooler** (port 6543, transaction mode) URL from the Supabase dashboard. Server-only; never `NEXT_PUBLIC_`. |
+| `DATABASE_URL` | Supabase Postgres connection string | Use the **connection pooler** (port 6543, transaction mode) URL from the Supabase dashboard. Server-only; never `NEXT_PUBLIC_`. Production refuses to start without it — there is no SQLite fallback on the server (set `CHATBOT_REQUIRE_DATABASE_URL=1` to enforce the same check outside `NODE_ENV=production`). |
 | `BETTER_AUTH_SECRET` | Signs sessions, encrypts TOTP secrets | Generate once (`openssl rand -base64 32`); **rotating it invalidates enrolled TOTP**, so set it before staff enroll and leave it fixed. |
 | `CHATBOT_BASE_URL` | Public origin, e.g. `https://chatbot.springfieldcollege.edu` | Drives trusted origins, email links, CSRF checks. |
 | `RESEND_API_KEY` + `MAIL_FROM` | Approved transactional email sender | Production refuses to start without them (alerts must never vanish into a local outbox). |

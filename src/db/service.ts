@@ -8,7 +8,7 @@ import { migratePostgres, openPostgres, type PostgresSql } from "./postgres";
 import { createAuth, type Auth } from "../auth/server";
 import { createMailTransportFromEnv } from "../mail/transport";
 import type { MailTransport } from "../mail/outbox";
-import { appBaseUrl, appDatabaseUrl, appDbPath } from "../config";
+import { appBaseUrl, appDatabaseUrl, appDbPath, assertConfiguredDatabaseUrl } from "../config";
 import type { Store } from "../domain/types";
 import type { DatabaseSync } from "node:sqlite";
 import { NodeSqliteDialect } from "@better-auth/kysely-adapter/node-sqlite-dialect";
@@ -88,6 +88,9 @@ async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
 export function getChatbotService(): Promise<ChatbotService> {
   if (!servicePromise) {
     servicePromise = (async () => {
+      // Production has no usable SQLite fallback (ticket 22): refuse the
+      // store selection before opening anything.
+      assertConfiguredDatabaseUrl();
       const url = activeDatabaseUrl();
       if (url) {
         const sql = openPostgres(url);

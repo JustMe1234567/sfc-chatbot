@@ -34,3 +34,27 @@ export function appDatabaseUrl(): string | null {
   const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
   return url && url.trim().length > 0 ? url.trim() : null;
 }
+
+/**
+ * Guards the store selection (ticket 22): without a configured URL the app
+ * silently falls back to the local SQLite file, which cannot work on
+ * Vercel's read-only filesystem. Production runs — or any deployment that
+ * sets CHATBOT_REQUIRE_DATABASE_URL=1 — must name DATABASE_URL, or startup
+ * fails with the fix instead of a confusing filesystem error.
+ */
+export function assertConfiguredDatabaseUrl(): void {
+  if (appDatabaseUrl()) {
+    return;
+  }
+  const forced = process.env.CHATBOT_REQUIRE_DATABASE_URL === "1";
+  if (process.env.NODE_ENV !== "production" && !forced) {
+    return;
+  }
+  throw new Error(
+    "No DATABASE_URL (or POSTGRES_URL) is configured for this production run" +
+      (forced ? " (CHATBOT_REQUIRE_DATABASE_URL=1)" : "") +
+      "; the app would fall back to the local SQLite file, which cannot work " +
+      "on the server's read-only filesystem. Set DATABASE_URL per " +
+      "docs/deployment.md.",
+  );
+}
