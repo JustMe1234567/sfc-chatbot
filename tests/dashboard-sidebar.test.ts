@@ -40,11 +40,11 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
 
   it("renders a hand-authored inline SVG icon per area, with no icon library", async () => {
     const header = await readHeader();
-    // One shared Mark wrapper renders the inline SVG; the six area entries
-    // (ticket 53 added the envelope) supply their own paths, plus the
-    // toggle chevron and menu marks.
+    // One shared Mark wrapper renders the inline SVG; the seven area
+    // entries (ticket 53 added the envelope, ticket 70 the gear) supply
+    // their own paths, plus the toggle chevron and menu marks.
     const marks = (header.match(/<Mark>/g) ?? []).length;
-    expect(marks).toBe(6);
+    expect(marks).toBe(7);
     expect(header).toMatch(/function Mark/);
     // Icons inherit color — no fills that ignore currentColor.
     expect(header).not.toMatch(/fill="#(?!none)/);

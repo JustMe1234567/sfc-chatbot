@@ -160,6 +160,10 @@ export default function WidgetFrame() {
   // visitor can actually use starts out empty and the published text has
   // settled. The timestamp rides along (ticket 46) so the pair stays atomic.
   const [welcome, setWelcome] = useState<{ text: string; at: string } | null>(null);
+  // The configured chatbot icon's URL (ticket 70); null keeps the bundled
+  // crest on every surface until a read succeeds.
+  const [chatbotIconUrl, setChatbotIconUrl] = useState<string | null>(null);
+  const chatbotIconSrc = chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png";
   const [menuOpen, setMenuOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const historyRequestRef = useRef<string | null>(null);
@@ -358,6 +362,36 @@ export default function WidgetFrame() {
       return DEFAULT_WELCOME_MESSAGE;
     }
   }
+
+  /** The configured chatbot icon (ticket 70): fetched once with the same
+      safe-fallback rules as the greeting — a failed read leaves the bundled
+      crest on the fresh header, the conversation header, and the greeting
+      avatar. The public branding read exposes only safe values, and the
+      fetched config is forwarded to the launcher: the loader makes no API
+      calls of its own (the security property the embed pins guard), so the
+      frame — which already talks to the chatbot origin — is the one reader. */
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/branding")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((config) => {
+        if (cancelled || typeof config !== "object" || config === null) {
+          return;
+        }
+        const iconUrl = (config as { chatbotIconUrl?: unknown }).chatbotIconUrl;
+        if (typeof iconUrl === "string" && iconUrl.startsWith("/") && iconUrl.length <= 200) {
+          setChatbotIconUrl(iconUrl);
+        }
+        // Public values only; the college page receives nothing else.
+        window.parent?.postMessage({ type: "sfcw:branding", config }, "*");
+      })
+      .catch(() => {
+        // Bundled crest stays.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** Shows the greeting with its captured-at local timestamp (ticket 46):
       the stamp is presentation-only and captured once per fresh cycle so
@@ -950,7 +984,7 @@ export default function WidgetFrame() {
           <span className={styles.botAvatar} aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/brand/cropped-SFC-Final-Logo-Single.png"
+              src={chatbotIconSrc}
               alt=""
               className={styles.botAvatarImg}
             />
@@ -1032,7 +1066,7 @@ export default function WidgetFrame() {
           <span className={styles.brandPlate} aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/brand/cropped-SFC-Final-Logo-Single.png"
+              src={chatbotIconSrc}
               alt=""
               className={styles.brandPlateImg}
             />
@@ -1043,7 +1077,7 @@ export default function WidgetFrame() {
         <header className={styles.header}>
           <span className={styles.brand}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" className={styles.crest} />
+            <img src={chatbotIconSrc} alt="" className={styles.crest} />
             <span className={styles.title}>Chat with us</span>
           </span>
           <span className={styles.headerActions}>

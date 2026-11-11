@@ -11,7 +11,7 @@ import {
 } from "./sidebar-preference";
 import styles from "./dashboard.module.css";
 
-export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "alerts" | "analytics";
+export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "alerts" | "analytics" | "settings";
 
 const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] = [
   { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] },
@@ -22,6 +22,9 @@ const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] 
   { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] },
   { area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] },
   { area: "alerts", href: "/dashboard/notifications", label: "Email alerts", roles: ["owner", "staff"] },
+  // Branding settings (ticket 70): every dashboard role may configure the
+  // chatbot icon, the dashboard favicon, and the chathead appearance.
+  { area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["owner", "staff", "editor"] },
 ];
 
 /**
@@ -101,6 +104,12 @@ const ICONS: Record<HeaderArea, ReactNode> = {
     <Mark>
       <path d="M6 9.5a6 6 0 0 1 12 0c0 6 1.8 6.5 1.8 8H4.2c0-1.5 1.8-2 1.8-8z" />
       <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+    </Mark>
+  ),
+  settings: (
+    <Mark>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 2.8v2.9M12 18.3v2.9M2.8 12h2.9M18.3 12h2.9M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" />
     </Mark>
   ),
 };

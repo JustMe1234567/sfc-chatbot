@@ -3036,3 +3036,75 @@ a:focus-visible {
   pointer-events: none;
   transition: opacity var(--motion-fast) var(--ease-out);
 }
+
+/* Branding settings (ticket 70): the three cards share one responsive grid;
+   the previews and bounded controls keep the house spacing and tokens. */
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  align-items: start;
+  max-width: 1080px;
+}
+
+.settingsPreview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+.settingsPreviewImg {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  padding: 4px;
+  border-radius: 8px;
+  background: #f3f5f9;
+  border: 1px solid var(--line);
+}
+
+.chatheadPreview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 25%);
+  flex: none;
+}
+
+.settingsRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.settingsRow label {
+  font-size: 13px;
+  color: #52606d;
+  min-width: 92px;
+}
+
+.settingsHex {
+  width: 96px;
+  font: 13px/1.4 system-ui, sans-serif;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.settingsRange {
+  flex: 1;
+  min-width: 140px;
+}
+
+.settingsActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}

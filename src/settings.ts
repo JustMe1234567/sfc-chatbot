@@ -1,4 +1,10 @@
 import type { AppDatabase } from "./db/appDatabase";
+import {
+  CHATHEAD_DEFAULTS,
+  isStoredBrandingImageDataUrl,
+  resolveChatheadConfig,
+  type ChatheadConfig,
+} from "./domain/branding";
 import { normalizeText } from "./domain/matcher";
 import type { SupportHours } from "./domain/types";
 import { DEFAULT_WELCOME_MESSAGE, isValidWelcomeMessage } from "./domain/welcome";
@@ -368,4 +374,106 @@ export async function getWelcomeMessage(db: AppDatabase): Promise<string> {
 
 export async function setWelcomeMessage(db: AppDatabase, text: string): Promise<void> {
   await setSetting(db, WELCOME_MESSAGE_KEY, text.trim());
+}
+
+// ---------------------------------------------------------------------------
+// Branding (ticket 70): the uploaded chatbot icon and dashboard favicon as
+// canonical data URLs, plus the chathead appearance config. Images live in
+// the settings table (portable across SQLite and Postgres) — never in the
+// deployed filesystem — and every read re-validates shape so a hand-edited
+// row falls back to the bundled asset instead of leaking junk to clients.
+
+const CHATBOT_ICON_KEY = "branding_chatbot_icon";
+const DASHBOARD_FAVICON_KEY = "branding_dashboard_favicon";
+const CHATHEAD_KEY = "branding_chathead";
+
+/** The stored value plus its last-write instant (the asset cache version).
+ * The alias is quoted: an unquoted camelCase alias lowercases on Postgres
+ * and the version would read back as undefined. */
+export async function getSettingRow(db: AppDatabase, key: string): Promise<SettingRow | null> {
+  return (
+    (await db.get<{ key: string; value: string; updatedAt: string }>(
+      'SELECT key, value, updated_at AS "updatedAt" FROM settings WHERE key = ?',
+      key,
+    )) ?? null
+  );
+}
+
+function storedImageIsValid(row: SettingRow | null): boolean {
+  return row !== null && isStoredBrandingImageDataUrl(row.value);
+}
+
+/**
+ * The stored image as its canonical data URL, or null when unset/invalid
+ * (callers fall back to the bundled asset).
+ */
+async function getBrandingImageDataUrl(db: AppDatabase, key: string): Promise<string | null> {
+  const row = await getSettingRow(db, key);
+  return storedImageIsValid(row) ? row.value : null;
+}
+
+async function setBrandingImageDataUrl(
+  db: AppDatabase,
+  key: string,
+  dataUrl: string | null,
+): Promise<void> {
+  if (dataUrl === null) {
+    await db.run("DELETE FROM settings WHERE key = ?", key);
+    return;
+  }
+  await setSetting(db, key, dataUrl);
+}
+
+export function getChatbotIconDataUrl(db: AppDatabase): Promise<string | null> {
+  return getBrandingImageDataUrl(db, CHATBOT_ICON_KEY);
+}
+
+export function setChatbotIconDataUrl(db: AppDatabase, dataUrl: string | null): Promise<void> {
+  return setBrandingImageDataUrl(db, CHATBOT_ICON_KEY, dataUrl);
+}
+
+export function getDashboardFaviconDataUrl(db: AppDatabase): Promise<string | null> {
+  return getBrandingImageDataUrl(db, DASHBOARD_FAVICON_KEY);
+}
+
+export function setDashboardFaviconDataUrl(db: AppDatabase, dataUrl: string | null): Promise<void> {
+  return setBrandingImageDataUrl(db, DASHBOARD_FAVICON_KEY, dataUrl);
+}
+
+export function getChatheadConfig(db: AppDatabase): Promise<ChatheadConfig> {
+  return getSetting(db, CHATHEAD_KEY).then((raw) => {
+    if (!raw) {
+      return { ...CHATHEAD_DEFAULTS };
+    }
+    try {
+      return resolveChatheadConfig(JSON.parse(raw) as unknown);
+    } catch {
+      return { ...CHATHEAD_DEFAULTS };
+    }
+  });
+}
+
+/** null clears the key: reset means the defaults again, not a stale value. */
+export async function setChatheadConfig(
+  db: AppDatabase,
+  config: ChatheadConfig | null,
+): Promise<void> {
+  if (config === null) {
+    await db.run("DELETE FROM settings WHERE key = ?", CHATHEAD_KEY);
+    return;
+  }
+  await setSetting(db, CHATHEAD_KEY, JSON.stringify(config));
+}
+
+/** The asset cache version: the row's last write, or "default" while the
+ * bundled asset is in force. Callers append it as a query param so a fresh
+ * save reaches newly loaded pages immediately. */
+export async function getChatbotIconVersion(db: AppDatabase): Promise<string> {
+  const row = await getSettingRow(db, CHATBOT_ICON_KEY);
+  return storedImageIsValid(row) && row ? row.updatedAt : "default";
+}
+
+export async function getDashboardFaviconVersion(db: AppDatabase): Promise<string> {
+  const row = await getSettingRow(db, DASHBOARD_FAVICON_KEY);
+  return storedImageIsValid(row) && row ? row.updatedAt : "default";
 }

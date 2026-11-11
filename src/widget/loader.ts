@@ -12,27 +12,31 @@ const BOOT_MARKER = "sfc-chatbot-widget-v1";
 
 /* Motion values match the frame app and dashboard tokens (ticket 15): one
    160ms ease-out for the panel. Under prefers-reduced-motion the panel
-   lands immediately. */
+   lands immediately.
+   The chathead's look (ticket 70) rides CSS custom properties with the
+   confirmed defaults inline — background #013c78, 48px icon, 4px padding,
+   56px outer — so a failed branding fetch leaves exactly those. The
+   foreground and the focus ring share the automatically chosen color; the
+   hover lifts brightness, which reads on any background without needing a
+   second configurable color. */
 const STYLES = `
-.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:56px;height:56px;border:0;border-radius:14px;background:#fff;color:#1d4e89;padding:8px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;justify-content:center}
-.sfcw-launcher:hover{background:#f5f7fa}
+.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:var(--sfcw-outer,56px);height:var(--sfcw-outer,56px);border:0;border-radius:14px;background:var(--sfcw-bg,#013c78);color:var(--sfcw-fg,#fff);padding:var(--sfcw-pad,4px);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;justify-content:center}
+.sfcw-launcher:hover{filter:brightness(1.15)}
 .sfcw-launcher:active{transform:translateY(1px)}
-.sfcw-launcher:focus-visible{outline:2px solid #e3a739;outline-offset:2px}
+.sfcw-launcher:focus-visible{outline:2px solid var(--sfcw-fg,#fff);outline-offset:2px}
 /* The display above would override the hidden attribute's UA style. */
 .sfcw-launcher[hidden]{display:none}
-/* The launcher's white surface is the plate that keeps the blue crest legible
-   on arbitrary host-page backgrounds (ticket 40). */
-.sfcw-launcher img{width:40px;height:40px;display:block;object-fit:contain}
+.sfcw-launcher img{width:var(--sfcw-icon,48px);height:var(--sfcw-icon,48px);display:block;object-fit:contain}
 .sfcw-launcher-close{width:28px;height:28px;display:none;align-items:center;justify-content:center;font:400 28px/1 system-ui,sans-serif}
 .sfcw-launcher[aria-expanded="true"] img{display:none}
 .sfcw-launcher[data-closing="true"] img{display:none}
 .sfcw-launcher[aria-expanded="true"] .sfcw-launcher-close{display:flex}
 .sfcw-launcher[data-closing="true"] .sfcw-launcher-close{display:flex}
-.sfcw-frame{position:fixed;right:16px;bottom:76px;z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px));opacity:0;transform:translateY(10px) scale(.98);transition:opacity 180ms cubic-bezier(.2,.8,.2,1),transform 180ms cubic-bezier(.2,.8,.2,1)}
+.sfcw-frame{position:fixed;right:16px;bottom:calc(16px + var(--sfcw-outer,56px) + 4px);z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px));opacity:0;transform:translateY(10px) scale(.98);transition:opacity 180ms cubic-bezier(.2,.8,.2,1),transform 180ms cubic-bezier(.2,.8,.2,1)}
 .sfcw-frame.sfcw-frame-in{opacity:1;transform:none}
 .sfcw-frame[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.sfcw-frame{transition-duration:0ms}.sfcw-launcher:active{transform:none}}
-@media (max-width:480px){.sfcw-frame{right:8px;left:8px;bottom:72px;width:calc(100vw - 16px);height:calc(100vh - 88px)}}
+@media (max-width:480px){.sfcw-frame{right:8px;left:8px;bottom:calc(8px + var(--sfcw-outer,56px) + 8px);width:calc(100vw - 16px);height:calc(100vh - 88px)}}
 `;
 
 function boot(): void {
@@ -165,10 +169,52 @@ function boot(): void {
     if (event.origin !== base || event.source !== frame.contentWindow) {
       return;
     }
-    if ((event.data as { type?: string } | null)?.type === "sfcw:ready") {
+    const type = (event.data as { type?: string } | null)?.type;
+    if (type === "sfcw:ready") {
       sendOpenState();
-    } else if ((event.data as { type?: string } | null)?.type === "sfcw:close") {
+    } else if (type === "sfcw:close") {
       close();
+    } else if (type === "sfcw:branding") {
+      // The configured branding (ticket 70) arrives from the frame — the
+      // loader itself makes no API calls (the security property the embed
+      // pins guard), so the widget surface that already talks to the
+      // chatbot origin forwards the public values here. A missing or junk
+      // message leaves the bundled defaults already painted.
+      const payload = (event.data as { config?: unknown } | null)?.config;
+      if (typeof payload !== "object" || payload === null) {
+        return;
+      }
+      const { chatbotIconUrl, chathead } = payload as {
+        chatbotIconUrl?: unknown;
+        chathead?: Record<string, unknown> | null;
+      };
+      if (
+        typeof chatbotIconUrl === "string" &&
+        chatbotIconUrl.startsWith("/") &&
+        chatbotIconUrl.length <= 200
+      ) {
+        crest.src = new URL(chatbotIconUrl, base).href;
+      }
+      if (typeof chathead !== "object" || chathead === null) {
+        return;
+      }
+      const { backgroundColor, foreground, iconSize, padding, outerSize } = chathead;
+      if (typeof backgroundColor === "string" && backgroundColor.length <= 9) {
+        launcher.style.setProperty("--sfcw-bg", backgroundColor);
+      }
+      if (typeof foreground === "string" && foreground.length <= 9) {
+        launcher.style.setProperty("--sfcw-fg", foreground);
+      }
+      if (typeof iconSize === "number" && iconSize > 0 && iconSize <= 128) {
+        launcher.style.setProperty("--sfcw-icon", `${iconSize}px`);
+      }
+      if (typeof padding === "number" && padding >= 0 && padding <= 32) {
+        launcher.style.setProperty("--sfcw-pad", `${padding}px`);
+      }
+      if (typeof outerSize === "number" && outerSize >= 24 && outerSize <= 192) {
+        launcher.style.setProperty("--sfcw-outer", `${outerSize}px`);
+        frame.style.setProperty("--sfcw-outer", `${outerSize}px`);
+      }
     }
   });
 }
