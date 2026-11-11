@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ask, startConversation, testPostgresUrl, TEST_ORIGIN,
   warmChatbotService,
   countQuery,
+  confirmHandoffYes,
 } from "./helpers";
 import {
   authRequest,
@@ -60,6 +61,7 @@ describe("escalation alert failure and retry", () => {
   it("records a failed delivery with its reason when the sender fails", async () => {
     const conversation = await startConversation();
     await ask(conversation, "Can I speak to a human about my invoice?");
+    await confirmHandoffYes(conversation);
 
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
@@ -125,6 +127,7 @@ describe("escalation alert failure and retry", () => {
     // once), producing a sent notification whose retry must be refused.
     const conversation = await startConversation();
     await ask(conversation, "Can I speak to a human about evening classes for adults?");
+    await confirmHandoffYes(conversation);
 
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);

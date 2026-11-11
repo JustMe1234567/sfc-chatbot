@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ask, startConversation, testPostgresUrl, TEST_ORIGIN,
   warmChatbotService,
   countQuery,
+  confirmHandoffYes,
 } from "./helpers";
 import {
   authRequest,
@@ -51,6 +52,7 @@ describe("escalations before recipients are configured", () => {
     // No recipients yet: the escalation must still leave a visible record.
     const conversation = await startConversation();
     await ask(conversation, "Can I speak to a human about visiting campus this weekend?");
+    await confirmHandoffYes(conversation);
 
     const jar = new CookieJar();
     await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
@@ -132,6 +134,7 @@ describe("one escalation alert per conversation", () => {
 
     const conversation = await startConversation();
     const response = await ask(conversation, "Can I speak to a human about my application form?");
+    await confirmHandoffYes(conversation);
     expect(response.status).toBe(200);
 
     const notifications = await listNotifications(jar);
@@ -165,6 +168,7 @@ describe("one escalation alert per conversation", () => {
 
     const conversation = await startConversation();
     await ask(conversation, "Can I speak to a human about parking validation?");
+    await confirmHandoffYes(conversation);
     // Ticket 43: input is locked while staff help is requested but unclaimed
     // — further messages are rejected, so nothing can re-trigger the alert.
     const second = await ask(conversation, "Also, what are your opening hours?");

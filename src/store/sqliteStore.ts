@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
+  ContactRequest,
   RetentionRun,
   ReturnToken,
   Store,
@@ -24,6 +25,29 @@ type SessionRow = {
   created_at: string;
   expires_at: string;
 };
+
+/** The contact_requests columns read back by the request queries (ticket 69). */
+type ContactRequestRow = {
+  id: string;
+  conversation_id: string;
+  medium: ContactRequest["medium"];
+  status: ContactRequest["status"];
+  created_at: string;
+  completed_at: string | null;
+  completed_by: string | null;
+};
+
+function rowToContactRequest(row: ContactRequestRow): ContactRequest {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    medium: row.medium,
+    status: row.status,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    completedBy: row.completed_by,
+  };
+}
 
 export function createSqliteStore(db: DatabaseSync): Store {
   return {
@@ -59,27 +83,115 @@ export function createSqliteStore(db: DatabaseSync): Store {
       ).run(contact.name, contact.email, contact.phone, id);
     },
 
-    // The Visitor emails list (ticket 53): derived live from the email
-    // column, so a conversation purged by any deletion path drops out with
-    // no extra bookkeeping. Newest activity first; the id tie-break keeps
-    // page boundaries stable when two conversations share an instant (the
+    // The Visitor contacts list (ticket 69): conversations with at least
+    // one contact request, derived live from the requests table, so a
+    // conversation purged by any deletion path drops out with no extra
+    // bookkeeping. Newest activity first; the id tie-break keeps page
+    // boundaries stable when two conversations share an instant (the
     // Postgres store uses the same tie-break — conversations carry no seq).
-    async listConversationsWithEmail(page, pageSize) {
+    // Each row carries the latest requested medium (latest created_at, the
+    // request id breaking same-instant ties).
+    async listConversationsWithContactRequest(page, pageSize) {
       const rows = db
         .prepare(
           `SELECT ${CONVERSATION_COLUMNS} FROM conversations
-           WHERE visitor_email IS NOT NULL
+           WHERE id IN (SELECT conversation_id FROM contact_requests)
            ORDER BY last_activity_at DESC, id DESC LIMIT ? OFFSET ?`,
         )
         .all(pageSize, (page - 1) * pageSize) as unknown as ConversationRow[];
-      return rows.map(rowToConversation);
+      const latestMedium = db.prepare(
+        `SELECT medium FROM contact_requests WHERE conversation_id = ?
+         ORDER BY created_at DESC, id DESC LIMIT 1`,
+      );
+      return rows.map((row) => {
+        const conversation = rowToConversation(row);
+        const latest = latestMedium.get(conversation.id) as
+          | { medium: ContactRequest["medium"] }
+          | undefined;
+        return { conversation, medium: latest!.medium };
+      });
     },
 
-    async countConversationsWithEmail() {
+    async countConversationsWithContactRequest() {
       const row = db
-        .prepare("SELECT COUNT(*) AS n FROM conversations WHERE visitor_email IS NOT NULL")
+        .prepare(
+          "SELECT COUNT(DISTINCT conversation_id) AS n FROM contact_requests",
+        )
         .get() as { n: number | bigint };
       return Number(row.n);
+    },
+
+    // The one-open-request guarantee (ticket 69) is the guarded INSERT:
+    // the row only lands when the conversation has no open request, and the
+    // partial unique index backs the same rule at the database level.
+    async createContactRequest(request) {
+      const inserted = db
+        .prepare(
+          `INSERT INTO contact_requests (id, conversation_id, medium, status, created_at, completed_at, completed_by)
+           SELECT ?, ?, ?, 'open', ?, NULL, NULL
+           WHERE NOT EXISTS (
+             SELECT 1 FROM contact_requests WHERE conversation_id = ? AND status = 'open'
+           )`,
+        )
+        .run(
+          request.id,
+          request.conversationId,
+          request.medium,
+          request.createdAt,
+          request.conversationId,
+        );
+      return inserted.changes === 1;
+    },
+
+    async getOpenContactRequest(conversationId) {
+      const row = db
+        .prepare(
+          "SELECT id, conversation_id, medium, status, created_at, completed_at, completed_by FROM contact_requests WHERE conversation_id = ? AND status = 'open'",
+        )
+        .get(conversationId) as ContactRequestRow | undefined;
+      return row ? rowToContactRequest(row) : null;
+    },
+
+    async listContactRequests(conversationId) {
+      const rows = db
+        .prepare(
+          "SELECT id, conversation_id, medium, status, created_at, completed_at, completed_by FROM contact_requests WHERE conversation_id = ? ORDER BY created_at ASC, id ASC",
+        )
+        .all(conversationId) as unknown as ContactRequestRow[];
+      return rows.map(rowToContactRequest);
+    },
+
+    async listOpenContactRequests() {
+      const rows = db
+        .prepare(
+          "SELECT id, conversation_id, medium, status, created_at, completed_at, completed_by FROM contact_requests WHERE status = 'open' ORDER BY created_at ASC, id ASC",
+        )
+        .all() as unknown as ContactRequestRow[];
+      return rows.map(rowToContactRequest);
+    },
+
+    // Completing is guarded: the open request is identified first and the
+    // UPDATE repeats the open check, so a completed or absent request
+    // returns null unchanged.
+    async completeOpenContactRequest(conversationId, completedBy, at) {
+      const open = db
+        .prepare(
+          "SELECT id FROM contact_requests WHERE conversation_id = ? AND status = 'open'",
+        )
+        .get(conversationId) as { id: string } | undefined;
+      if (!open) {
+        return null;
+      }
+      db.prepare(
+        `UPDATE contact_requests SET status = 'completed', completed_at = ?, completed_by = ?
+         WHERE id = ? AND status = 'open'`,
+      ).run(at, completedBy, open.id);
+      const row = db
+        .prepare(
+          "SELECT id, conversation_id, medium, status, created_at, completed_at, completed_by FROM contact_requests WHERE id = ?",
+        )
+        .get(open.id) as ContactRequestRow | undefined;
+      return row ? rowToContactRequest(row) : null;
     },
 
     async touchVisitorPresence(id) {
@@ -300,6 +412,7 @@ export function createSqliteStore(db: DatabaseSync): Store {
         }
         db.prepare("UPDATE audit_log SET conversation_id = NULL WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM notifications WHERE conversation_id = ?").run(id);
+        db.prepare("DELETE FROM contact_requests WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM return_tokens WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM visitor_sessions WHERE conversation_id = ?").run(id);
         db.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);

@@ -56,6 +56,14 @@ export async function POST(request: Request, context: RouteContext) {
   }
   // Taking the conversation is handling it: the attention alert clears.
   await service.store.clearConversationAttention(id);
+  // A successful Take over completes the conversation's open contact
+  // request (ticket 69): the Chat ask that put the conversation in this
+  // waiting state is done. The guarded update is a no-op when none is open.
+  await service.store.completeOpenContactRequest(
+    id,
+    loaded.staff.userId,
+    new Date().toISOString(),
+  );
   await audit(service.store, loaded.staff.userId, "conversation_claimed", { conversationId: id });
   return NextResponse.json({ conversation: claimed });
 }

@@ -20,7 +20,7 @@ import { listStaffMembers } from "@/api/staffMembers";
 import { getChatbotService } from "@/db/service";
 import DashboardHeader from "../header";
 import AutoRefresh from "../conversations/[id]/auto-refresh";
-import { ClaimButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
+import { ClaimButton, MarkContactedButton, ReleaseAndTransfer, ReplyAndClose } from "../conversations/[id]/conversation-actions";
 import DeskEntry from "./desk-entry";
 import ConversationList from "./conversation-list";
 import AttentionSounds from "./attention-sounds";
@@ -113,11 +113,23 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
         (event) => event.conversationId !== selectedId,
       )
     : [];
+  // The selected conversation's open email/phone request (ticket 69): the
+  // pane shows the persistent Contact Me chip and the Mark contacted action
+  // until staff complete it. Viewing the transcript never clears it.
+  const selectedOpenRequest = selected ? await store.getOpenContactRequest(selected.id) : null;
+  const selectedContactBadge =
+    selectedOpenRequest && selectedOpenRequest.medium !== "chat"
+      ? { id: selectedOpenRequest.id, medium: selectedOpenRequest.medium as "email" | "phone" }
+      : null;
   // The selected header chip shares the rows' tier mapping while the
   // conversation is live; closed and quiet conversations keep their state chip.
   const selectedTier =
     selected && selectedActive
-      ? deskStatus({ state: selected.state, attention: selected.attentionAt !== null })
+      ? deskStatus({
+          state: selected.state,
+          attention: selected.attentionAt !== null,
+          contactRequest: selectedContactBadge,
+        })
       : null;
   // The tab's gold count is the attention tier alone (ticket 44): escalated
   // conversations are counted by Incoming's needs-human pill instead, so
@@ -249,6 +261,13 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                         ? "Quiet since " + new Date(selected.lastActivityAt).toLocaleString("en-GB")
                         : null}
                     </span>
+                    {/* The persistent Contact Me (ticket 69): the open
+                        email/phone request, with the medium it asked for. */}
+                    {selectedContactBadge ? (
+                      <span className={`${styles.chip} ${TIER_CHIPS.contact}`}>
+                        Contact Me · {selectedContactBadge.medium}
+                      </span>
+                    ) : null}
                   </span>
                   {/* The visitor's contact email (ticket 66): header meta on
                       its own line, never a transcript row. */}
@@ -276,6 +295,9 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                   </p>
                   {selected.state === "awaiting_staff" && selectedActive && (
                     <ClaimButton conversationId={selected.id} />
+                  )}
+                  {selectedContactBadge && selectedActive && (
+                    <MarkContactedButton conversationId={selected.id} />
                   )}
                   {mayReassign && selectedActive && (
                     <ReleaseAndTransfer conversationId={selected.id} targets={transferTargets} />

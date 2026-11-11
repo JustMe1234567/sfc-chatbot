@@ -5,6 +5,7 @@ import {
   ask,
   askRaw,
   countQuery,
+  confirmHandoffYes,
   loadHistory,
   startConversation,
   startConversationRaw,
@@ -454,6 +455,7 @@ describe("contact details leave with the conversation", () => {
     // An escalation exercises every write the chat makes outside its own
     // row: analytics rollups, the staff alert, and the attention signal.
     await ask(conversation, "Nothing covers this; I need to speak to a human.");
+    await confirmHandoffYes(conversation);
 
     const { db } = await service();
     const outside = JSON.stringify([

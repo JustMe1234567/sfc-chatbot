@@ -11,11 +11,15 @@ import styles from "../dashboard.module.css";
 export const STATUS_DOTS: Record<DeskStatus, string> = {
   needs_human: styles.dotNeedsHuman!,
   attention: styles.dotAttention!,
+  // Contact Me shares the red family (ticket 69): a persistent staff task
+  // wears the same danger treatment as a transient new message.
+  contact: styles.dotAttention!,
   active: styles.dotActive!,
 };
 
 export const TIER_CHIPS: Record<DeskStatus, string> = {
   needs_human: styles.chipNeedsHuman!,
   attention: styles.chipAttention!,
+  contact: styles.chipAttention!,
   active: styles.chipActive!,
 };

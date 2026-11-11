@@ -70,14 +70,35 @@ function alertBody(conversationId: string, receivedAt: string): string {
   ].join("\n");
 }
 
+function contactRequestBody(conversationId: string, receivedAt: string): string {
+  const inboxLink = `${appBaseUrl()}/dashboard/conversations/${conversationId}`;
+  return [
+    "A visitor in the college website chat asked to be contacted (email or phone).",
+    "",
+    `Open the conversation: ${inboxLink}`,
+    "",
+    `Received: ${receivedAt}`,
+    "",
+    "This alert is sent once per conversation; the desk keeps a persistent",
+    "Contact Me status until staff mark the request contacted.",
+    "You are receiving this because you are on the chat staff alert list.",
+  ].join("\n");
+}
+
 /** Why a legacy visitor-return row is never delivered again (ticket 66). */
 const VISITOR_RETURN_RETIRED = "Visitor return links are no longer sent.";
 
-/** Subject and body for the staff escalation alert. */
+/** Subject and body for the staff alert rows. */
 function composeMail(record: NotificationRecord): {
   subject: string;
   body: string;
 } {
+  if (record.type === "contact_request") {
+    return {
+      subject: "Visitor contact request needs staff (college chat)",
+      body: contactRequestBody(record.conversation_id, record.created_at),
+    };
+  }
   return {
     subject: "Visitor question needs staff (college chat)",
     body: alertBody(record.conversation_id, record.created_at),
@@ -103,6 +124,47 @@ export async function recordEscalationAlert(
   const inserted = await db.get<{ id: string }>(
     `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
      VALUES (?, 'escalation_alert', ?, ?, 'pending', 0, ?)
+     ON CONFLICT(type, conversation_id) DO NOTHING
+     RETURNING id`,
+    id,
+    conversationId,
+    JSON.stringify(recipients),
+    createdAt,
+  );
+  if (!inserted) {
+    // An alert for this conversation already exists; never send twice.
+    return null;
+  }
+  if (recipients.length === 0) {
+    await db.run(
+      "UPDATE notifications SET last_error = 'No alert recipients configured yet.' WHERE id = ?",
+      inserted.id,
+    );
+    const row = (await fetchNotification(db, inserted.id)) as NotificationRecord;
+    return rowToNotification(row);
+  }
+  return deliverNotification(db, mail, inserted.id);
+}
+
+/**
+ * The staff email alert for a contact request (ticket 69): same machinery
+ * and dedup as the escalation alert, under its own "contact_request" type —
+ * one alert per conversation (the unique index makes duplicate calls
+ * no-ops), so a conversation's later requests never re-spam the inbox;
+ * the desk's persistent Contact Me status is the standing signal. Requests
+ * that happen before recipients are configured still get a pending row.
+ */
+export async function recordContactRequestAlert(
+  db: AppDatabase,
+  mail: MailTransport,
+  conversationId: string,
+): Promise<NotificationRow | null> {
+  const recipients = await getAlertRecipients(db);
+  const createdAt = new Date().toISOString();
+  const id = crypto.randomUUID();
+  const inserted = await db.get<{ id: string }>(
+    `INSERT INTO notifications (id, type, conversation_id, recipients, status, attempts, created_at)
+     VALUES (?, 'contact_request', ?, ?, 'pending', 0, ?)
      ON CONFLICT(type, conversation_id) DO NOTHING
      RETURNING id`,
     id,

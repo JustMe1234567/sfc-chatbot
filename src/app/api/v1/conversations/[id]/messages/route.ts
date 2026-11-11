@@ -2,7 +2,16 @@ import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { visitorAuthFailure, visitorConversation } from "@/api/visitor";
 import { matchAnswerRules, matchesEscalationPhrase, normalizeText } from "@/domain/matcher";
-import { handoffOptionReply } from "@/domain/handoffOptions";
+import {
+  CONTACT_EMAIL_CHOICE,
+  CONTACT_MEDIUM_PROMPT_TEXT,
+  CONTACT_PHONE_CHOICE,
+  HANDOFF_NO_CHOICE,
+  HANDOFF_PROMPT_TEXT,
+  HANDOFF_YES_CHOICE,
+  contactRequestConfirmation,
+  contactRequestOpenReply,
+} from "@/domain/contactRequests";
 import { getEscalationPhrases, getHandoffOptions, getSupportHours } from "@/settings";
 import { handoffReply } from "@/domain/hours";
 import { recordEscalation } from "@/domain/analytics";
@@ -15,7 +24,7 @@ import {
   validateVisitorText,
 } from "@/domain/limits";
 import { createSharedRateLimiter } from "@/api/rateLimit";
-import type { Conversation, Message, Store, SupportHours } from "@/domain/types";
+import type { ContactRequest, Conversation, Message, Store } from "@/domain/types";
 
 const messageLimiter = createSharedRateLimiter(MESSAGE_RATE_LIMIT, "message");
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
@@ -23,6 +32,14 @@ const REQUEST_HUMAN_CHOICE_ID = "request-human";
 const REQUEST_HUMAN_CHOICE = {
   id: REQUEST_HUMAN_CHOICE_ID,
   topic: "Chat with a human",
+};
+
+/** The persisted confirmation's two actions (ticket 69), keyed by choice id. */
+const CONTACT_ACTION_CHOICES: Record<string, string> = {
+  [HANDOFF_YES_CHOICE.id]: HANDOFF_YES_CHOICE.topic,
+  [HANDOFF_NO_CHOICE.id]: HANDOFF_NO_CHOICE.topic,
+  [CONTACT_EMAIL_CHOICE.id]: CONTACT_EMAIL_CHOICE.topic,
+  [CONTACT_PHONE_CHOICE.id]: CONTACT_PHONE_CHOICE.topic,
 };
 
 function newMessage(
@@ -44,10 +61,6 @@ function newMessage(
 async function escalateConversation(
   target: Conversation,
   service: Awaited<ReturnType<typeof getChatbotService>>,
-  // The deliberate click of a configured option (ticket 67) acknowledges
-  // the chosen topic; the request-human choice keeps the "can't answer"
-  // handoff wording that fits an offer the visitor accepted.
-  replyFromHours: (hours: SupportHours | null) => string = handoffReply,
 ): Promise<Response> {
   const { store, db, mail } = service;
   const escalated: Conversation = { ...target, state: "awaiting_staff" };
@@ -56,7 +69,7 @@ async function escalateConversation(
   // report counts (ticket 17); releases from a claim never pass here.
   await recordEscalation(db, store, new Date());
   const hours = await getSupportHours(db);
-  const reply = newMessage(target.id, "bot", replyFromHours(hours));
+  const reply = newMessage(target.id, "bot", handoffReply(hours));
   await store.appendMessage(reply);
   try {
     const { recordEscalationAlert } = await import("@/mail/notifications");
@@ -65,6 +78,93 @@ async function escalateConversation(
     console.error("escalation alert recording failed:", error);
   }
   return NextResponse.json({ conversation: escalated, reply });
+}
+
+/**
+ * Creates the conversation's chat contact request (ticket 69): the visitor
+ * chose "Yes, chat with staff" or clicked the unknown-question offer. The
+ * guarded insert is the one-open-request guarantee — a losing concurrent or
+ * repeated choice returns false, and the caller refuses with a stable 409.
+ */
+async function createChatRequest(
+  store: Store,
+  conversationId: string,
+): Promise<boolean> {
+  const request: ContactRequest = {
+    id: crypto.randomUUID(),
+    conversationId,
+    medium: "chat",
+    status: "open",
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    completedBy: null,
+  };
+  return store.createContactRequest(request);
+}
+
+/** The 409 a repeated contact ask gets while one is open (ticket 69). */
+function contactRequestOpenResponse(): NextResponse {
+  return conflictResponse("contact_request_open", contactRequestOpenReply());
+}
+
+/**
+ * The persisted two-action prompt (ticket 69): asked after a clicked
+ * Handoff Option or a typed Handoff phrase. Nothing alerts and no request
+ * exists until the visitor picks one of the choices.
+ */
+function handoffPromptMessage(conversationId: string): Message {
+  const reply = newMessage(conversationId, "bot", HANDOFF_PROMPT_TEXT);
+  reply.choices = [HANDOFF_YES_CHOICE, HANDOFF_NO_CHOICE];
+  return reply;
+}
+
+/** The No path's follow-up: the two alternative media as choices. */
+function contactMediumPromptMessage(conversationId: string): Message {
+  const reply = newMessage(conversationId, "bot", CONTACT_MEDIUM_PROMPT_TEXT);
+  reply.choices = [CONTACT_EMAIL_CHOICE, CONTACT_PHONE_CHOICE];
+  return reply;
+}
+
+/**
+ * Records a visitor's email-or-phone choice (ticket 69): one request with
+ * that medium, the staff alert once, and the masked-destination
+ * confirmation with support-hours-aware wording. The conversation stays
+ * bot-active; the desk's persistent Contact Me status waits for staff to
+ * mark it contacted.
+ */
+async function recordMediumRequest(
+  conversation: Conversation,
+  service: Awaited<ReturnType<typeof getChatbotService>>,
+  medium: "email" | "phone",
+): Promise<Response> {
+  const { store, db, mail } = service;
+  const request: ContactRequest = {
+    id: crypto.randomUUID(),
+    conversationId: conversation.id,
+    medium,
+    status: "open",
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    completedBy: null,
+  };
+  if (!(await store.createContactRequest(request))) {
+    return contactRequestOpenResponse();
+  }
+  try {
+    const { recordContactRequestAlert } = await import("@/mail/notifications");
+    await recordContactRequestAlert(db, mail, conversation.id);
+  } catch (error) {
+    console.error("contact request alert recording failed:", error);
+  }
+  const hours = await getSupportHours(db);
+  const destination = medium === "email" ? conversation.visitorEmail : conversation.visitorPhone;
+  const reply = newMessage(
+    conversation.id,
+    "bot",
+    contactRequestConfirmation(medium, destination ?? "", hours),
+  );
+  await store.appendMessage(reply);
+  return NextResponse.json({ conversation, reply });
 }
 
 async function recordVisitorChoice(
@@ -224,7 +324,55 @@ export async function POST(request: Request, context: RouteContext) {
       if (!selection.recorded) {
         return selection.response;
       }
+      // The explicit one-click handoff (tickets 37/69): the click IS the
+      // contact decision, so it also creates the Chat request and promotes
+      // the temporary details — no second prompt on this path.
+      if (!(await createChatRequest(store, conversation.id))) {
+        return contactRequestOpenResponse();
+      }
       return escalateConversation(conversation, service);
+    }
+    // The persisted confirmation's actions (ticket 69). Each validates that
+    // its offer is still the last message — a stale prompt after more
+    // conversation never fires — and the Yes path hands off exactly once.
+    if (CONTACT_ACTION_CHOICES[body.choice] !== undefined) {
+      const messages = await store.listMessages(conversation.id);
+      const offered = messages.at(-1)?.choices?.some(
+        (choice) => choice.id === body.choice,
+      );
+      if (!offered) {
+        return invalidChoice();
+      }
+      const topic = CONTACT_ACTION_CHOICES[body.choice]!;
+      if (body.choice === HANDOFF_YES_CHOICE.id) {
+        const selection = await recordVisitorChoice(conversation, store, topic);
+        if (!selection.recorded) {
+          return selection.response;
+        }
+        if (!(await createChatRequest(store, conversation.id))) {
+          return contactRequestOpenResponse();
+        }
+        return escalateConversation(conversation, service);
+      }
+      if (body.choice === HANDOFF_NO_CHOICE.id) {
+        const selection = await recordVisitorChoice(conversation, store, topic);
+        if (!selection.recorded) {
+          return selection.response;
+        }
+        const reply = contactMediumPromptMessage(conversation.id);
+        await store.appendMessage(reply);
+        return NextResponse.json({ conversation, reply });
+      }
+      // Email or Phone: the medium request, with the bot staying active.
+      const selection = await recordVisitorChoice(conversation, store, topic);
+      if (!selection.recorded) {
+        return selection.response;
+      }
+      return recordMediumRequest(
+        conversation,
+        service,
+        body.choice === CONTACT_EMAIL_CHOICE.id ? "email" : "phone",
+      );
     }
     const rule = await store.getAnswerRule(body.choice);
     if (!rule || rule.status !== "published") {
@@ -239,12 +387,11 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ conversation, reply });
   }
 
-  // The click of a configured click-to-handoff option (ticket 67): the
-  // label is recorded as the visitor's words and the conversation escalates
-  // through the existing path exactly once — a matching published rule is
-  // deliberately bypassed, because the visitor chose staff, not an answer.
-  // Only the click carries this meaning: typing the same wording never
-  // reaches this branch and keeps normal answer matching below.
+  // The click of a configured click-to-handoff option (ticket 67, prompted
+  // per ticket 69): the label is recorded as the visitor's words and the
+  // persisted confirmation is asked — nothing escalates, alerts, or saves a
+  // contact until the visitor chooses. Only the click reaches this branch:
+  // typing the same wording keeps normal answer matching below.
   if (body?.handoffOption !== undefined) {
     // The waiting period locks visitor input (ticket 43): a click while
     // staff help is requested but unclaimed can never be a second handoff.
@@ -278,9 +425,16 @@ export async function POST(request: Request, context: RouteContext) {
       // staff, exactly like a topic pick — with no new handoff raised.
       return selection.response;
     }
-    return escalateConversation(conversation, service, (hours) =>
-      handoffOptionReply(option, hours),
-    );
+    // An open request answers truthfully instead of prompting again
+    // (ticket 69): no duplicate ask, no second prompt.
+    if (await store.getOpenContactRequest(conversation.id)) {
+      const reply = newMessage(conversation.id, "bot", contactRequestOpenReply());
+      await store.appendMessage(reply);
+      return NextResponse.json({ conversation, reply });
+    }
+    const reply = handoffPromptMessage(conversation.id);
+    await store.appendMessage(reply);
+    return NextResponse.json({ conversation, reply });
   }
 
   const validation = validateVisitorText(body?.text);
@@ -328,21 +482,36 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ conversation, reply: null });
   }
 
-  // Explicit handoff wording wins over every answer rule (ticket 06).
+  // Explicit handoff wording wins over every answer rule (ticket 06) — and
+  // asks before acting (ticket 69): the typed phrase is recorded above, then
+  // the persisted confirmation goes out. Nothing escalates until the
+  // visitor picks a side of it.
   if (matchesEscalationPhrase(validation.text, await getEscalationPhrases(db))) {
-    return escalateConversation(conversation, service);
+    if (await store.getOpenContactRequest(conversation.id)) {
+      const reply = newMessage(conversation.id, "bot", contactRequestOpenReply());
+      await store.appendMessage(reply);
+      return NextResponse.json({ conversation, reply });
+    }
+    const reply = handoffPromptMessage(conversation.id);
+    await store.appendMessage(reply);
+    return NextResponse.json({ conversation, reply });
   }
 
   const rules = await store.listPublishedAnswerRules();
   const matches = matchAnswerRules(validation.text, rules);
 
   if (matches.length === 0) {
+    // The visitor-consented offer (ticket 37): one click hands off — and
+    // since ticket 69 that click also creates the Chat request. While a
+    // request is already open the offer hides: the desk is already on it.
     const reply = newMessage(
       conversation.id,
       "bot",
       "I don't have knowledge of that. You can chat with a human if you'd like.",
     );
-    reply.choices = [REQUEST_HUMAN_CHOICE];
+    if (!(await store.getOpenContactRequest(conversation.id))) {
+      reply.choices = [REQUEST_HUMAN_CHOICE];
+    }
     await store.appendMessage(reply);
     return NextResponse.json({ conversation, reply });
   }

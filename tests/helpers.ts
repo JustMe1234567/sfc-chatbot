@@ -156,6 +156,16 @@ export async function ask(conversation: ConversationStart, text: string): Promis
   return askRaw(conversation, JSON.stringify({ text }));
 }
 
+/**
+ * Confirms the persisted handoff prompt with "Yes, chat with staff"
+ * (ticket 69): a typed handoff phrase no longer escalates on its own, so
+ * flow tests that need the waiting state pick the prompt's Yes choice. The
+ * phrase must have been asked first so the prompt is the last message.
+ */
+export async function confirmHandoffYes(conversation: ConversationStart): Promise<Response> {
+  return askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
+}
+
 export async function askRaw(conversation: ConversationStart, body: string): Promise<Response> {
   const { POST } = await import("../src/app/api/v1/conversations/[id]/messages/route");
   return POST(

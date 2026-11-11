@@ -58,6 +58,7 @@ const TABLES = [
   "retention_runs",
   "analytics_seen",
   "analytics_daily",
+  "contact_requests",
 ] as const;
 
 /** Better Auth columns that are INTEGER 0/1 on SQLite and boolean on Postgres. */

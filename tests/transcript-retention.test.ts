@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { ask, confirmHandoffYes, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -86,6 +86,7 @@ async function inboxGet(jar: CookieJar): Promise<Response> {
 async function closedConversation(email?: string): Promise<ConversationStart> {
   const conversation = await startConversation(email ? { email } : {});
   await ask(conversation, "Nothing approved covers this; I need to speak to a human.");
+  await confirmHandoffYes(conversation);
   const jar = new CookieJar();
   await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
   expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
@@ -97,6 +98,7 @@ async function closedConversation(email?: string): Promise<ConversationStart> {
 async function claimedConversation(): Promise<ConversationStart> {
   const conversation = await startConversation();
   await ask(conversation, "Please let me speak to a human; nothing covers it.");
+  await confirmHandoffYes(conversation);
   const jar = new CookieJar();
   await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
   expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
@@ -206,6 +208,7 @@ describe("cleanup removes expired History conversations and keeps live ones", ()
 
     const awaiting = await startConversation();
     await ask(awaiting, "Nothing covers this ancient question; I need to speak to a human.");
+    await confirmHandoffYes(awaiting);
     await setCreatedAt(awaiting.id, daysAgo(60));
 
     const claimed = await claimedConversation();

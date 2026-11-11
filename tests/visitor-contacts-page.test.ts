@@ -6,20 +6,18 @@ import { TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import type { Conversation } from "../src/domain/types";
 
 /**
- * Ticket 53: the Visitor emails page. The list derives live from
- * `conversations.visitor_email` — the store's page queries return only
- * conversations that carry an address, newest activity first, in page-size
- * windows; each conversation is one entry with its stored address, and a
- * purged conversation drops out with no extra bookkeeping. Since ticket 66
- * the address arrives with the required contact details at chat start. The page and the nav
- * entry are owner+staff (the roles that work handoffs), and the admin
- * conversation pane shows the address in its header meta, never inside the
- * transcript.
+ * Ticket 69: the Visitor contacts page (renamed from Visitor emails, ticket
+ * 53). The list derives live from the contact_requests table — only
+ * conversations whose visitor created at least one request are saved
+ * contacts; the temporary chat-start details alone never appear. Each row
+ * carries the conversation's latest requested medium, and the store's page
+ * queries return page-size windows newest activity first; a purged
+ * conversation drops out with no extra bookkeeping. The page and the nav
+ * entry are owner+staff (the roles that work follow-ups).
  */
 
-const PAGE_PATH = "src/app/dashboard/emails/page.tsx";
+const PAGE_PATH = "src/app/dashboard/contacts/page.tsx";
 const HEADER_PATH = "src/app/dashboard/header.tsx";
-const DESK_PATH = "src/app/dashboard/inbox/conversation-desk.tsx";
 const CSS_PATH = "src/app/dashboard/dashboard.module.css";
 
 let seededNewestFirst: string[] = [];
@@ -48,7 +46,7 @@ beforeAll(async () => {
   await warmChatbotService();
 });
 
-/** 13 conversations with an email (oldest first), 3 without one. */
+/** 13 conversations with a contact request (oldest first), 3 without one. */
 async function seedConversations(): Promise<string[]> {
   const { getChatbotService } = await import("../src/db/service");
   const { store } = await getChatbotService();
@@ -59,7 +57,9 @@ async function seedConversations(): Promise<string[]> {
     const createdAt = new Date(base - 120_000).toISOString();
     // One closed conversation at the far end of the list gives the purge
     // test a real retention-shaped row to remove.
-    await store.createConversation(conversation(id, index === 0 ? "closed" : "awaiting_staff", createdAt));
+    await store.createConversation(
+      conversation(id, index === 0 ? "closed" : "awaiting_staff", createdAt),
+    );
     await store.setConversationContact(id, {
       name: `Visitor ${String(index).padStart(2, "0")}`,
       email: `visitor${String(index).padStart(2, "0")}@example.edu`,
@@ -70,6 +70,17 @@ async function seedConversations(): Promise<string[]> {
       new Date(base + index * 1_000).toISOString(),
       new Date(base + 86_400_000).toISOString(),
     );
+    await store.createContactRequest({
+      id: crypto.randomUUID(),
+      conversationId: id,
+      // Every third conversation's latest medium is phone or chat; the rest
+      // email — the row shows whichever request came last.
+      medium: index % 3 === 0 ? "email" : index % 3 === 1 ? "phone" : "chat",
+      status: "open",
+      createdAt: new Date(base + index * 1_000).toISOString(),
+      completedAt: null,
+      completedBy: null,
+    });
     newestFirst.unshift(id);
   }
   for (let index = 0; index < 3; index += 1) {
@@ -80,45 +91,45 @@ async function seedConversations(): Promise<string[]> {
   return newestFirst;
 }
 
-describe("the store's email page queries (ticket 53)", () => {
+describe("the store's contact-request page queries (ticket 69)", () => {
   beforeAll(async () => {
     seededNewestFirst = await seedConversations();
   });
 
-  it("returns only conversations with an email, newest activity first", async () => {
+  it("returns only conversations with a contact request, newest activity first", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { store } = await getChatbotService();
 
-    const pageOne = await store.listConversationsWithEmail(1, 10);
+    const pageOne = await store.listConversationsWithContactRequest(1, 10);
     expect(pageOne).toHaveLength(10);
-    expect(pageOne.map((row) => row.id)).toEqual(seededNewestFirst.slice(0, 10));
-    // Every row carries an address; the three email-less conversations
-    // (and only they) are absent.
+    expect(pageOne.map((row) => row.conversation.id)).toEqual(seededNewestFirst.slice(0, 10));
+    // Every row carries its latest medium; the three request-less
+    // conversations (and only they) are absent.
     for (const row of pageOne) {
-      expect(row.visitorEmail).toBeTruthy();
+      expect(row.medium).toBeTruthy();
     }
-    expect(pageOne.map((row) => row.id)).not.toContain(seededNewestFirst[10] ?? "");
+    expect(pageOne.map((row) => row.conversation.id)).not.toContain(seededNewestFirst[10] ?? "");
   });
 
   it("slices the list into page-size windows", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { store } = await getChatbotService();
 
-    const pageTwo = await store.listConversationsWithEmail(2, 10);
-    expect(pageTwo.map((row) => row.id)).toEqual(seededNewestFirst.slice(10));
+    const pageTwo = await store.listConversationsWithContactRequest(2, 10);
+    expect(pageTwo.map((row) => row.conversation.id)).toEqual(seededNewestFirst.slice(10));
 
     // Past the end the window is simply empty — never an error.
-    expect(await store.listConversationsWithEmail(3, 10)).toEqual([]);
+    expect(await store.listConversationsWithContactRequest(3, 10)).toEqual([]);
   });
 
-  it("counts every email-bearing conversation, not one page", async () => {
+  it("counts every conversation with a request, not one page", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { store } = await getChatbotService();
 
-    expect(await store.countConversationsWithEmail()).toBe(13);
+    expect(await store.countConversationsWithContactRequest()).toBe(13);
   });
 
-  it("keeps one entry per conversation, carrying its stored contact email", async () => {
+  it("keeps one row per conversation showing the latest requested medium", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { store } = await getChatbotService();
     const id = seededNewestFirst[0];
@@ -126,19 +137,29 @@ describe("the store's email page queries (ticket 53)", () => {
       throw new Error("the seed's newest conversation is missing");
     }
 
-    // The list reads the column live: same single entry, the stored value.
-    await store.setConversationContact(id, {
-      name: "Latest Visitor",
-      email: "latest@example.edu",
-      phone: "555 010 0100",
+    // A second request — allowed once none is open — moves the row's medium.
+    // Its instant must postdate the seed's newest request (the seed writes
+    // base + index seconds, so jump well past it).
+    await store.completeOpenContactRequest(id, "staff-1", new Date().toISOString());
+    await store.createContactRequest({
+      id: crypto.randomUUID(),
+      conversationId: id,
+      medium: "phone",
+      status: "open",
+      createdAt: new Date(Date.now() + 120_000).toISOString(),
+      completedAt: null,
+      completedBy: null,
     });
-    const rows = await store.listConversationsWithEmail(1, 10);
-    expect(await store.countConversationsWithEmail()).toBe(13);
-    expect(rows.filter((row) => row.id === id)).toHaveLength(1);
-    expect(rows.find((row) => row.id === id)?.visitorEmail).toBe("latest@example.edu");
+    const rows = await store.listConversationsWithContactRequest(1, 10);
+    expect(await store.countConversationsWithContactRequest()).toBe(13);
+    // Exactly one row for the conversation, showing the latest medium.
+    expect(rows.filter((entry) => entry.conversation.id === id)).toHaveLength(1);
+    expect(rows.find((entry) => entry.conversation.id === id)?.medium).toBe("phone");
+    // The earlier request event stays in the conversation's history.
+    expect(await store.listContactRequests(id)).toHaveLength(2);
   });
 
-  it("drops a purged conversation's email entry out with it", async () => {
+  it("drops a purged conversation's saved contact out with it", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { store } = await getChatbotService();
     // The seeded closed conversation sits at the list's far end.
@@ -149,41 +170,41 @@ describe("the store's email page queries (ticket 53)", () => {
 
     const { historyQuietBefore } = await import("../src/domain/activity");
     expect(await store.purgeHistoryConversation(purged, historyQuietBefore())).toBe(true);
-    expect(await store.countConversationsWithEmail()).toBe(12);
-    const remaining = await store.listConversationsWithEmail(2, 10);
-    expect(remaining.map((row) => row.id)).not.toContain(purged);
+    expect(await store.countConversationsWithContactRequest()).toBe(12);
+    const remaining = await store.listConversationsWithContactRequest(2, 10);
+    expect(remaining.map((row) => row.conversation.id)).not.toContain(purged);
   });
 });
 
-describe("emails page resolution and pager window (ticket 53)", () => {
+describe("contacts page resolution and pager window (ticket 69)", () => {
   it("falls back to page 1 on junk, zero, negative, and out-of-range values", async () => {
-    const { resolveEmailsPage } = await import("../src/app/dashboard/emails/pagination");
+    const { resolveContactsPage } = await import("../src/app/dashboard/contacts/pagination");
 
-    const canonical = resolveEmailsPage(undefined, 13);
+    const canonical = resolveContactsPage(undefined, 13);
     expect(canonical).toEqual({ page: 1, totalPages: 2 });
     // `page=1` and no parameter render the same first page.
-    expect(resolveEmailsPage("1", 13)).toEqual(canonical);
-    expect(resolveEmailsPage("2", 13).page).toBe(2);
+    expect(resolveContactsPage("1", 13)).toEqual(canonical);
+    expect(resolveContactsPage("2", 13).page).toBe(2);
     // Repeated query keys arrive as an array; the first value wins.
-    expect(resolveEmailsPage(["2"], 13).page).toBe(2);
+    expect(resolveContactsPage(["2"], 13).page).toBe(2);
 
     // Digits only: hex and exponent forms are junk, not clever page numbers.
     for (const junk of ["abc", "0", "-2", "99", "", "2.5", "0x10", "1e1", undefined]) {
-      expect(resolveEmailsPage(junk, 13).page, JSON.stringify(junk)).toBe(1);
+      expect(resolveContactsPage(junk, 13).page, JSON.stringify(junk)).toBe(1);
     }
   });
 
   it("windows the numbered links around the current page with gaps", async () => {
-    const { emailsPageLinks } = await import("../src/app/dashboard/emails/pagination");
+    const { contactsPageLinks } = await import("../src/app/dashboard/contacts/pagination");
 
     // Small totals list every page with no gaps.
-    expect(emailsPageLinks(2, 3)).toEqual([
+    expect(contactsPageLinks(2, 3)).toEqual([
       { kind: "page", page: 1 },
       { kind: "page", page: 2 },
       { kind: "page", page: 3 },
     ]);
 
-    const windowed = emailsPageLinks(5, 20);
+    const windowed = contactsPageLinks(5, 20);
     expect(windowed).toEqual([
       { kind: "page", page: 1 },
       { kind: "gap" },
@@ -195,12 +216,12 @@ describe("emails page resolution and pager window (ticket 53)", () => {
     ]);
 
     // The first and last pages never grow a leading or trailing gap.
-    expect(emailsPageLinks(1, 20)[0]).toEqual({ kind: "page", page: 1 });
-    expect(emailsPageLinks(20, 20).at(-1)).toEqual({ kind: "page", page: 20 });
+    expect(contactsPageLinks(1, 20)[0]).toEqual({ kind: "page", page: 1 });
+    expect(contactsPageLinks(20, 20).at(-1)).toEqual({ kind: "page", page: 20 });
   });
 });
 
-describe("the Visitor emails page (ticket 53)", () => {
+describe("the Visitor contacts page (ticket 69)", () => {
   it("resolves the URL parameter server-side with the page queries", async () => {
     const source = await readFile(path.join(repoRoot(), PAGE_PATH), "utf8");
 
@@ -208,66 +229,46 @@ describe("the Visitor emails page (ticket 53)", () => {
     expect(source).toContain("searchParams: Promise<");
     expect(source).toContain("await searchParams");
     // The page fetches the count for the pager and only the page's rows.
-    expect(source).toContain("countConversationsWithEmail()");
-    expect(source).toContain("listConversationsWithEmail(");
+    expect(source).toContain("countConversationsWithContactRequest()");
+    expect(source).toContain("listConversationsWithContactRequest(");
 
     // Real links, aria-current on the live page, dead links impossible.
     expect(source).toContain('aria-current={link.page === page ? "page" : undefined}');
     expect(source).toContain("page > 1");
     expect(source).toContain("page < totalPages");
-    expect(source).toContain("/dashboard/emails?page=");
+    expect(source).toContain("/dashboard/contacts?page=");
   });
 
-  it("is gated to the handoff roles and renders rows as whole links", async () => {
+  it("is gated to the follow-up roles and renders rows as whole links", async () => {
     const source = await readFile(path.join(repoRoot(), PAGE_PATH), "utf8");
 
     // Same role rules as the nav item: requireStaff with owner + staff.
     expect(source).toContain("requireStaff");
     expect(source).toContain("STAFF_ROLES");
 
-    // The row is one link to the conversation, showing the address as text —
-    // no mailto inside the row link.
+    // The row is one link to the conversation; the row shows the saved
+    // contact's name, email, phone, latest medium, and chat-start time.
     expect(source).toContain('href={`/dashboard/inbox/${conversation.id}`}');
-    expect(source).toContain("{conversation.visitorEmail}");
+    expect(source).toContain("conversation.visitorEmail");
+    expect(source).toContain("conversation.visitorPhone");
+    expect(source).toContain("conversation.visitorName");
+    expect(source).toContain("Chat started");
     expect(source).not.toContain("mailto:");
-
-    // The copy states the required capture on every new chat (ticket 66);
-    // the empty state explains when entries appear, and no pager renders
-    // with it.
-    expect(source).toContain("Every new chat starts with the visitor&apos;s name, email");
-    expect(source).toContain("total === 0");
-    expect(source).toContain("No visitor emails yet");
-    expect(source).toContain("shares their contact");
-    expect(source).not.toContain("asks for a human and");
   });
 
-  it("joins the shared nav list for owners and staff", async () => {
+  it("joins the shared nav list for owners and staff under its new name", async () => {
     const header = await readFile(path.join(repoRoot(), HEADER_PATH), "utf8");
 
-    // One more entry in the shared NAV list — never separate chrome.
     expect(header).toContain(
-      '{ area: "emails", href: "/dashboard/emails", label: "Visitor emails", roles: ["owner", "staff"] }',
+      '{ area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["owner", "staff"] }',
     );
-    // The sidebar shell's icon record covers the new area (envelope mark).
-    expect(header).toContain("emails: (");
+    expect(header).toContain("contacts: (");
+    expect(header).not.toContain('"/dashboard/emails"');
   });
 
-  it("shows the follow-up email in the pane header, never the transcript", async () => {
-    const desk = await readFile(path.join(repoRoot(), DESK_PATH), "utf8");
-
-    expect(desk).toContain('<strong>Follow-up email</strong> {selected.visitorEmail}');
-    expect(desk).toContain("styles.paneEmail");
-    // The email line sits in the pane's header block, before the transcript
-    // renders — it must never read as a message.
-    const headerAt = desk.indexOf("styles.paneEmail");
-    const transcriptAt = desk.indexOf('className={styles.transcript}');
-    expect(headerAt).toBeGreaterThan(-1);
-    expect(transcriptAt).toBeGreaterThan(headerAt);
-  });
-
-  it("styles the list rows and the pane email line", async () => {
+  it("styles the list rows with the existing family", async () => {
     const css = await readFile(path.join(repoRoot(), CSS_PATH), "utf8");
-    for (const className of [".emailList", ".emailRow", ".emailAddress", ".emailRowMeta", ".paneEmail"]) {
+    for (const className of [".emailList", ".emailRow", ".emailAddress", ".emailRowMeta"]) {
       expect(css, className).toContain(className);
     }
   });

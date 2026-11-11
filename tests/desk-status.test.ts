@@ -25,6 +25,7 @@ function item(overrides: Partial<DeskItem>): DeskItem {
     active: true,
     attention: false,
     attentionAt: null,
+    contactRequest: null,
     createdAt: "2026-11-05T09:00:00.000Z",
     lastActivityAt: "2026-11-05T09:05:00.000Z",
     messageCount: 2,
@@ -51,13 +52,42 @@ describe("desk status tiers (ticket 44)", () => {
     expect(deskStatus({ state: "claimed", attention: false })).toBe("active");
   });
 
+  it("maps an open email or phone request to the persistent Contact Me tier (ticket 69)", () => {
+    expect(
+      deskStatus({
+        state: "bot_active",
+        attention: false,
+        contactRequest: { id: "r1", medium: "email" },
+      }),
+    ).toBe("contact");
+    expect(
+      deskStatus({
+        state: "claimed",
+        attention: false,
+        contactRequest: { id: "r1", medium: "phone" },
+      }),
+    ).toBe("contact");
+    // A transient new message outranks it for the row tier; both badges render.
+    expect(
+      deskStatus({
+        state: "bot_active",
+        attention: true,
+        contactRequest: { id: "r1", medium: "email" },
+      }),
+    ).toBe("attention");
+    // Without an open request the tier is unchanged.
+    expect(deskStatus({ state: "bot_active", attention: false, contactRequest: null })).toBe(
+      "active",
+    );
+  });
+
   it("gives every tier visible text, distinct and non-empty", () => {
     const labels = Object.values(DESK_STATUS_LABELS);
-    expect(labels).toHaveLength(3);
+    expect(labels).toHaveLength(4);
     for (const label of labels) {
       expect(label.length).toBeGreaterThan(0);
     }
-    expect(new Set(labels).size).toBe(3);
+    expect(new Set(labels).size).toBe(4);
   });
 });
 
@@ -75,6 +105,25 @@ describe("attention event identity (ticket 44)", () => {
   it("excludes conversations without standing attention", () => {
     const quiet = item({ attention: false, attentionAt: null });
     expect(deskAttentionEvents([quiet])).toEqual([]);
+  });
+
+  it("emits one event per open contact request, independent of attention (ticket 69)", () => {
+    const request = item({ contactRequest: { id: "req-9", medium: "email" } });
+    expect(deskAttentionEvents([request])).toEqual([
+      { conversationId: "conv-1", id: "conv-1:contact-request:req-9" },
+    ]);
+    // Attention and a contact request cue independently, in one feed.
+    const both = deskAttentionEvents([
+      item({
+        attention: true,
+        attentionAt: "2026-11-05T09:04:00.000Z",
+        contactRequest: { id: "req-9", medium: "phone" },
+      }),
+    ]);
+    expect(both.map((event) => event.id)).toEqual([
+      "conv-1:2026-11-05T09:04:00.000Z",
+      "conv-1:contact-request:req-9",
+    ]);
   });
 
   it("raises a fresh identity when a new episode begins", () => {

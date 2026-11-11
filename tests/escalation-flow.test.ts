@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, askRaw, countQuery, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import { ask, askRaw, confirmHandoffYes, countQuery, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import { CookieJar, enrollTotp, provisionStaff, signInWithTotp, staffApiRequest } from "./auth-helpers";
 
 const OWNER_EMAIL = "consent-flow-owner@example.edu";
@@ -147,15 +147,29 @@ describe("unknown question offers a visitor-consented handoff", () => {
     ]);
   });
 
-  it("lets an escalation phrase bypass the consent offer", async () => {
+  it("lets an escalation phrase bypass the consent offer, prompting instead (ticket 69)", async () => {
     const conversation = await startConversation();
     const response = await ask(conversation, "I need to speak to a human about admissions.");
     const body = (await response.json()) as {
       conversation: { state: string };
-      reply: { text: string; choices?: unknown[] } | null;
+      reply: { text: string; choices?: { id: string }[] | null };
     };
-    expect(body.conversation.state).toBe("awaiting_staff");
-    expect(body.reply?.text).toContain("handed our conversation to the college staff team");
-    expect(body.reply?.choices).toBeUndefined();
+    // The phrase asks the persisted confirmation — no consent offer, and no
+    // escalation until the visitor chooses.
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.text).toBe("Would you like a staff member to join this chat?");
+    expect(body.reply?.choices?.map((choice) => choice.id)).toEqual([
+      "handoff-yes",
+      "handoff-no",
+    ]);
+
+    const yes = await confirmHandoffYes(conversation);
+    const yesBody = (await yes.json()) as {
+      conversation: { state: string };
+      reply: { text: string; choices?: { id: string }[] } | null;
+    };
+    expect(yesBody.conversation.state).toBe("awaiting_staff");
+    expect(yesBody.reply?.text).toContain("handed our conversation to the college staff team");
+    expect(yesBody.reply?.choices).toBeUndefined();
   });
 });

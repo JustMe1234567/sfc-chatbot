@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { startConversation, startConversationRaw, TEST_CONTACT, ask, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import { startConversation, startConversationRaw, TEST_CONTACT, ask, confirmHandoffYes, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -248,6 +248,7 @@ describe("real flows drive the rollups", () => {
 
     const conversation = await startConversation();
     await ask(conversation, "zzqx no rule matches this wonderwall; speak to a human");
+    await confirmHandoffYes(conversation);
 
     const afterEscalation = await readReport(ownerJar, "today");
     expect(afterEscalation.totals.chats).toBe(chatsBefore + 1);
@@ -272,6 +273,7 @@ describe("real flows drive the rollups", () => {
     const escalationsBefore = (await readReport(ownerJar, "today")).totals.escalations;
     const conversation = await startConversation();
     await ask(conversation, "zzqx no rule matches this wonderwall; speak to a human");
+    await confirmHandoffYes(conversation);
     await ask(conversation, "still nothing matches this second try zzqx");
     const after = await readReport(ownerJar, "today");
     expect(after.totals.escalations).toBe(escalationsBefore + 1);

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, submitContact, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { ask, confirmHandoffYes, loadHistory, startConversation, submitContact, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -70,6 +70,8 @@ async function staffJar(): Promise<CookieJar> {
 async function escalatedConversation(text: string): Promise<ConversationStart> {
   const conversation = await startConversation();
   await ask(conversation, `${text} Please speak to a human.`);
+  // The phrase asks first (ticket 69); Yes enters the waiting state.
+  await confirmHandoffYes(conversation);
   return conversation;
 }
 
@@ -215,6 +217,8 @@ describe("clearing after escalation and while claimed", () => {
     expect((await submitContact({ id: fresh.id, token: fresh.token })).status).toBe(200);
     const freshAsk = await ask({ id: fresh.id, token: fresh.token }, "Clear test: starting over; speak to a human.");
     expect(freshAsk.status).toBe(200);
+    // The phrase asks first now (ticket 69); Yes puts the successor waiting.
+    await confirmHandoffYes({ id: fresh.id, token: fresh.token });
     // And staff can work the successor: claim it.
     expect((await staffAction(jar, fresh.id, "claim")).status).toBe(200);
   });

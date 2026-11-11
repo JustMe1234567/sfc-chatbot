@@ -109,6 +109,9 @@ function RowBody({
         <span className={styles.needsHumanBadge}>Needs human</span>
       ) : null}
       {status === "attention" ? <span className={styles.attentionBadge}>New message</span> : null}
+      {/* The persistent Contact Me (ticket 69): survives transcript viewing,
+          and renders alongside a transient New message when both stand. */}
+      {item.contactRequest ? <span className={styles.attentionBadge}>Contact Me</span> : null}
       <span className={styles.rowPending} aria-hidden="true">
         Loading…
       </span>

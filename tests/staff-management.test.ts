@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import { confirmHandoffYes, ask, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   authRequest,
   CookieJar,
@@ -84,6 +84,7 @@ async function membersRequest(
 async function claimedConversation(): Promise<{ id: string; token: string }> {
   const conversation = await startConversation();
   await ask(conversation, "Tell me about evening classes; I need to speak to a human.");
+  await confirmHandoffYes(conversation);
   const jar = new CookieJar();
   await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
   const claim = await conversationAction(jar, conversation.id, "claim");
@@ -247,6 +248,7 @@ describe("disabling an account takes effect immediately", () => {
 
     const conversation = await startConversation();
     await ask(conversation, "Who arranges accessible parking? I need to speak to a human.");
+  await confirmHandoffYes(conversation);
     const holderJar = new CookieJar();
     await signInWithTotp(holderJar, HOLDER_EMAIL, HOLDER_PASSWORD, holderTotp);
     const claim = await conversationAction(holderJar, conversation.id, "claim");
@@ -319,6 +321,7 @@ describe("releasing a claim", () => {
   it("refuses to release an unclaimed conversation", async () => {
     const conversation = await startConversation();
     await ask(conversation, "I need to speak to a human; nothing covers it.");
+  await confirmHandoffYes(conversation);
     const aliceJar = new CookieJar();
     await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
     const unclaimed = await conversationAction(aliceJar, conversation.id, "release");

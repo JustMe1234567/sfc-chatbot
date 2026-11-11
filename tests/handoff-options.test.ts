@@ -21,11 +21,8 @@ import {
 } from "./auth-helpers";
 import {
   distinctOptions,
-  handoffOptionReply,
-  handoffOptionTopic,
   topicLabelsShadowedByOptions,
 } from "../src/domain/handoffOptions";
-import type { SupportHours } from "../src/domain/types";
 import { repoRoot } from "../src/paths";
 
 /**
@@ -34,10 +31,11 @@ import { repoRoot } from "../src/paths";
  * answer rules and typed Handoff phrases — editable in the Answers admin
  * area, rendered on the fresh chat and after bot answers, and hidden while
  * typing, while sending, and once staff help is requested or claimed.
- * Clicking records the label as the visitor's words, acknowledges the topic
- * truthfully, and escalates exactly once through the existing path — even
- * when a published rule covers the same wording. Typing the same wording
- * keeps normal answer matching.
+ * Ticket 69 prompts before acting: a click records the label as the
+ * visitor's words and asks the persisted two-action confirmation — nothing
+ * escalates, alerts, or saves a contact until the visitor chooses Yes. A
+ * typed handoff phrase prompts the same way, while typed wording that only
+ * matches rules keeps normal answer matching.
  */
 
 const OWNER_EMAIL = "options-owner@example.edu";
@@ -268,48 +266,70 @@ describe("the Answers admin surface for options", () => {
   });
 });
 
-describe("a deliberate click hands off exactly once", () => {
-  it("records the label, acknowledges the topic, and bypasses the competing rule", async () => {
+describe("a deliberate click asks before handing off (ticket 69)", () => {
+  it("records the label and appends the persisted two-action prompt, escalating nothing", async () => {
     const conversation = await startConversation();
     const clicked = await clickOption(conversation, FINANCIAL_AID_OPTION);
     expect(clicked.status).toBe(200);
     const body = (await clicked.json()) as {
       conversation: { state: string };
-      reply: { text: string } | null;
+      reply: { text: string; choices?: { id: string; topic: string }[] } | null;
     };
-    expect(body.conversation.state).toBe("awaiting_staff");
-    // Truthful topic-aware acknowledgment — not the "can't answer" prefix,
+    // The conversation stays bot-active: no handoff has happened yet.
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.text).toBe("Would you like a staff member to join this chat?");
+    expect(body.reply?.choices).toEqual([
+      { id: "handoff-yes", topic: "Yes, chat with staff" },
+      { id: "handoff-no", topic: "No, contact me another way" },
+    ]);
+    // Never the old "notified our team" claim (staff are not notified yet)
     // and never the competing rule's response.
-    expect(body.reply?.text).toContain("financial aid");
-    expect(body.reply?.text).toContain("notified our team");
-    expect(body.reply?.text).toContain("as soon as they're available");
-    expect(body.reply?.text).not.toContain("can't answer");
+    expect(body.reply?.text).not.toContain("notified our team");
     expect(body.reply?.text).not.toContain(AID_RULE.response);
 
+    // No alert, no sound-episode source, no saved contact: the prompt alone
+    // commits nothing.
+    expect(await escalationAlerts(conversation.id)).toBe(0);
+    const { store } = await service();
+    expect(await store.getOpenContactRequest(conversation.id)).toBeNull();
+    expect(await store.listContactRequests(conversation.id)).toEqual([]);
+
+    // The prompt is persisted, so it survives a reload with its actions.
     const history = await loadHistory(conversation);
     const historyBody = (await history.json()) as {
-      messages: { role: string; text: string }[];
+      messages: { role: string; text: string; choices?: { id: string }[] }[];
     };
-    // The label itself is recorded as the visitor's words.
     expect(historyBody.messages.map((message) => [message.role, message.text])).toEqual([
       ["visitor", FINANCIAL_AID_OPTION],
-      ["bot", expect.stringContaining("financial aid")],
+      ["bot", "Would you like a staff member to join this chat?"],
+    ]);
+    expect(historyBody.messages.at(-1)?.choices?.map((choice) => choice.id)).toEqual([
+      "handoff-yes",
+      "handoff-no",
     ]);
   });
 
-  it("notifies the desk once: one alert row, one email to the configured recipient", async () => {
+  it("hands off exactly once after Yes: alert row, email, Incoming, waiting lock", async () => {
     const conversation = await startConversation();
     expect(await escalationAlerts(conversation.id)).toBe(0);
     const mailsBefore = await mailsTo(ALERT_RECIPIENT);
-    const clicked = await clickOption(conversation, ADMISSIONS_OPTION);
-    expect(clicked.status).toBe(200);
+    await clickOption(conversation, ADMISSIONS_OPTION);
+    const yes = await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
+    expect(yes.status).toBe(200);
+    const yesBody = (await yes.json()) as {
+      conversation: { state: string };
+      reply: { text: string } | null;
+    };
+    expect(yesBody.conversation.state).toBe("awaiting_staff");
 
     expect(await escalationAlerts(conversation.id)).toBe(1);
-    // Exactly one email per conversation's escalation, whatever earlier
-    // tests already sent to the same recipient.
     expect(await mailsTo(ALERT_RECIPIENT)).toBe(mailsBefore + 1);
 
-    // The desk shows the conversation in Incoming with attention feedback.
+    // The Chat request exists and is open; the desk shows the conversation
+    // in Incoming with attention feedback.
+    const { store } = await service();
+    const request = await store.getOpenContactRequest(conversation.id);
+    expect(request?.medium).toBe("chat");
     const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
     const deskResponse = await staffApiRequest(owner, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {
@@ -323,6 +343,9 @@ describe("a deliberate click hands off exactly once", () => {
   it("locks out a repeat click while waiting, so nothing duplicates", async () => {
     const conversation = await startConversation();
     expect((await clickOption(conversation, COURSE_PRICES_OPTION)).status).toBe(200);
+    expect((await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }))).status).toBe(
+      200,
+    );
     const mailsBefore = await mailsTo(ALERT_RECIPIENT);
 
     const repeat = await clickOption(conversation, COURSE_PRICES_OPTION);
@@ -337,21 +360,31 @@ describe("a deliberate click hands off exactly once", () => {
     };
     expect(
       historyBody.messages.filter((message) => message.role === "visitor").map((m) => m.text),
-    ).toEqual([COURSE_PRICES_OPTION]);
+    ).toEqual([COURSE_PRICES_OPTION, "Yes, chat with staff"]);
   });
 
-  it("lets staff take over and reply in the same chat", async () => {
+  it("lets staff take over — completing the chat request — and reply in the same chat", async () => {
     const conversation = await startConversation();
     await clickOption(conversation, FINANCIAL_AID_OPTION);
+    await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
     const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
     expect((await staffPost(jar, conversation.id, "claim")).status).toBe(200);
+
+    // Take over completes the open Chat request (ticket 69).
+    const { store } = await service();
+    expect(await store.getOpenContactRequest(conversation.id)).toBeNull();
+    const history = await store.listContactRequests(conversation.id);
+    expect(history).toHaveLength(1);
+    expect(history[0]?.status).toBe("completed");
+    expect(history[0]?.completedBy).toBeTruthy();
+
     const reply = await staffPost(jar, conversation.id, "reply", {
       text: "Hi, Sam from the aid office here. How can I help?",
     });
     expect(reply.status).toBe(200);
 
-    const history = await loadHistory(conversation);
-    const historyBody = (await history.json()) as {
+    const loaded = await loadHistory(conversation);
+    const historyBody = (await loaded.json()) as {
       conversation: { state: string };
       messages: { role: string; text: string }[];
     };
@@ -365,6 +398,7 @@ describe("a claimed chat never re-escalates from a click", () => {
   it("records the words for staff but adds no second handoff", async () => {
     const conversation = await startConversation();
     await clickOption(conversation, ADMISSIONS_OPTION);
+    await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
     const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
     await staffPost(jar, conversation.id, "claim");
     const mailsBefore = await mailsTo(ALERT_RECIPIENT);
@@ -386,7 +420,7 @@ describe("a claimed chat never re-escalates from a click", () => {
     };
     expect(
       historyBody.messages.filter((message) => message.role === "visitor").map((m) => m.text),
-    ).toEqual([ADMISSIONS_OPTION, COURSE_PRICES_OPTION]);
+    ).toEqual([ADMISSIONS_OPTION, "Yes, chat with staff", COURSE_PRICES_OPTION]);
   });
 });
 
@@ -404,7 +438,7 @@ describe("typing the same wording keeps normal matching", () => {
     expect(await escalationAlerts(conversation.id)).toBe(0);
   });
 
-  it("still honors a separately configured typed handoff phrase first", async () => {
+  it("prompts before handing off when a typed handoff phrase is used (ticket 69)", async () => {
     const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
     const saved = await putEscalationPhrases(editor, ["question about financial aid"]);
     expect(saved.status).toBe(200);
@@ -413,12 +447,17 @@ describe("typing the same wording keeps normal matching", () => {
     const response = await ask(conversation, FINANCIAL_AID_OPTION);
     const body = (await response.json()) as {
       conversation: { state: string };
-      reply: { text: string } | null;
+      reply: { text: string; choices?: { id: string }[] } | null;
     };
-    expect(body.conversation.state).toBe("awaiting_staff");
-    // The typed path keeps its own handoff wording — not the option's.
-    expect(body.reply?.text).toContain("can't answer");
-    expect(body.reply?.text).not.toContain("Thanks for asking about");
+    // The typed phrase prompts first — it does not escalate on its own.
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.text).toBe("Would you like a staff member to join this chat?");
+    expect(body.reply?.choices?.map((choice) => choice.id)).toEqual(["handoff-yes", "handoff-no"]);
+
+    // The typed path's own handoff wording appears only after Yes.
+    const yes = await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
+    const yesBody = (await yes.json()) as { reply: { text: string } | null };
+    expect(yesBody.reply?.text).toContain("can't answer");
 
     // Restore the launch defaults for any later reader.
     await putEscalationPhrases(editor, ["talk to a person", "speak to a human"]);
@@ -482,67 +521,6 @@ describe("gate, closure, and unknown clicks", () => {
     expect(await errorCode(response)).toBe("invalid_handoff_option");
     const history = await loadHistory(conversation);
     expect(((await history.json()) as { messages: unknown[] }).messages).toEqual([]);
-  });
-});
-
-describe("the acknowledgment follows support hours honestly", () => {
-  it("keeps the availability wording while the desk is on duty", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-    // Always-open hours make on-duty deterministic regardless of run time.
-    const saved = await putHours(owner, {
-      timeZone: "Etc/GMT-2",
-      days: [0, 1, 2, 3, 4, 5, 6],
-      startMinute: 0,
-      endMinute: 24 * 60,
-    });
-    expect(saved.status).toBe(200);
-
-    const conversation = await startConversation();
-    const clicked = await clickOption(conversation, ADMISSIONS_OPTION);
-    const body = (await clicked.json()) as { reply: { text: string } | null };
-    expect(body.reply?.text).toContain("admissions");
-    expect(body.reply?.text).toContain("as soon as they're available");
-    expect(body.reply?.text).not.toContain("when the desk is open");
-
-    await putHours(owner, null);
-  });
-
-  it("builds the off-duty wording from the schedule without promising a time", () => {
-    const hours: SupportHours = {
-      timeZone: "UTC",
-      days: [2],
-      startMinute: 9 * 60,
-      endMinute: 17 * 60,
-    };
-    // Wednesday noon UTC in a Tuesday-only window: off duty.
-    const now = new Date("2026-03-11T12:00:00.000Z");
-    const reply = handoffOptionReply(ADMISSIONS_OPTION, hours, now);
-    expect(reply).toContain("admissions");
-    expect(reply).toContain("notified our team");
-    expect(reply).toContain("when the desk is open");
-    expect(reply).toContain("Tuesday, 09:00–17:00 (UTC)");
-    expect(reply).not.toContain("as soon as they're available");
-    expect(reply).not.toContain("busy");
-    expect(reply.toLowerCase()).not.toContain("shortly");
-    // Ticket 66 removed return-link emails; new copy must not promise one.
-    expect(reply).not.toContain("email");
-  });
-
-  it("mentions the topic for each seeded phrase and stays generic otherwise", () => {
-    expect(handoffOptionTopic(ADMISSIONS_OPTION)).toBe("admissions");
-    expect(handoffOptionTopic(COURSE_PRICES_OPTION)).toBe("course prices");
-    expect(handoffOptionTopic(FINANCIAL_AID_OPTION)).toBe("financial aid");
-    expect(handoffOptionTopic("Please connect me with the registrar")).toBeNull();
-    // The topic quotes the label's own casing and keeps its inner
-    // punctuation; only the sentence's trailing mark is trimmed.
-    expect(handoffOptionTopic("I WANT to speak to someone in ADMISSIONS!")).toBe("ADMISSIONS");
-    expect(handoffOptionTopic("I have a question about ESL/COVID-19 fees?")).toBe(
-      "ESL/COVID-19 fees",
-    );
-
-    const generic = handoffOptionReply("Please connect me with the registrar", null);
-    expect(generic).toContain("Thanks for reaching out.");
-    expect(generic).toContain("notified our team");
   });
 });
 
@@ -650,13 +628,3 @@ async function putEscalationPhrases(jar: CookieJar, phrases: string[]): Promise<
   );
 }
 
-async function putHours(jar: CookieJar, hours: unknown): Promise<Response> {
-  const { PUT } = await import("../src/app/api/staff/settings/support-hours/route");
-  return PUT(
-    new Request(`${TEST_ORIGIN}/api/staff/settings/support-hours`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", cookie: jar.header(), origin: TEST_ORIGIN },
-      body: JSON.stringify({ hours }),
-    }),
-  );
-}

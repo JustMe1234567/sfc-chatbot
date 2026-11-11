@@ -41,6 +41,32 @@ export interface Conversation {
 
 export type MessageRole = "visitor" | "bot" | "staff";
 
+/**
+ * How a contact request asks to be reached (ticket 69): "chat" rides the
+ * existing waiting-for-staff flow; "email" and "phone" leave the bot active
+ * and wait for staff to mark them contacted.
+ */
+export type ContactMedium = "chat" | "email" | "phone";
+
+/**
+ * One explicit visitor ask to be reached (ticket 69). Creating the request
+ * is what promotes the conversation's temporary contact details into the
+ * saved contact list; exactly one request may be open per conversation at
+ * a time, and completed requests stay as the conversation's request
+ * history. The row leaves with the conversation under every deletion path.
+ */
+export interface ContactRequest {
+  id: string;
+  conversationId: string;
+  medium: ContactMedium;
+  status: "open" | "completed";
+  createdAt: string;
+  /** When staff completed the request (Take over or Mark contacted). */
+  completedAt: string | null;
+  /** The staff account that completed it, if any. */
+  completedBy: string | null;
+}
+
 /** A keyboard-accessible action offered on a bot message. */
 export interface MessageChoice {
   /** The published answer rule or reserved visitor action a selection resolves to. */
@@ -188,14 +214,43 @@ export interface Store {
    */
   setConversationContact(id: string, contact: { name: string; email: string; phone: string }): Promise<void>;
   /**
-   * One page of conversations that carry a follow-up email (ticket 53),
-   * newest activity first — the Visitor emails list's rows. Derived live
-   * from the email column: no copied rows, so retention, manual delete, and
-   * clear-history remove the entry together with the conversation.
+   * Records a visitor's explicit ask to be reached (ticket 69): the insert
+   * is guarded so a conversation with an open request never gains a second
+   * one, and the return says whether THIS call created the row (a losing
+   * concurrent or retried request returns false without side effects).
    */
-  listConversationsWithEmail(page: number, pageSize: number): Promise<Conversation[]>;
-  /** How many conversations carry a follow-up email (ticket 53). */
-  countConversationsWithEmail(): Promise<number>;
+  createContactRequest(request: ContactRequest): Promise<boolean>;
+  /** The conversation's one open request, if any. */
+  getOpenContactRequest(conversationId: string): Promise<ContactRequest | null>;
+  /** Every request the conversation has ever made, oldest first: its
+   *  request history (ticket 69). */
+  listContactRequests(conversationId: string): Promise<ContactRequest[]>;
+  /** Every open request on the live desk, for the read model. */
+  listOpenContactRequests(): Promise<ContactRequest[]>;
+  /**
+   * Completes the conversation's one open request (ticket 69): Take over
+   * completes a chat request; Mark contacted completes email or phone.
+   * The guarded UPDATE means a completed or absent request returns null
+   * without side effects.
+   */
+  completeOpenContactRequest(
+    conversationId: string,
+    completedBy: string,
+    at: string,
+  ): Promise<ContactRequest | null>;
+  /**
+   * One page of conversations with at least one contact request (ticket
+   * 69) — the Visitor contacts list's rows — with each conversation's
+   * latest requested medium. Derived live from the requests table: no
+   * copied rows, so retention, manual delete, and clear-history remove the
+   * entry together with the conversation.
+   */
+  listConversationsWithContactRequest(
+    page: number,
+    pageSize: number,
+  ): Promise<{ conversation: Conversation; medium: ContactMedium }[]>;
+  /** How many conversations have at least one contact request (ticket 69). */
+  countConversationsWithContactRequest(): Promise<number>;
   /** Marks the visitor as present right now (polling and posting count). */
   touchVisitorPresence(id: string): Promise<void>;
   /**

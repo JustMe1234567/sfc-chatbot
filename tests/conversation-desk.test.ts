@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { ask, confirmHandoffYes, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -125,6 +125,8 @@ async function staffJar(): Promise<CookieJar> {
 async function escalatedConversation(text: string): Promise<ConversationStart> {
   const conversation = await startConversation();
   await ask(conversation, `${text} Please speak to a human.`);
+  // The phrase asks first (ticket 69); Yes enters the waiting state.
+  await confirmHandoffYes(conversation);
   return conversation;
 }
 
@@ -149,8 +151,9 @@ describe("the conversation desk lists active work", () => {
     const claimedItem = desk.active[0]!;
     expect(claimedItem.state).toBe("claimed");
     expect(claimedItem.lastMessage?.text).toContain("bus stop nearby");
-    // Visitor question, handoff notice, follow-up question.
-    expect(claimedItem.messageCount).toBe(3);
+    // Visitor question, the persisted prompt (ticket 69), the Yes choice,
+    // handoff notice, follow-up question.
+    expect(claimedItem.messageCount).toBe(5);
 
     const botItem = desk.active[1]!;
     expect(botItem.state).toBe("bot_active");

@@ -1,4 +1,4 @@
-import type { RetentionRun, ReturnToken, Store } from "../domain/types";
+import type { ContactRequest, RetentionRun, ReturnToken, Store } from "../domain/types";
 import type { PostgresSql } from "../db/postgres";
 import type { TransactionSql } from "postgres";
 import {
@@ -41,6 +41,32 @@ function changesOf(result: unknown): number {
   return count ?? 0;
 }
 
+/** The contact_requests columns read back by the request queries (ticket 69). */
+type ContactRequestRow = {
+  id: string;
+  conversation_id: string;
+  medium: ContactRequest["medium"];
+  status: ContactRequest["status"];
+  created_at: string;
+  completed_at: string | null;
+  completed_by: string | null;
+};
+
+function rowToContactRequest(row: ContactRequestRow): ContactRequest {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    medium: row.medium,
+    status: row.status,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    completedBy: row.completed_by,
+  };
+}
+
+const CONTACT_REQUEST_COLUMNS =
+  "id, conversation_id, medium, status, created_at, completed_at, completed_by";
+
 export function createPostgresStore(sql: PostgresSql): Store {
   return {
     async createConversation(conversation) {
@@ -68,21 +94,101 @@ export function createPostgresStore(sql: PostgresSql): Store {
     // The Visitor emails list (ticket 53): the SQLite store's live-derived
     // page query, with the same last_activity_at/id ordering — conversations
     // carry no seq, so the id is the shared deterministic tie-break.
-    async listConversationsWithEmail(page, pageSize) {
+    // The Visitor contacts list (ticket 69): conversations with at least
+    // one contact request, derived live from the requests table, so a
+    // conversation purged by any deletion path drops out with no extra
+    // bookkeeping. Newest activity first; the id tie-break keeps page
+    // boundaries stable (matching the SQLite store). Each row carries the
+    // latest requested medium (latest created_at, the request id breaking
+    // same-instant ties).
+    async listConversationsWithContactRequest(page, pageSize) {
       const rows = await sql.unsafe(
-        `SELECT ${CONVERSATION_COLUMNS} FROM conversations
-         WHERE visitor_email IS NOT NULL
+        `SELECT ${CONVERSATION_COLUMNS},
+           (SELECT medium FROM contact_requests cr
+            WHERE cr.conversation_id = conversations.id
+            ORDER BY cr.created_at DESC, cr.id DESC LIMIT 1) AS latest_medium
+         FROM conversations
+         WHERE id IN (SELECT conversation_id FROM contact_requests)
          ORDER BY last_activity_at DESC, id DESC LIMIT $1 OFFSET $2`,
         [pageSize, (page - 1) * pageSize],
       );
-      return (rows as unknown as ConversationRow[]).map(rowToConversation);
+      return (rows as unknown as (ConversationRow & { latest_medium: ContactRequest["medium"] })[]).map(
+        (row) => ({ conversation: rowToConversation(row), medium: row.latest_medium }),
+      );
     },
 
-    async countConversationsWithEmail() {
+    async countConversationsWithContactRequest() {
       // Cast to int: bigint comes back as a string through postgres.js.
-      const row = (await sql`SELECT COUNT(*)::int AS n FROM conversations
-                            WHERE visitor_email IS NOT NULL`)[0] as { n: number };
+      const row = (await sql`SELECT COUNT(DISTINCT conversation_id)::int AS n FROM contact_requests`)[0] as {
+        n: number;
+      };
       return Number(row.n);
+    },
+
+    // The one-open-request guarantee (ticket 69) is the guarded INSERT:
+    // the row only lands when the conversation has no open request, and the
+    // partial unique index backs the same rule at the database level.
+    async createContactRequest(request) {
+      const inserted = await sql`
+        INSERT INTO contact_requests (id, conversation_id, medium, status, created_at, completed_at, completed_by)
+        SELECT ${request.id}, ${request.conversationId}, ${request.medium}, 'open', ${request.createdAt}, NULL, NULL
+        WHERE NOT EXISTS (
+          SELECT 1 FROM contact_requests WHERE conversation_id = ${request.conversationId} AND status = 'open'
+        )`;
+      return changesOf(inserted) === 1;
+    },
+
+    async getOpenContactRequest(conversationId) {
+      const rows = await sql.unsafe(
+        `SELECT ${CONTACT_REQUEST_COLUMNS} FROM contact_requests
+         WHERE conversation_id = $1 AND status = 'open'`,
+        [conversationId],
+      );
+      const row = (rows as unknown as ContactRequestRow[])[0];
+      return row ? rowToContactRequest(row) : null;
+    },
+
+    async listContactRequests(conversationId) {
+      const rows = await sql.unsafe(
+        `SELECT ${CONTACT_REQUEST_COLUMNS} FROM contact_requests
+         WHERE conversation_id = $1 ORDER BY created_at ASC, id ASC`,
+        [conversationId],
+      );
+      return (rows as unknown as ContactRequestRow[]).map(rowToContactRequest);
+    },
+
+    async listOpenContactRequests() {
+      const rows = await sql.unsafe(
+        `SELECT ${CONTACT_REQUEST_COLUMNS} FROM contact_requests
+         WHERE status = 'open' ORDER BY created_at ASC, id ASC`,
+      );
+      return (rows as unknown as ContactRequestRow[]).map(rowToContactRequest);
+    },
+
+    // Completing is guarded: the open request is identified first and the
+    // UPDATE repeats the open check, so a completed or absent request
+    // returns null unchanged.
+    async completeOpenContactRequest(conversationId, completedBy, at) {
+      return sql.begin(async (tx: TransactionSql) => {
+        const open = (
+          (await tx.unsafe(
+            `SELECT id FROM contact_requests WHERE conversation_id = $1 AND status = 'open' FOR UPDATE`,
+            [conversationId],
+          )) as unknown as { id: string }[]
+        )[0];
+        if (!open) {
+          return null;
+        }
+        await tx`
+          UPDATE contact_requests SET status = 'completed', completed_at = ${at}, completed_by = ${completedBy}
+          WHERE id = ${open.id} AND status = 'open'`;
+        const row = (
+          (await tx.unsafe(`SELECT ${CONTACT_REQUEST_COLUMNS} FROM contact_requests WHERE id = $1`, [
+            open.id,
+          ])) as unknown as ContactRequestRow[]
+        )[0];
+        return row ? rowToContactRequest(row) : null;
+      });
     },
 
     async touchVisitorPresence(id) {
@@ -267,6 +373,7 @@ export function createPostgresStore(sql: PostgresSql): Store {
         }
         await tx`UPDATE audit_log SET conversation_id = NULL WHERE conversation_id = ${id}`;
         await tx`DELETE FROM notifications WHERE conversation_id = ${id}`;
+        await tx`DELETE FROM contact_requests WHERE conversation_id = ${id}`;
         await tx`DELETE FROM return_tokens WHERE conversation_id = ${id}`;
         await tx`DELETE FROM visitor_sessions WHERE conversation_id = ${id}`;
         await tx`DELETE FROM messages WHERE conversation_id = ${id}`;

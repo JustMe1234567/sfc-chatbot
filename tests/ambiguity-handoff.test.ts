@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   ask,
   askRaw,
+  confirmHandoffYes,
   loadHistory,
   startConversation,
   TEST_ORIGIN,
@@ -166,7 +167,7 @@ describe("the visitor's selected choice answers", () => {
 });
 
 describe("seeded handoff phrases work out of the box", () => {
-  it("escalates a seeded-phrase question even though a rule matches", async () => {
+  it("prompts a seeded-phrase question even though a rule matches, and escalates on Yes", async () => {
     // Order-dependent by nature: the seed applies only while the setting has
     // never been configured, so assert it explicitly before anything saves a
     // phrase list.
@@ -180,13 +181,20 @@ describe("seeded handoff phrases work out of the box", () => {
     const conversation = await startConversation();
     const response = await ask(conversation, "Can I talk to a person about the fees?");
     const body = (await response.json()) as ReplyBody;
-    expect(body.conversation.state).toBe("awaiting_staff");
+    // The phrase asks before acting (ticket 69): no answer from the rule,
+    // no escalation yet.
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.text).toBe("Would you like a staff member to join this chat?");
     expect(body.reply?.text).not.toContain("$3,500");
+
+    const yes = await confirmHandoffYes(conversation);
+    const yesBody = (await yes.json()) as ReplyBody;
+    expect(yesBody.conversation.state).toBe("awaiting_staff");
   });
 });
 
 describe("configured handoff phrases take priority over answer rules", () => {
-  it("escalates immediately when the question contains a configured phrase", async () => {
+  it("prompts when the question contains a configured phrase, and hands off on Yes", async () => {
     const editorJar = new CookieJar();
     await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
     const saved = await putPhrases(editorJar, [
@@ -200,8 +208,16 @@ describe("configured handoff phrases take priority over answer rules", () => {
     const conversation = await startConversation();
     const response = await ask(conversation, "HOW do I APPLY? i want to   SPEAK-to-a-HUMAN!");
     const body = (await response.json()) as ReplyBody;
-    expect(body.conversation.state).toBe("awaiting_staff");
-    expect(body.reply?.text).toContain("handed our conversation to the college staff");
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.choices?.map((choice) => choice.id)).toEqual([
+      "handoff-yes",
+      "handoff-no",
+    ]);
+
+    const yes = await confirmHandoffYes(conversation);
+    const yesBody = (await yes.json()) as ReplyBody;
+    expect(yesBody.conversation.state).toBe("awaiting_staff");
+    expect(yesBody.reply?.text).toContain("handed our conversation to the college staff");
   });
 
   it("applies configuration changes on the very next question, without a redeploy", async () => {
@@ -215,7 +231,10 @@ describe("configured handoff phrases take priority over answer rules", () => {
     const conversation = await startConversation();
     const response = await ask(conversation, "Please connect me with the registrar.");
     const body = (await response.json()) as ReplyBody;
-    expect(body.conversation.state).toBe("awaiting_staff");
+    expect(body.conversation.state).toBe("bot_active");
+    expect(body.reply?.text).toBe("Would you like a staff member to join this chat?");
+    const yes = await confirmHandoffYes(conversation);
+    expect(((await yes.json()) as ReplyBody).conversation.state).toBe("awaiting_staff");
   });
 
   it("matches phrases as whole phrases, not inside other words", async () => {

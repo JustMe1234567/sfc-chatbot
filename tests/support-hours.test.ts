@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
+import { confirmHandoffYes, ask, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
   enrollTotp,
@@ -182,8 +182,9 @@ describe("the visitor's handoff wording follows the configuration", () => {
     expect((await getHours(ownerJar)).hours).toBeNull();
 
     const conversation = await startConversation();
-    const response = await ask(conversation, "Nothing covers this question either; speak to a human.");
-    const body = (await response.json()) as { reply: { text: string } };
+    await ask(conversation, "Nothing covers this question either; speak to a human.");
+    const yes = await confirmHandoffYes(conversation);
+    const body = (await yes.json()) as { reply: { text: string } };
     expect(body.reply.text).toContain("handed our conversation to the college staff");
     expect(body.reply.text).not.toContain("Not/AZone");
     await db.run("DELETE FROM settings WHERE key = 'support_hours'");
@@ -192,7 +193,8 @@ describe("the visitor's handoff wording follows the configuration", () => {
   it("uses the general message while unconfigured, schedule wording once set", async () => {
     // Unconfigured first: the wording makes no response-time promise.
     const before = await startConversation();
-    const beforeReply = await ask(before, "What astrological sign is the college mascot? Speak to a human.");
+    await ask(before, "What astrological sign is the college mascot? Speak to a human.");
+    const beforeReply = await confirmHandoffYes(before);
     const beforeBody = (await beforeReply.json()) as { reply: { text: string } };
     expect(beforeBody.reply.text).toContain("handed our conversation to the college staff");
     expect(beforeBody.reply.text).not.toContain("on duty");
@@ -210,7 +212,8 @@ describe("the visitor's handoff wording follows the configuration", () => {
     expect(saved.status).toBe(200);
 
     const after = await startConversation();
-    const afterReply = await ask(after, "Do you offer hot air balloon parking? Speak to a human.");
+    await ask(after, "Do you offer hot air balloon parking? Speak to a human.");
+    const afterReply = await confirmHandoffYes(after);
     const afterBody = (await afterReply.json()) as { reply: { text: string } };
     expect(afterBody.reply.text).toContain("on duty");
     expect(afterBody.reply.text).toContain("Etc/GMT-2");
@@ -218,7 +221,8 @@ describe("the visitor's handoff wording follows the configuration", () => {
     // Clearing returns the promise-free general message.
     await putHours(ownerJar, null);
     const cleared = await startConversation();
-    const clearedReply = await ask(cleared, "Please tell me about the campus cheese cellar; speak to a human.");
+    await ask(cleared, "Please tell me about the campus cheese cellar; speak to a human.");
+    const clearedReply = await confirmHandoffYes(cleared);
     const clearedBody = (await clearedReply.json()) as { reply: { text: string } };
     expect(clearedBody.reply.text).toContain("handed our conversation to the college staff");
     expect(clearedBody.reply.text).not.toContain("on duty");

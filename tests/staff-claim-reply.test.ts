@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, loadHistory, startConversation, TEST_ORIGIN,
+import { ask, confirmHandoffYes, loadHistory, startConversation, TEST_ORIGIN,
   warmChatbotService,
 } from "./helpers";
 import {
@@ -46,6 +46,7 @@ async function staffPost(
 async function escalate(): Promise<{ id: string; token: string }> {
   const conversation = await startConversation();
   await ask(conversation, "I need to speak to a human, please.");
+  await confirmHandoffYes(conversation);
   return conversation;
 }
 
@@ -181,7 +182,11 @@ describe("reconnect and reload recovery", () => {
     const visitorBody = (await visitorHistory.json()) as {
       messages: { role: string; text: string }[];
     };
+    // Ticket 69: the phrase prompt and the visitor Yes choice sit between
+    // the question and the takeover.
     expect(visitorBody.messages.map((message) => message.role)).toEqual([
+      "visitor",
+      "bot",
       "visitor",
       "bot",
       "visitor",
@@ -199,7 +204,10 @@ describe("reconnect and reload recovery", () => {
     const staffBody = (await staffHistory.json()) as {
       messages: { role: string }[];
     };
+    // Same transcript as the visitor's read, prompt + choice included.
     expect(staffBody.messages.map((message) => message.role)).toEqual([
+      "visitor",
+      "bot",
       "visitor",
       "bot",
       "visitor",

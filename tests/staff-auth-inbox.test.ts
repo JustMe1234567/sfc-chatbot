@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { ask, startConversation, TEST_ORIGIN,
+import { ask, confirmHandoffYes, startConversation, TEST_ORIGIN,
   warmChatbotService,
 } from "./helpers";
 import {
@@ -26,6 +26,7 @@ let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
 async function escalateAConversation(): Promise<void> {
   const conversation = await startConversation();
   await ask(conversation, "Do you offer helicopter pilot licences? I need to speak to a human.");
+  await confirmHandoffYes(conversation);
 }
 
 beforeAll(async () => {

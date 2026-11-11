@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { startConversation, submitContact, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
+import { askRaw, startConversation, submitContact, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
 
 const STAFF_EMAIL = "lock-staff@example.edu";
@@ -102,6 +102,8 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
   it("a fresh conversation after Clear requires contact details again", async () => {
     const conversation = await startConversation();
     await postMessage(conversation, { text: "I need to speak to a human, please." });
+    // The phrase asks first now (ticket 69); Yes locks the input.
+    await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
     const locked = await postMessage(conversation, { text: "Still waiting?" });
     expect(locked.status).toBe(409);
 

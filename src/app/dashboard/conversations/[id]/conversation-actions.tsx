@@ -5,11 +5,55 @@ import { useRouter } from "next/navigation";
 import PendingButton from "../../pending-button";
 import styles from "../../dashboard.module.css";
 
-async function post(action: "claim" | "close", conversationId: string) {
+async function post(action: "claim" | "close" | "mark-contacted", conversationId: string) {
   const response = await fetch(`/api/staff/conversations/${conversationId}/${action}`, {
     method: "POST",
   });
   return response;
+}
+
+/**
+ * Completes the conversation's open email or phone contact request
+ * (ticket 69): the staff member reached the visitor outside the chat. The
+ * desk's persistent Contact Me clears with the refresh; nothing is added
+ * to the visitor's transcript.
+ */
+export function MarkContactedButton({ conversationId }: { conversationId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <div>
+      <PendingButton
+        type="button"
+        className={styles.primaryButton}
+        pending={busy}
+        pendingLabel="Marking…"
+        onClick={async () => {
+          setBusy(true);
+          setError("");
+          const response = await post("mark-contacted", conversationId);
+          if (response.ok) {
+            router.refresh();
+          } else {
+            const body = (await response.json().catch(() => null)) as {
+              error?: { message?: string };
+            } | null;
+            setError(body?.error?.message ?? "Could not mark contacted.");
+          }
+          setBusy(false);
+        }}
+      >
+        Mark contacted
+      </PendingButton>
+      {error ? (
+        <span className={styles.error} role="alert">
+          {" "}
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export function ClaimButton({ conversationId }: { conversationId: string }) {

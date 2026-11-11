@@ -4,8 +4,18 @@ import { isConversationActive } from "./activity";
 
 export function roleLabel(role: MessageRole): string {
   if (role === "visitor") return "Visitor";
-  if (role === "bot") return "Bot";
-  return "Staff";
+  if (role === "bot") return "Staff";
+  return "Bot";
+}
+
+/**
+ * The conversation's open email-or-phone contact request (ticket 69): the
+ * persistent red Contact Me status. Chat requests are absent by design —
+ * they ARE the waiting-for-staff state and read as Needs human.
+ */
+export interface OpenContactRequestView {
+  id: string;
+  medium: "email" | "phone";
 }
 
 /** One left-side list entry on the conversation desk (ticket 12). */
@@ -23,6 +33,9 @@ export interface DeskItem {
    *  44): the stable identity of the "something new" event, since attention
    *  never re-stamps while standing. */
   attentionAt: string | null;
+  /** The conversation's open email/phone contact request, if any (ticket
+   *  69): persistent until staff mark it contacted. */
+  contactRequest: OpenContactRequestView | null;
   createdAt: string;
   lastActivityAt: string;
   messageCount: number;
@@ -32,6 +45,7 @@ export interface DeskItem {
 async function toDeskItem(
   store: Store,
   conversation: Awaited<ReturnType<Store["listConversations"]>>[number],
+  openRequests: Map<string, OpenContactRequestView>,
 ): Promise<DeskItem> {
   const messages = await store.listMessages(conversation.id);
   const last = messages.at(-1);
@@ -42,6 +56,7 @@ async function toDeskItem(
     active: isConversationActive(conversation),
     attention: conversation.attentionAt !== null,
     attentionAt: conversation.attentionAt,
+    contactRequest: openRequests.get(conversation.id) ?? null,
     createdAt: conversation.createdAt,
     lastActivityAt: conversation.lastActivityAt,
     messageCount: messages.length,
@@ -55,6 +70,21 @@ function byNewestActivity(a: DeskItem, b: DeskItem): number {
   return new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime();
 }
 
+/** The open email/phone requests as a per-conversation view map (ticket 69). */
+async function openRequestViews(
+  store: Store,
+): Promise<Map<string, OpenContactRequestView>> {
+  const requests = await store.listOpenContactRequests();
+  return new Map(
+    requests
+      .filter((request) => request.medium !== "chat")
+      .map((request) => [
+        request.conversationId,
+        { id: request.id, medium: request.medium as "email" | "phone" },
+      ]),
+  );
+}
+
 /**
  * The conversation desk read model (ticket 12): every active conversation —
  * Incoming holds the waiting escalations, Active holds bot-active and claimed
@@ -65,9 +95,10 @@ export async function summarizeConversationDesk(
   store: Store,
 ): Promise<{ incoming: DeskItem[]; active: DeskItem[]; attentionCount: number }> {
   const conversations = await store.listConversations();
-  const items = (await Promise.all(conversations.map((c) => toDeskItem(store, c)))).filter(
-    (item) => item.active,
-  );
+  const openRequests = await openRequestViews(store);
+  const items = (
+    await Promise.all(conversations.map((c) => toDeskItem(store, c, openRequests)))
+  ).filter((item) => item.active);
   const incoming = items
     .filter((item) => item.state === "awaiting_staff")
     .sort(byNewestActivity);
@@ -85,7 +116,10 @@ export async function summarizeConversationDesk(
  */
 export async function summarizeConversationHistory(store: Store): Promise<DeskItem[]> {
   const conversations = await store.listConversations();
-  const items = await Promise.all(conversations.map((c) => toDeskItem(store, c)));
+  const openRequests = await openRequestViews(store);
+  const items = await Promise.all(
+    conversations.map((c) => toDeskItem(store, c, openRequests)),
+  );
   return items.filter((item) => !item.active).sort(byNewestActivity);
 }
 
@@ -112,38 +146,55 @@ export function deskLabel(item: { visitorName: string | null; state: string }): 
 }
 
 /**
- * The three-tier status every live desk surface shares (ticket 44): the
- * strongest tier wins, and each tier always pairs its color with visible
- * text or an icon carrying an accessible name.
+ * The desk's status tiers (tickets 44/69): the strongest tier wins, and
+ * each tier always pairs its color with visible text or an icon carrying an
+ * accessible name. "contact" is the persistent red Contact Me — an open
+ * email/phone request — which, unlike the transient attention tier, never
+ * clears on viewing.
  */
-export type DeskStatus = "needs_human" | "attention" | "active";
+export type DeskStatus = "needs_human" | "attention" | "contact" | "active";
 
 export const DESK_STATUS_LABELS: Record<DeskStatus, string> = {
   needs_human: "Needs human",
   attention: "New message",
+  contact: "Contact Me",
   active: "Active",
 };
 
-export function deskStatus(item: { state: string; attention: boolean }): DeskStatus {
+export function deskStatus(item: {
+  state: string;
+  attention: boolean;
+  contactRequest?: OpenContactRequestView | null;
+}): DeskStatus {
   if (item.state === "awaiting_staff") return "needs_human";
   if (item.attention) return "attention";
+  if (item.contactRequest) return "contact";
   return "active";
 }
 
 /** One "something new for staff" occurrence, as heard by the notification
  *  sound (ticket 44). The id anchors the attention episode's start instant,
  *  so polling, navigation, and a second view all read the same identity and
- *  sound at most once per staff browser. */
+ *  sound at most once per staff browser. Ticket 69 adds one event per open
+ *  email/phone contact request — a new request cues once, and the two
+ *  sources cue independently. */
 export interface AttentionEvent {
   conversationId: string;
   id: string;
 }
 
 export function deskAttentionEvents(items: DeskItem[]): AttentionEvent[] {
-  return items
-    .filter((item) => item.attentionAt !== null)
-    .map((item) => ({
-      conversationId: item.id,
-      id: `${item.id}:${item.attentionAt}`,
-    }));
+  const events: AttentionEvent[] = [];
+  for (const item of items) {
+    if (item.attentionAt !== null) {
+      events.push({ conversationId: item.id, id: `${item.id}:${item.attentionAt}` });
+    }
+    if (item.contactRequest) {
+      events.push({
+        conversationId: item.id,
+        id: `${item.id}:contact-request:${item.contactRequest.id}`,
+      });
+    }
+  }
+  return events;
 }

@@ -47,7 +47,10 @@ The visitor's action to end the current chat and start a fresh one. Staff keep t
 The greeting shown at the top of a fresh chat once the visitor's contact details are accepted, before they ask anything. It is presentation-only — rendered locally, never stored as a message, never part of the staff transcript — and its wording is a staff-published setting with a built-in default; opening the widget creates no conversation.
 
 **Contact details**:
-The visitor's full name, email address, and phone number, required before every new chat (ticket 66). The widget asks for them first, and the server refuses visitor messages and topic choices on any conversation without accepted details — including conversations from before the requirement, which staff still read under the fallback name "Visitor". They are stored on the conversation and removed with it; the phone number is retained only, with no phone-specific workflow.
+The visitor's full name, email address, and phone number, required before every new chat (ticket 66). The widget asks for them first, and the server refuses visitor messages and topic choices on any conversation without accepted details — including conversations from before the requirement, which staff still read under the fallback name "Visitor". They are stored on the conversation and removed with it. They stay **temporary** for chat labeling until the visitor creates a **contact request** (ticket 69), which promotes all three into the saved contact list.
+
+**Contact request**:
+A visitor's explicit ask to be reached (ticket 69), in one of three media: **Chat** rides the existing waiting-for-staff flow (Take over completes it), while **Email** and **Phone** leave the bot active behind a persistent red **Contact Me** desk status that staff clear with **Mark contacted** — viewing the transcript never clears it. A clicked Handoff Option or typed Handoff phrase asks the persisted two-action confirmation before anything happens; exactly one request may be open per conversation, one row per conversation shows the latest medium in Visitor contacts, and earlier requests stay in the conversation's request history. Requests leave with the conversation under every deletion path.
 
 **Conversation**:
 The message history shared by a visitor, the bot, and any administrator who takes over.
