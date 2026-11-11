@@ -86,7 +86,9 @@ describe("the visitor's polling cadence (ticket 61)", () => {
 describe("the loader reports open state to the frame (ticket 61)", () => {
   it("posts sfcw:state on open, close, and the frame's ready handshake", async () => {
     const loader = await read(LOADER);
-    expect(loader).toMatch(/postMessage\(\{ type: "sfcw:state", open: isOpen \}, base\)/);
+    // Ticket 26 added the viaKeyboard field to the payload; the delivery
+    // contract itself (open, close, ready handshake) is unchanged.
+    expect(loader).toMatch(/type: "sfcw:state", open: isOpen, viaKeyboard: openViaKeyboard/);
     expect(loader).toContain("sendOpenState();");
     expect(loader).toMatch(/type === "sfcw:ready"\)\s*\{\s*sendOpenState\(\);/);
     // The close handler keeps its origin check and now also its source

@@ -138,6 +138,7 @@ export default function WidgetFrame() {
   const sessionRef = useRef<StoredSession | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   // Bumped whenever the visitor's conversation is replaced (ticket 14): any
   // in-flight request from an older generation must never repaint the chat.
   const generationRef = useRef(0);
@@ -293,11 +294,22 @@ export default function WidgetFrame() {
   useEffect(() => {
     if (window.parent === window) {
       setPanelOpen(true);
+      // The standalone preview is the open panel too (ticket 26): same
+      // deliberate target under the keyboard.
+      focusPanelTarget(false);
       return;
     }
     function onPanelState(event: MessageEvent): void {
       if (event.source === window.parent && event.data?.type === "sfcw:state") {
         setPanelOpen(event.data.open === true);
+        if (event.data.open === true) {
+          // The open landed (ticket 26): message tasks run after the loader
+          // has already unhidden the frame, so the deliberate target is
+          // focusable here — on every open, not just first load. The ring
+          // follows the opener's modality via the loader's viaKeyboard
+          // flag (absent on stale cached loaders: mouse-safe default).
+          focusPanelTarget(event.data.viaKeyboard === true);
+        }
       }
     }
     window.addEventListener("message", onPanelState);
@@ -422,6 +434,27 @@ export default function WidgetFrame() {
     if (window.parent !== window) {
       window.parent.postMessage({ type: "sfcw:close" }, "*");
     }
+  }
+
+  /**
+   * Ticket 26: an open panel puts a deliberate target under the keyboard —
+   * the composer when it is usable, otherwise the always-present close
+   * button (fresh contact gate, or the ticket-43 waiting lock). The ring
+   * follows the opener's modality: the iframe document has no interaction
+   * history of its own, so the plain :focus-visible heuristic would light a
+   * ring for mouse users too; focusVisible is pinned from the loader's
+   * flag instead. Browsers without the option ignore it (graceful).
+   */
+  function focusPanelTarget(viaKeyboard: boolean): void {
+    const focusOptions: FocusOptions & { focusVisible?: boolean } = {
+      focusVisible: viaKeyboard,
+    };
+    const input = inputRef.current;
+    if (input && !input.disabled) {
+      input.focus(focusOptions);
+      return;
+    }
+    closeButtonRef.current?.focus(focusOptions);
   }
 
   useEffect(() => {
@@ -987,6 +1020,7 @@ export default function WidgetFrame() {
           <span className={styles.headerFreshTop}>
             <button
               type="button"
+              ref={closeButtonRef}
               className={styles.close}
               aria-label="Close chat"
               onClick={requestClose}
@@ -1015,6 +1049,7 @@ export default function WidgetFrame() {
             {messages.length > 0 ? headerMenu : null}
             <button
               type="button"
+              ref={closeButtonRef}
               className={styles.close}
               aria-label="Close chat"
               onClick={requestClose}

@@ -85,9 +85,24 @@ function boot(): void {
      the state of the last action. */
   let hideTimer: number | undefined;
   let isOpen = false;
+  // How the current open was triggered (ticket 26): the frame pins the
+  // focus ring's visibility from this, because its own document has no
+  // interaction history — a plain :focus-visible heuristic would show a
+  // ring to mouse users there. Pointer covers touch; keyboard covers
+  // Enter/Space on the focused launcher.
+  let openViaKeyboard = false;
+  launcher.addEventListener("pointerdown", () => {
+    openViaKeyboard = false;
+  });
+  launcher.addEventListener("keydown", () => {
+    openViaKeyboard = true;
+  });
 
   function sendOpenState(): void {
-    frame.contentWindow?.postMessage({ type: "sfcw:state", open: isOpen }, base);
+    frame.contentWindow?.postMessage(
+      { type: "sfcw:state", open: isOpen, viaKeyboard: openViaKeyboard },
+      base,
+    );
   }
 
   function openFrame(): void {
