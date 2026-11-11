@@ -102,6 +102,49 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain('role="status"');
   });
 
+  it("announces the takeover and the claim, each exactly once (ticket 25)", async () => {
+    const frame = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+      "utf8",
+    );
+    // The handoff notice is the awaiting event's ONE announcer (ticket 25):
+    // the takeover is the service's core escalation event, and it must
+    // reach screen readers through this paragraph.
+    const handoffSlice = frame.slice(
+      frame.indexOf("{handoff ? ("),
+      frame.indexOf("Automated answers are paused."),
+    );
+    expect(handoffSlice).toContain('role="status"');
+    expect(handoffSlice).toContain("College staff will reply in this chat.");
+    // The claim announces through its own notice (ticket 43's region).
+    const claimedSlice = frame.slice(
+      frame.indexOf("{claimed ? ("),
+      frame.indexOf("A college staff member has joined"),
+    );
+    expect(claimedSlice).toContain('role="status"');
+    // One announcer per event: the waiting line renders alongside the
+    // handoff notice, so it must stay visual — two polite regions firing
+    // together would read the same event twice.
+    const waitingSlice = frame.slice(
+      frame.indexOf("{composerLocked ? ("),
+      frame.indexOf("Waiting for a staff member to take over…"),
+    );
+    expect(waitingSlice).not.toContain('role="status"');
+    expect(frame).toContain("Waiting for a staff member to take over…");
+    // The topicless guidance line carries no live role, so the takeover
+    // announcement is never doubled by an intro swap (ticket 38 removed the
+    // takeover variant; this keeps the region count at one per event).
+    const introStart = frame.indexOf("className={styles.intro}");
+    const introSlice = frame.slice(introStart, frame.indexOf("</p>", introStart));
+    expect(introSlice).not.toMatch(/role=|aria-live/);
+    // The error region stays a live region (ticket 38's persistent status
+    // line); the email-capture box and its notes are gone with ticket 66.
+    expect(frame.slice(frame.indexOf("className={styles.status}"))).toMatch(
+      /role="status"/,
+    );
+    expect(frame).not.toContain("emailNote");
+  });
+
   it("shows an active verb on the visitor's send while it runs (ticket 42)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),

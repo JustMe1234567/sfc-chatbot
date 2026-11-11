@@ -1031,7 +1031,14 @@ export default function WidgetFrame() {
         <p className={styles.intro}>Ask us your question.</p>
       ) : null}
       {handoff ? (
-        <p className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}>
+        // The awaiting event's one live announcer (ticket 25): the takeover
+        // is the service's core escalation event, so this paragraph carries
+        // its announcement — the waiting line below stays purely visual,
+        // since two polite regions firing together would read it twice.
+        <p
+          className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}
+          role="status"
+        >
           College staff will reply in this chat. Automated answers are paused.
         </p>
       ) : null}
@@ -1110,11 +1117,10 @@ export default function WidgetFrame() {
         {error}
       </p>
       {composerLocked ? (
-        // Announced once when the lock begins (ticket 43); it leaves the
-        // stage to the claimed notice when staff take over.
-        <p className={styles.waiting} role="status">
-          Waiting for a staff member to take over…
-        </p>
+        // Visual companion to the handoff notice's announcement — ticket 43
+        // made this line the announcer, ticket 25 moved that duty to the
+        // notice above (one announcer per event, no double reading).
+        <p className={styles.waiting}>Waiting for a staff member to take over…</p>
       ) : null}
       {!freshStart && !contactRequired && visibleTopics.length > 0 ? (
         // The compact persistent strip is the conversation's suggestion rail
