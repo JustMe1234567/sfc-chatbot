@@ -14,9 +14,10 @@ import {
   MESSAGE_RATE_LIMIT,
   validateVisitorText,
 } from "@/domain/limits";
+import { createSharedRateLimiter } from "@/api/rateLimit";
 import type { Conversation, Message, Store, SupportHours } from "@/domain/types";
 
-const messageLimiter = createRateLimiter(MESSAGE_RATE_LIMIT);
+const messageLimiter = createSharedRateLimiter(MESSAGE_RATE_LIMIT, "message");
 const historyLimiter = createRateLimiter(HISTORY_RATE_LIMIT);
 const REQUEST_HUMAN_CHOICE_ID = "request-human";
 const REQUEST_HUMAN_CHOICE = {
@@ -83,7 +84,7 @@ async function recordVisitorChoice(
   if (!isConversationActive(conversation)) {
     return { recorded: false, response: inactiveResponse() };
   }
-  if (!messageLimiter.check(conversation.id)) {
+  if (!(await messageLimiter.check(conversation.id))) {
     return {
       recorded: false,
       response: NextResponse.json(
@@ -308,7 +309,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (conversation.state === "awaiting_staff") {
     return awaitingStaffResponse();
   }
-  if (!messageLimiter.check(conversation.id)) {
+  if (!(await messageLimiter.check(conversation.id))) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
       { status: 429 },

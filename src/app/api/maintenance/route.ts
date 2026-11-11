@@ -3,6 +3,7 @@ import { getChatbotService } from "@/db/service";
 import { sweepTranscripts } from "@/domain/retention";
 import { expireAnalytics } from "@/domain/analytics";
 import { sweepExpiredTrash } from "@/domain/answerLifecycle";
+import { pruneRateLimitWindows } from "@/domain/limits";
 import { trustedOrigins } from "@/config";
 
 /** Constant-time bearer comparison for the network-visible cron secret. */
@@ -44,10 +45,14 @@ export async function GET(request: Request) {
   // The Trash sweep (ticket 58) rides the same passes: answers sitting in
   // Trash past the fixed 30-day threshold are purged for good.
   const trash = await sweepExpiredTrash(store);
+  // Spent shared rate-limit windows (ticket 24) are pure debris once they
+  // can no longer recur.
+  const rateLimitWindows = await pruneRateLimitWindows(db);
   return NextResponse.json({
     ok: true,
     removedConversations: transcripts?.removedConversations ?? null,
     analyticsRemoved: analytics,
     answersPurged: trash?.purgedAnswers ?? null,
+    rateLimitWindowsRemoved: rateLimitWindows,
   });
 }

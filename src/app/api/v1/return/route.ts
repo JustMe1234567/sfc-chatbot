@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { publicClientKey } from "@/api/visitor";
-import { createRateLimiter, RETURN_RATE_LIMIT } from "@/domain/limits";
+import { createSharedRateLimiter } from "@/api/rateLimit";
+import { RETURN_RATE_LIMIT } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
 import { getChatbotService } from "@/db/service";
 
-const returnLimiter = createRateLimiter(RETURN_RATE_LIMIT);
+const returnLimiter = createSharedRateLimiter(RETURN_RATE_LIMIT, "return");
 
 /**
  * Redeems a mailed return link (ticket 07). Exactly one redemption is
@@ -14,7 +15,7 @@ const returnLimiter = createRateLimiter(RETURN_RATE_LIMIT);
  * gone, not retryable.
  */
 export async function POST(request: Request) {
-  if (!returnLimiter.check(publicClientKey(request))) {
+  if (!(await returnLimiter.check(publicClientKey(request)))) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Too many attempts. Please try again shortly." } },
       { status: 429 },

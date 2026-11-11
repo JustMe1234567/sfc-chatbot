@@ -1,3 +1,24 @@
+import type { AppDatabase } from "../db/appDatabase";
+
+/**
+ * The rate-limit decision (ticket 24): counters for the abuse-facing public
+ * endpoints — conversation creation, return-link redemption, and visitor
+ * messages — must hold across serverless instances, so on a database backend
+ * they live as shared rows in `rate_limit_hits` via `createSharedRateLimiter`
+ * (src/api/rateLimit.ts). This module stays server-import-free (the widget
+ * imports its constants), which is why the shared-counter mechanism lives in
+ * src/api and only this decision is recorded here.
+ *
+ * `createRateLimiter`'s per-process in-memory counters remain the right tool
+ * where the limit is inherently per-process anyway: the credential-free
+ * reads (topics, welcome, handoff options, presence beats) and the
+ * per-conversation guards (history, clear, contact). SQLite mode has no
+ * shared store to count in, so every limiter — including the shared ones —
+ * runs in-memory there, with the same per-scope/key window contract. The
+ * shared counters' maintenance sweep below follows this module's usual
+ * (db) parameter pattern, like the retention and analytics sweeps.
+ */
+
 export const MAX_MESSAGE_LENGTH = 1000;
 
 export type TextValidation =
@@ -168,4 +189,18 @@ export function createRateLimiter(limit: number) {
       return true;
     },
   };
+}
+
+/**
+ * Maintenance for the shared rate-limit counters (ticket 24): drops every
+ * window older than the previous one — a budget can never recur two windows
+ * later, so those rows are pure debris. Returns the number of rows removed.
+ */
+export async function pruneRateLimitWindows(
+  db: AppDatabase,
+  now = Date.now(),
+): Promise<number> {
+  const cutoff = new Date(now - 2 * windowMs()).toISOString();
+  const { changes } = await db.run("DELETE FROM rate_limit_hits WHERE window_start < ?", cutoff);
+  return changes;
 }

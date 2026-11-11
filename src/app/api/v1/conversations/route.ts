@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getChatbotService } from "@/db/service";
 import { publicClientKey } from "@/api/visitor";
-import { createRateLimiter, CREATE_RATE_LIMIT, validateVisitorContact } from "@/domain/limits";
+import { createSharedRateLimiter } from "@/api/rateLimit";
+import { CREATE_RATE_LIMIT, validateVisitorContact } from "@/domain/limits";
 import { createSessionToken, hashSessionToken, sessionExpiry } from "@/domain/tokens";
 import { recordChatStarted } from "@/domain/analytics";
 import type { Conversation } from "@/domain/types";
 
-const createLimiter = createRateLimiter(CREATE_RATE_LIMIT);
+const createLimiter = createSharedRateLimiter(CREATE_RATE_LIMIT, "conversation-create");
 
 /**
  * Starts a chat (ticket 66): every new conversation is created with the
@@ -16,7 +17,7 @@ const createLimiter = createRateLimiter(CREATE_RATE_LIMIT);
  */
 export async function POST(request: Request) {
   const { store, db } = await getChatbotService();
-  if (!createLimiter.check(publicClientKey(request))) {
+  if (!(await createLimiter.check(publicClientKey(request)))) {
     return NextResponse.json(
       {
         error: {
