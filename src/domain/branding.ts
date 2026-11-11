@@ -8,18 +8,25 @@
  */
 
 /** The confirmed chathead defaults (ticket 70); the color is kept in its
- * canonical lowercase hex form, the same shape every write normalizes to. */
+ * canonical lowercase hex form, the same shape every write normalizes to.
+ * Ticket 71 adds explicit width and height defaults (64 × 64) — rows saved
+ * before it carry no dimensions and resolve to their derived outer size. */
 export const CHATHEAD_DEFAULT_BG = "#013c78";
 export const CHATHEAD_DEFAULT_ICON_SIZE = 48;
 export const CHATHEAD_DEFAULT_PADDING = 4;
 
 /** Bounded appearance controls: the outer chathead stays within 32-88px,
  * comfortably a touch target at every combination and well clear of the
- * 360px widget viewport. */
+ * 360px widget viewport. Ticket 71 adds independent width and height
+ * bounds (44-96 px) with 64 × 64 as the default configuration. */
 export const CHATHEAD_MIN_ICON_SIZE = 32;
 export const CHATHEAD_MAX_ICON_SIZE = 64;
 export const CHATHEAD_MIN_PADDING = 0;
 export const CHATHEAD_MAX_PADDING = 12;
+export const CHATHEAD_MIN_DIMENSION = 44;
+export const CHATHEAD_MAX_DIMENSION = 96;
+export const CHATHEAD_DEFAULT_WIDTH = 64;
+export const CHATHEAD_DEFAULT_HEIGHT = 64;
 
 /** Upload ceiling (ticket 70): raw decoded bytes. */
 export const MAX_BRANDING_IMAGE_BYTES = 500 * 1024;
@@ -40,17 +47,34 @@ export interface ChatheadConfig {
   backgroundColor: string;
   iconSize: number;
   padding: number;
+  /** Explicit container dimensions (ticket 71). Absent on rows saved
+   * before the ticket — those resolve to the derived outer size so
+   * deployed chatheads do not unexpectedly resize. */
+  width?: number;
+  height?: number;
+}
+
+/** The resolved shape every consumer sees: dimensions always present. */
+export interface ResolvedChatheadConfig {
+  backgroundColor: string;
+  iconSize: number;
+  padding: number;
+  width: number;
+  height: number;
 }
 
 export const CHATHEAD_DEFAULTS: ChatheadConfig = {
   backgroundColor: CHATHEAD_DEFAULT_BG,
   iconSize: CHATHEAD_DEFAULT_ICON_SIZE,
   padding: CHATHEAD_DEFAULT_PADDING,
+  width: CHATHEAD_DEFAULT_WIDTH,
+  height: CHATHEAD_DEFAULT_HEIGHT,
 };
 
-/** The chathead's outer square: icon plus padding on both sides. */
-export function chatheadOuterSize(config: ChatheadConfig): number {
-  return config.iconSize + 2 * config.padding;
+/** The outer size a chathead derives from its icon and padding alone —
+ * the pre-ticket-71 square and the fit requirement's floor. */
+export function chatheadDerivedSize(config: Pick<ChatheadConfig, "iconSize" | "padding">): number {
+  return config.iconSize + config.padding * 2;
 }
 
 /** Accepts #RGB and #RRGGBB, answers the canonical #RRGGBB form. */
@@ -71,8 +95,19 @@ export function isValidHexColor(input: unknown): input is string {
   return normalizeHexColor(input) !== null;
 }
 
-/** The write validator: a hand-edited or truncated row must never reach the
- * launcher, so anything off reads as the defaults (resolveChatheadConfig). */
+function isValidDimension(input: unknown): input is number {
+  return (
+    typeof input === "number" &&
+    Number.isInteger(input) &&
+    input >= CHATHEAD_MIN_DIMENSION &&
+    input <= CHATHEAD_MAX_DIMENSION
+  );
+}
+
+/** The write/read shape validator: dimensions are optional (legacy rows)
+ * but when present must sit in the 44-96 px band (ticket 71). Fit — the
+ * icon and padding fitting inside both dimensions — is a separate,
+ * save-time rule (chatheadFitRequirement) so reads can resolve leniently. */
 export function isValidChatheadConfig(input: unknown): input is ChatheadConfig {
   if (typeof input !== "object" || input === null) {
     return false;
@@ -87,21 +122,52 @@ export function isValidChatheadConfig(input: unknown): input is ChatheadConfig {
     typeof candidate.padding === "number" &&
     Number.isInteger(candidate.padding) &&
     candidate.padding >= CHATHEAD_MIN_PADDING &&
-    candidate.padding <= CHATHEAD_MAX_PADDING
+    candidate.padding <= CHATHEAD_MAX_PADDING &&
+    (candidate.width === undefined || isValidDimension(candidate.width)) &&
+    (candidate.height === undefined || isValidDimension(candidate.height))
   );
 }
 
-/** The read helper: corrupt or partial rows resolve to the defaults, and
- * a valid row comes back in canonical form (lowercase six-digit hex). */
-export function resolveChatheadConfig(input: unknown): ChatheadConfig {
+/** The save-time fit rule (ticket 71): the icon plus padding on both sides
+ * must fit inside the configured width AND height. Returns the minimum
+ * square dimension the current icon and padding require, or null when the
+ * configuration fits. */
+export function chatheadFitRequirement(config: ChatheadConfig): number | null {
+  const required = chatheadDerivedSize(config);
+  const width = config.width ?? required;
+  const height = config.height ?? required;
+  return width < required || height < required ? required : null;
+}
+
+/** The safe fallback for corrupt, out-of-range, or fit-broken rows. */
+const CHATHEAD_SAFE_FALLBACK: ResolvedChatheadConfig = {
+  backgroundColor: CHATHEAD_DEFAULT_BG,
+  iconSize: CHATHEAD_DEFAULT_ICON_SIZE,
+  padding: CHATHEAD_DEFAULT_PADDING,
+  width: CHATHEAD_DEFAULT_WIDTH,
+  height: CHATHEAD_DEFAULT_HEIGHT,
+};
+
+/** The read helper: corrupt, partial, or fit-broken rows resolve to safe
+ * values — legacy rows (no dimensions) keep their derived outer size so
+ * deployed chatheads do not resize, and the defaults fill the rest. */
+export function resolveChatheadConfig(input: unknown): ResolvedChatheadConfig {
   if (!isValidChatheadConfig(input)) {
-    return { ...CHATHEAD_DEFAULTS };
+    return { ...CHATHEAD_SAFE_FALLBACK };
   }
   const valid = input as ChatheadConfig;
+  if (chatheadFitRequirement(valid) !== null) {
+    // A hand-edited row whose dimensions cannot hold the icon: the safe
+    // fallback is the default configuration, not a clipped launcher.
+    return { ...CHATHEAD_SAFE_FALLBACK };
+  }
+  const required = chatheadDerivedSize(valid);
   return {
     backgroundColor: normalizeHexColor(valid.backgroundColor) ?? CHATHEAD_DEFAULT_BG,
     iconSize: valid.iconSize,
     padding: valid.padding,
+    width: valid.width ?? required,
+    height: valid.height ?? required,
   };
 }
 

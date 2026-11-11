@@ -1,15 +1,24 @@
 import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
 import { DASHBOARD_ROLES } from "@/auth/server";
-import { isValidChatheadConfig, type ChatheadConfig } from "@/domain/branding";
+import {
+  chatheadFitRequirement,
+  isValidChatheadConfig,
+  type ChatheadConfig,
+} from "@/domain/branding";
 import { getChatheadConfig, setChatheadConfig } from "@/settings";
 import { getChatbotService } from "@/db/service";
 
 /**
- * The chathead appearance setting (ticket 70): background color, icon size,
- * and padding within the domain's bounds, or null to reset to the confirmed
- * defaults. The launcher's foreground is derived from the background, never
- * configured, so contrast cannot be broken from this form.
+ * The chathead appearance setting (tickets 70 and 71): background color,
+ * icon size, and padding within the domain's bounds, plus — since ticket
+ * 71 — the container's width and height (44-96 px each; optional so
+ * pre-71 rows stay valid, deriving their size as before), or null to reset
+ * to the confirmed defaults. A configuration whose icon and padding do not
+ * fit inside both dimensions is refused without touching the stored values,
+ * and the error states the minimum size those settings require. The
+ * launcher's foreground is derived from the background, never configured,
+ * so contrast cannot be broken from this form.
  */
 export async function PUT(request: Request) {
   const blocked = sameOriginGuard(request);
@@ -44,7 +53,19 @@ export async function PUT(request: Request) {
         error: {
           code: "invalid_chathead",
           message:
-            "Provide a hex color and whole pixel sizes within the allowed ranges (icon 32-64, padding 0-12).",
+            "Provide a hex color and whole pixel sizes within the allowed ranges (icon 32-64, padding 0-12, width and height 44-96).",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  const required = chatheadFitRequirement(candidate as ChatheadConfig);
+  if (required !== null) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "chathead_does_not_fit",
+          message: `The icon and padding need at least ${required} × ${required} px. Increase the chathead width or height, or reduce the icon size or padding.`,
         },
       },
       { status: 400 },

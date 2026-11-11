@@ -48,11 +48,13 @@ describe("WordPress embed smoke check", () => {
     const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
     const source = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
 
-    // Ticket 70 supersedes the fixed 56px white plate: the chathead is
-    // configurable through CSS custom properties whose inline fallbacks are
-    // the confirmed defaults (56px outer, background #013C78).
-    expect(script).toContain("width:var(--sfcw-outer,56px);height:var(--sfcw-outer,56px)");
+    // Tickets 70 and 71 supersede the fixed 56px white plate: the chathead
+    // is configurable through CSS custom properties whose inline fallbacks
+    // are the confirmed defaults (64 × 64 container, background #013C78),
+    // with the corner radius at 25% of the smaller dimension.
+    expect(script).toContain("width:var(--sfcw-w,64px);height:var(--sfcw-h,64px)");
     expect(script).toContain("background:var(--sfcw-bg,#013c78)");
+    expect(script).toContain("border-radius:calc(min(var(--sfcw-w,64px),var(--sfcw-h,64px)) * .25)");
     expect(script).toContain('aria-label","Chat with Springfield College"');
     expect(source).not.toContain('label.textContent = "Chat"');
     expect(source).not.toContain("launcher.appendChild(label)");

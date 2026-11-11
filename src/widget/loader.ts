@@ -13,14 +13,19 @@ const BOOT_MARKER = "sfc-chatbot-widget-v1";
 /* Motion values match the frame app and dashboard tokens (ticket 15): one
    160ms ease-out for the panel. Under prefers-reduced-motion the panel
    lands immediately.
-   The chathead's look (ticket 70) rides CSS custom properties with the
-   confirmed defaults inline — background #013c78, 48px icon, 4px padding,
-   56px outer — so a failed branding fetch leaves exactly those. The
-   foreground and the focus ring share the automatically chosen color; the
-   hover lifts brightness, which reads on any background without needing a
-   second configurable color. */
+   The chathead's look (ticket 70, dimensions from ticket 71) rides CSS
+   custom properties with the confirmed defaults inline — background
+   #013C78, 48px icon, 4px padding, 64 × 64 container — so a missing
+   branding message leaves exactly those. The foreground and the focus ring
+   share the automatically chosen color; the hover lifts brightness, which
+   reads on any background without needing a second configurable color.
+   The corner radius keeps the rounded-square proportion: 25% of the
+   smaller dimension, square or rectangular. The opened frame hangs above
+   the configured height; its right edge stays viewport-anchored, which
+   holds the widest launcher (96px) fully on screen at every supported
+   width. */
 const STYLES = `
-.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:var(--sfcw-outer,56px);height:var(--sfcw-outer,56px);border:0;border-radius:14px;background:var(--sfcw-bg,#013c78);color:var(--sfcw-fg,#fff);padding:var(--sfcw-pad,4px);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;justify-content:center}
+.sfcw-launcher{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:var(--sfcw-w,64px);height:var(--sfcw-h,64px);border:0;border-radius:calc(min(var(--sfcw-w,64px),var(--sfcw-h,64px)) * .25);background:var(--sfcw-bg,#013c78);color:var(--sfcw-fg,#fff);padding:var(--sfcw-pad,4px);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:inline-flex;align-items:center;justify-content:center}
 .sfcw-launcher:hover{filter:brightness(1.15)}
 .sfcw-launcher:active{transform:translateY(1px)}
 .sfcw-launcher:focus-visible{outline:2px solid var(--sfcw-fg,#fff);outline-offset:2px}
@@ -32,11 +37,11 @@ const STYLES = `
 .sfcw-launcher[data-closing="true"] img{display:none}
 .sfcw-launcher[aria-expanded="true"] .sfcw-launcher-close{display:flex}
 .sfcw-launcher[data-closing="true"] .sfcw-launcher-close{display:flex}
-.sfcw-frame{position:fixed;right:16px;bottom:calc(16px + var(--sfcw-outer,56px) + 4px);z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px));opacity:0;transform:translateY(10px) scale(.98);transition:opacity 180ms cubic-bezier(.2,.8,.2,1),transform 180ms cubic-bezier(.2,.8,.2,1)}
+.sfcw-frame{position:fixed;right:16px;bottom:calc(16px + var(--sfcw-h,64px) + 4px);z-index:2147483000;display:block;border:0;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;width:min(360px,calc(100vw - 32px));height:min(560px,calc(100vh - 100px));opacity:0;transform:translateY(10px) scale(.98);transition:opacity 180ms cubic-bezier(.2,.8,.2,1),transform 180ms cubic-bezier(.2,.8,.2,1)}
 .sfcw-frame.sfcw-frame-in{opacity:1;transform:none}
 .sfcw-frame[hidden]{display:none}
 @media (prefers-reduced-motion:reduce){.sfcw-frame{transition-duration:0ms}.sfcw-launcher:active{transform:none}}
-@media (max-width:480px){.sfcw-frame{right:8px;left:8px;bottom:calc(8px + var(--sfcw-outer,56px) + 8px);width:calc(100vw - 16px);height:calc(100vh - 88px)}}
+@media (max-width:480px){.sfcw-frame{right:8px;left:8px;bottom:calc(8px + var(--sfcw-h,64px) + 8px);width:calc(100vw - 16px);height:calc(100vh - 88px)}}
 `;
 
 function boot(): void {
@@ -198,7 +203,7 @@ function boot(): void {
       if (typeof chathead !== "object" || chathead === null) {
         return;
       }
-      const { backgroundColor, foreground, iconSize, padding, outerSize } = chathead;
+      const { backgroundColor, foreground, iconSize, padding, width, height } = chathead;
       if (typeof backgroundColor === "string" && backgroundColor.length <= 9) {
         launcher.style.setProperty("--sfcw-bg", backgroundColor);
       }
@@ -211,9 +216,13 @@ function boot(): void {
       if (typeof padding === "number" && padding >= 0 && padding <= 32) {
         launcher.style.setProperty("--sfcw-pad", `${padding}px`);
       }
-      if (typeof outerSize === "number" && outerSize >= 24 && outerSize <= 192) {
-        launcher.style.setProperty("--sfcw-outer", `${outerSize}px`);
-        frame.style.setProperty("--sfcw-outer", `${outerSize}px`);
+      if (typeof width === "number" && width >= 24 && width <= 192) {
+        launcher.style.setProperty("--sfcw-w", `${width}px`);
+      }
+      if (typeof height === "number" && height >= 24 && height <= 192) {
+        launcher.style.setProperty("--sfcw-h", `${height}px`);
+        // The opened frame hangs above the configured height.
+        frame.style.setProperty("--sfcw-h", `${height}px`);
       }
     }
   });

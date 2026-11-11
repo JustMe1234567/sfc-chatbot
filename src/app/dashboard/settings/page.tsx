@@ -8,7 +8,7 @@ import {
   getDashboardFaviconVersion,
 } from "@/settings";
 import { getChatbotService } from "@/db/service";
-import { chatheadForeground, chatheadOuterSize } from "@/domain/branding";
+import { chatheadForeground } from "@/domain/branding";
 import BrandingSettings from "./branding-settings";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
@@ -57,7 +57,8 @@ export default async function SettingsPage() {
               backgroundColor: chathead.backgroundColor,
               iconSize: chathead.iconSize,
               padding: chathead.padding,
-              outerSize: chatheadOuterSize(chathead),
+              width: chathead.width,
+              height: chathead.height,
               foreground: chatheadForeground(chathead.backgroundColor),
             },
           }}

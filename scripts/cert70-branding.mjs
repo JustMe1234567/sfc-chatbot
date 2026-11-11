@@ -168,11 +168,42 @@ await page.locator("#chathead-bg").fill("#7a0030");
 await page.getByRole("button", { name: "Save appearance" }).click();
 await page.locator('[aria-labelledby="branding-chathead-title"]').getByText("Saved.", { exact: true }).waitFor({ timeout: 10000 });
 const branding = await (await fetch(`${BASE}/api/v1/branding`)).json();
-if (branding.chathead.backgroundColor !== "#7a0030" || branding.chathead.foreground !== "#ffffff" || branding.chathead.outerSize !== 56) {
+if (branding.chathead.backgroundColor !== "#7a0030" || branding.chathead.foreground !== "#ffffff" || branding.chathead.width !== 64 || branding.chathead.height !== 64) {
   throw new Error(`the saved chathead config is wrong: ${JSON.stringify(branding.chathead)}`);
 }
 await shot("70-settings-saved");
-console.log("ok: the chathead save reaches the public branding read with the derived foreground");
+console.log("ok: the chathead save reaches the public branding read with the derived foreground and 64x64 dimensions");
+
+// ===========================================================================
+// Ticket 71: a configuration whose icon and padding do not fit is blocked
+// with the required minimum, leaving the stored values unchanged.
+// ===========================================================================
+await page.locator("#chathead-icon-size").fill("64");
+await page.locator("#chathead-padding").fill("12");
+await page.locator("#chathead-width").fill("44");
+await page.getByRole("button", { name: "Save appearance" }).click();
+await page.getByText("The icon and padding need at least 88 × 88 px.").waitFor({ timeout: 10000 });
+const afterRefusal = await (await fetch(`${BASE}/api/v1/branding`)).json();
+if (afterRefusal.chathead.iconSize !== 48 || afterRefusal.chathead.width !== 64) {
+  throw new Error(`the refused save changed the stored config: ${JSON.stringify(afterRefusal.chathead)}`);
+}
+console.log("ok: a non-fitting configuration is refused with the required minimum and nothing stored changes");
+await page.locator("#chathead-icon-size").fill("48");
+await page.locator("#chathead-padding").fill("4");
+
+// A rectangular configuration that fits saves and renders: the smallest
+// icon (32px, no padding) needs only 32 × 32, so 96 × 44 is legal.
+await page.locator("#chathead-icon-size").fill("32");
+await page.locator("#chathead-padding").fill("0");
+await page.locator("#chathead-width").fill("96");
+await page.locator("#chathead-height").fill("44");
+await page.getByRole("button", { name: "Save appearance" }).click();
+await page.locator('[aria-labelledby="branding-chathead-title"]').getByText("Saved.", { exact: true }).waitFor({ timeout: 10000 });
+const rectangular = await (await fetch(`${BASE}/api/v1/branding`)).json();
+if (rectangular.chathead.width !== 96 || rectangular.chathead.height !== 44) {
+  throw new Error(`the rectangular config did not save: ${JSON.stringify(rectangular.chathead)}`);
+}
+console.log("ok: a rectangular 96 x 44 chathead saves");
 
 // ===========================================================================
 // The live surfaces: launcher chathead and frame icon on the demo page.
@@ -182,13 +213,34 @@ await page.waitForLoadState("domcontentloaded");
 await page.locator(".sfcw-launcher").waitFor({ timeout: 10000 });
 await page.waitForFunction(() => {
   const launcher = document.querySelector(".sfcw-launcher");
-  return launcher && getComputedStyle(launcher).backgroundColor === "rgb(122, 0, 48)";
-}, { timeout: 15000 });
+  if (!launcher || getComputedStyle(launcher).backgroundColor !== "rgb(122, 0, 48)") {
+    return false;
+  }
+  const box = launcher.getBoundingClientRect();
+  // The rectangular configuration (96 × 44) renders as-is, with the corner
+  // radius at 25% of the smaller dimension (44 × .25 = 11px).
+  const radius = Number.parseFloat(getComputedStyle(launcher).borderTopLeftRadius);
+  return (
+    Math.abs(box.width - 96) < 0.5 &&
+    Math.abs(box.height - 44) < 0.5 &&
+    Math.abs(radius - 11) < 0.5
+  );
+}, undefined, { timeout: 15000 });
 const launcherSrc = await page.locator(".sfcw-launcher img").evaluate((el) => el.getAttribute("src"));
 if (!launcherSrc.includes("/api/branding/chatbot-icon")) {
   throw new Error(`the launcher icon did not switch to the uploaded asset: ${launcherSrc}`);
 }
+// The opened frame hangs above the configured 44px height (16 + 44 + 4 = 64
+// from the bottom) and horizontal placement keeps both on screen.
 await page.locator(".sfcw-launcher").click();
+await page.waitForFunction(() => {
+  const frame = document.querySelector(".sfcw-frame");
+  const launcher = document.querySelector(".sfcw-launcher");
+  if (!frame || !launcher) return false;
+  const frameBox = frame.getBoundingClientRect();
+  const launcherBox = launcher.getBoundingClientRect();
+  return launcherBox.top - frameBox.bottom >= 3.5 && launcherBox.top - frameBox.bottom < 4.5;
+}, undefined, { timeout: 15000 });
 const frameHandle = page.frames().find((f) => f.url().includes("/widget/frame"));
 if (!frameHandle) throw new Error("the widget frame did not appear");
 await frameHandle.waitForSelector("#sfcw-name", { timeout: 10000 });
@@ -197,7 +249,25 @@ if (!crestSrc || !crestSrc.includes("/api/branding/chatbot-icon")) {
   throw new Error(`the frame identity icon did not switch: ${crestSrc}`);
 }
 await shot("70-demo-branded");
-console.log("ok: the launcher chathead and the widget identity serve the configured branding");
+console.log("ok: the rectangular launcher renders with its proportional radius and the frame hangs above the configured height");
+
+// Phone viewport: the widest-and-tallest launcher and the open frame stay
+// inside 360px without horizontal overflow or obstruction.
+await page.setViewportSize({ width: 360, height: 640 });
+await page.waitForTimeout(400);
+const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+if (overflow > 1) {
+  throw new Error(`the 360px page overflows horizontally by ${overflow}px with a 96px launcher`);
+}
+await page.locator(".sfcw-launcher").click();
+await page.waitForTimeout(400);
+const phoneOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+if (phoneOverflow > 1) {
+  throw new Error(`the opened frame overflows 360px by ${phoneOverflow}px`);
+}
+await shot("70-demo-rectangular-360");
+console.log("ok: the rectangular launcher and the open frame fit 360px without overflow");
+await page.setViewportSize({ width: 1280, height: 800 });
 
 // ===========================================================================
 // Reset restores the bundled assets, independently.

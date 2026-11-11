@@ -3,9 +3,11 @@
 import { useRef, useState } from "react";
 import PendingButton from "../pending-button";
 import {
+  chatheadDerivedSize,
   chatheadForeground,
-  chatheadOuterSize,
   CHATHEAD_DEFAULTS,
+  CHATHEAD_DEFAULT_HEIGHT,
+  CHATHEAD_DEFAULT_WIDTH,
   MAX_BRANDING_IMAGE_BYTES,
   normalizeHexColor,
   parseBrandingImageDataUrl,
@@ -19,7 +21,8 @@ export interface BrandingInitial {
     backgroundColor: string;
     iconSize: number;
     padding: number;
-    outerSize: number;
+    width: number;
+    height: number;
     foreground: string;
   };
 }
@@ -32,7 +35,13 @@ interface PutResult {
     ok?: boolean;
     reset?: boolean;
     version?: string;
-    chathead?: { backgroundColor: string; iconSize: number; padding: number };
+    chathead?: {
+      backgroundColor: string;
+      iconSize: number;
+      padding: number;
+      width: number;
+      height: number;
+    };
     error?: { code: string; message: string };
   };
 }
@@ -144,6 +153,18 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
   async function saveChathead(action: SaveAction) {
     setChatheadAction(action);
     setChatheadStatus(null);
+    if (action === "save") {
+      // The fit rule (ticket 71), client-side for immediate feedback — the
+      // server re-checks and the stored values survive a refused save.
+      const required = chatheadDerivedSize(chathead);
+      if (chathead.width < required || chathead.height < required) {
+        setChatheadStatus({
+          error: `The icon and padding need at least ${required} × ${required} px. Increase the chathead width or height, or reduce the icon size or padding.`,
+        });
+        setChatheadAction(null);
+        return;
+      }
+    }
     try {
       const result = await putJson(
         "/api/staff/settings/branding/chathead",
@@ -154,6 +175,8 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
                 backgroundColor: normalizeHexColor(chathead.backgroundColor),
                 iconSize: chathead.iconSize,
                 padding: chathead.padding,
+                width: chathead.width,
+                height: chathead.height,
               },
             },
       );
@@ -169,7 +192,8 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
           backgroundColor: saved.backgroundColor,
           iconSize: saved.iconSize,
           padding: saved.padding,
-          outerSize: chatheadOuterSize(saved),
+          width: saved.width,
+          height: saved.height,
           foreground: chatheadForeground(saved.backgroundColor),
         });
       } else {
@@ -178,7 +202,8 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
           backgroundColor: CHATHEAD_DEFAULTS.backgroundColor,
           iconSize: CHATHEAD_DEFAULTS.iconSize,
           padding: CHATHEAD_DEFAULTS.padding,
-          outerSize: chatheadOuterSize(CHATHEAD_DEFAULTS),
+          width: CHATHEAD_DEFAULT_WIDTH,
+          height: CHATHEAD_DEFAULT_HEIGHT,
           foreground: chatheadForeground(CHATHEAD_DEFAULTS.backgroundColor),
         });
       }
@@ -191,6 +216,9 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
   }
 
   const hex = normalizeHexColor(chathead.backgroundColor) ?? chathead.backgroundColor;
+  // The corner radius keeps the rounded-square proportion (ticket 71):
+  // 25% of the smaller configured dimension, square or rectangular.
+  const previewRadius = Math.min(chathead.width, chathead.height) * 0.25;
 
   return (
     <div className={styles.settingsGrid}>
@@ -208,16 +236,17 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
             style={{
               background: chathead.backgroundColor,
               color: chathead.foreground,
-              width: chathead.outerSize,
-              height: chathead.outerSize,
+              width: chathead.width,
+              height: chathead.height,
               padding: chathead.padding,
+              borderRadius: previewRadius,
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={chatbotIconUrl} alt="" style={{ width: chathead.iconSize, height: chathead.iconSize, objectFit: "contain" }} />
           </span>
           <span className={styles.hint}>
-            {chathead.outerSize} × {chathead.outerSize} px outer · foreground{" "}
+            {chathead.width} × {chathead.height} px chathead · foreground{" "}
             {chathead.foreground} (automatic)
           </span>
         </div>
@@ -271,6 +300,38 @@ export default function BrandingSettings({ initial }: { initial: BrandingInitial
             }
           />
           <output htmlFor="chathead-padding">{chathead.padding} px</output>
+        </div>
+        <div className={styles.settingsRow}>
+          <label htmlFor="chathead-width">Chathead width</label>
+          <input
+            id="chathead-width"
+            className={styles.settingsRange}
+            type="range"
+            min={44}
+            max={96}
+            step={1}
+            value={chathead.width}
+            onChange={(event) =>
+              setChathead((current) => ({ ...current, width: Number(event.target.value) }))
+            }
+          />
+          <output htmlFor="chathead-width">{chathead.width} px</output>
+        </div>
+        <div className={styles.settingsRow}>
+          <label htmlFor="chathead-height">Chathead height</label>
+          <input
+            id="chathead-height"
+            className={styles.settingsRange}
+            type="range"
+            min={44}
+            max={96}
+            step={1}
+            value={chathead.height}
+            onChange={(event) =>
+              setChathead((current) => ({ ...current, height: Number(event.target.value) }))
+            }
+          />
+          <output htmlFor="chathead-height">{chathead.height} px</output>
         </div>
         {chatheadStatus?.error ? (
           <p className={styles.contactError} role="alert">

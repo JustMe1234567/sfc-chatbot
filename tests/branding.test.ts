@@ -7,8 +7,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CHATHEAD_DEFAULTS,
+  chatheadDerivedSize,
+  chatheadFitRequirement,
   chatheadForeground,
-  chatheadOuterSize,
   isValidBrandedImage,
   isValidChatheadConfig,
   normalizeHexColor,
@@ -139,6 +140,20 @@ describe("branding domain (ticket 70)", () => {
     expect(
       isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 48, padding: 4 }),
     ).toBe(true);
+    // Ticket 71: dimensions are optional (legacy rows) but bounded 44-96
+    // when present.
+    expect(
+      isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 48, padding: 4, width: 64, height: 64 }),
+    ).toBe(true);
+    expect(
+      isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 48, padding: 4, width: 43, height: 64 }),
+    ).toBe(false);
+    expect(
+      isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 48, padding: 4, width: 97, height: 64 }),
+    ).toBe(false);
+    expect(
+      isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 48, padding: 4, width: 64.5, height: 64 }),
+    ).toBe(false);
     expect(
       isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 31, padding: 4 }),
     ).toBe(false);
@@ -151,11 +166,61 @@ describe("branding domain (ticket 70)", () => {
     expect(
       isValidChatheadConfig({ backgroundColor: "#013C78", iconSize: 48.5, padding: 4 }),
     ).toBe(false);
-    expect(resolveChatheadConfig(undefined)).toEqual(CHATHEAD_DEFAULTS);
-    expect(resolveChatheadConfig({ backgroundColor: "junk", iconSize: 999, padding: -3 })).toEqual(
-      CHATHEAD_DEFAULTS,
-    );
-    expect(chatheadOuterSize(CHATHEAD_DEFAULTS)).toBe(56);
+    expect(resolveChatheadConfig(undefined)).toEqual({
+      backgroundColor: "#013c78",
+      foreground: undefined,
+      iconSize: 48,
+      padding: 4,
+      width: 64,
+      height: 64,
+    });
+    expect(resolveChatheadConfig({ backgroundColor: "junk", iconSize: 999, padding: -3 })).toEqual({
+      backgroundColor: "#013c78",
+      foreground: undefined,
+      iconSize: 48,
+      padding: 4,
+      width: 64,
+      height: 64,
+    });
+    expect(chatheadDerivedSize(CHATHEAD_DEFAULTS)).toBe(56);
+  });
+
+  it("derives legacy dimensions and refuses fit-broken rows on read (ticket 71)", () => {
+    // A pre-71 row: no dimensions — they resolve from icon + padding so the
+    // deployed chathead does not resize.
+    const legacy = resolveChatheadConfig({ backgroundColor: "#7A0030", iconSize: 40, padding: 6 });
+    expect(legacy.width).toBe(52);
+    expect(legacy.height).toBe(52);
+    // Out-of-range dimensions fall back to the defaults.
+    const outOfRange = resolveChatheadConfig({
+      backgroundColor: "#7A0030",
+      iconSize: 40,
+      padding: 6,
+      width: 200,
+      height: 52,
+    });
+    expect(outOfRange.width).toBe(64);
+    expect(outOfRange.height).toBe(64);
+    expect(outOfRange.backgroundColor).toBe("#013c78");
+    // A hand-edited row whose dimensions cannot hold the icon: safe fallback.
+    const fitBroken = resolveChatheadConfig({
+      backgroundColor: "#7A0030",
+      iconSize: 64,
+      padding: 12,
+      width: 44,
+      height: 96,
+    });
+    expect(fitBroken.width).toBe(64);
+    expect(fitBroken.height).toBe(64);
+  });
+
+  it("states the required minimum when the icon and padding do not fit (ticket 71)", () => {
+    // 48 + 2×4 = 56: needs at least 56 × 56.
+    expect(chatheadFitRequirement({ backgroundColor: "#013c78", iconSize: 48, padding: 4, width: 44, height: 96 })).toBe(56);
+    expect(chatheadFitRequirement({ backgroundColor: "#013c78", iconSize: 48, padding: 4, width: 96, height: 44 })).toBe(56);
+    // Fitting configurations answer null, square or rectangular.
+    expect(chatheadFitRequirement({ backgroundColor: "#013c78", iconSize: 48, padding: 4, width: 56, height: 56 })).toBeNull();
+    expect(chatheadFitRequirement({ backgroundColor: "#013c78", iconSize: 64, padding: 12, width: 88, height: 96 })).toBeNull();
   });
 
   it("chooses the readable foreground automatically", () => {
@@ -189,14 +254,17 @@ describe("branding settings API (ticket 70)", () => {
     expect(Object.keys(body.chathead).sort()).toEqual([
       "backgroundColor",
       "foreground",
+      "height",
       "iconSize",
-      "outerSize",
       "padding",
+      "width",
     ]);
     expect(body.chathead.backgroundColor).toBe("#013c78");
     expect(body.chathead.iconSize).toBe(48);
     expect(body.chathead.padding).toBe(4);
-    expect(body.chathead.outerSize).toBe(56);
+    // Ticket 71's default configuration is 64 × 64.
+    expect(body.chathead.width).toBe(64);
+    expect(body.chathead.height).toBe(64);
     expect(body.chathead.foreground).toBe("#ffffff");
     expect(body.chatbotIconUrl).toBe("/api/branding/chatbot-icon?v=default");
   });
@@ -298,35 +366,65 @@ describe("branding settings API (ticket 70)", () => {
     );
   });
 
-  it("validates the chathead config and resets it to the defaults", async () => {
+  it("validates the chathead config, blocks saves that do not fit, and resets (ticket 71)", async () => {
     const jar = await signInAs("staff", "chathead");
 
-    const put = await staffPut("chathead", jar, {
+    // A pre-71-shaped body (no dimensions) stays valid: the public read
+    // derives the outer size, preserving deployed chatheads.
+    const legacyPut = await staffPut("chathead", jar, {
       chathead: { backgroundColor: "#7A0030", iconSize: 40, padding: 6 },
     });
-    expect(put.status).toBe(200);
+    expect(legacyPut.status).toBe(200);
 
-    const body = await publicBranding();
-    expect(body.chathead.backgroundColor).toBe("#7a0030");
-    expect(body.chathead.outerSize).toBe(52);
-    expect(body.chathead.foreground).toBe("#ffffff");
+    const legacyRead = await publicBranding();
+    expect(legacyRead.chathead.backgroundColor).toBe("#7a0030");
+    expect(legacyRead.chathead.width).toBe(52);
+    expect(legacyRead.chathead.height).toBe(52);
+    expect(legacyRead.chathead.foreground).toBe("#ffffff");
 
     for (const [label, bad] of [
       ["bad hex", { chathead: { backgroundColor: "junk", iconSize: 40, padding: 6 } }],
       ["icon below floor", { chathead: { backgroundColor: "#7A0030", iconSize: 20, padding: 6 } }],
       ["padding over ceiling", { chathead: { backgroundColor: "#7A0030", iconSize: 40, padding: 99 } }],
       ["fractional size", { chathead: { backgroundColor: "#7A0030", iconSize: 40.5, padding: 6 } }],
+      ["width below band", { chathead: { backgroundColor: "#7A0030", iconSize: 40, padding: 6, width: 40, height: 52 } }],
+      ["height over band", { chathead: { backgroundColor: "#7A0030", iconSize: 40, padding: 6, width: 52, height: 97 } }],
       ["missing chathead", {}],
     ] as [string, unknown][]) {
       const rejected = await staffPut("chathead", jar, bad);
       expect(rejected.status, label).toBe(400);
     }
 
+    // The fit rule: 64 + 2×12 = 88 needed, dimensions offer 44 — refused
+    // with the required minimum in the message, stored values untouched.
+    const noFit = await staffPut("chathead", jar, {
+      chathead: { backgroundColor: "#7A0030", iconSize: 64, padding: 12, width: 44, height: 96 },
+    });
+    expect(noFit.status).toBe(400);
+    const noFitBody = (await noFit.json()) as { error: { code: string; message: string } };
+    expect(noFitBody.error.code).toBe("chathead_does_not_fit");
+    expect(noFitBody.error.message).toContain("88 × 88");
+    const afterRefusal = await publicBranding();
+    expect(afterRefusal.chathead.backgroundColor).toBe("#7a0030");
+    expect(afterRefusal.chathead.iconSize).toBe(40);
+    expect(afterRefusal.chathead.width).toBe(52);
+
+    // A rectangular configuration that fits saves and propagates: icon 32
+    // with no padding needs only 32 × 32, so 96 × 44 is legal.
+    const rectangular = await staffPut("chathead", jar, {
+      chathead: { backgroundColor: "#7A0030", iconSize: 32, padding: 0, width: 96, height: 44 },
+    });
+    expect(rectangular.status).toBe(200);
+    const rectangularRead = await publicBranding();
+    expect(rectangularRead.chathead.width).toBe(96);
+    expect(rectangularRead.chathead.height).toBe(44);
+
     const reset = await staffPut("chathead", jar, null);
     expect(reset.status).toBe(200);
     const after = await publicBranding();
     expect(after.chathead.backgroundColor).toBe("#013c78");
-    expect(after.chathead.outerSize).toBe(56);
+    expect(after.chathead.width).toBe(64);
+    expect(after.chathead.height).toBe(64);
   });
 
   it("falls back to the defaults when a stored row is hand-edited junk", async () => {
@@ -349,10 +447,31 @@ describe("branding settings API (ticket 70)", () => {
     expect(body.chathead).toEqual({
       backgroundColor: "#013c78",
       foreground: "#ffffff",
+      height: 64,
       iconSize: 48,
-      outerSize: 56,
       padding: 4,
+      width: 64,
     });
+  });
+
+  it("preserves pre-71 chatheads by deriving their dimensions (ticket 71)", async () => {
+    const { getChatbotService } = await import("../src/db/service");
+    const { db } = await getChatbotService();
+    // Exactly the shape ticket 70 wrote: no width or height keys.
+    await db.run(
+      "INSERT INTO settings (key, value, updated_at) VALUES ('branding_chathead', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+      JSON.stringify({ backgroundColor: "#7A0030", iconSize: 40, padding: 6 }),
+      new Date().toISOString(),
+    );
+
+    const body = await publicBranding();
+    expect(body.chathead.backgroundColor).toBe("#7a0030");
+    expect(body.chathead.iconSize).toBe(40);
+    expect(body.chathead.padding).toBe(6);
+    // Derived outer size, not the 64 × 64 default: deployed chatheads do
+    // not resize when this ticket ships.
+    expect(body.chathead.width).toBe(52);
+    expect(body.chathead.height).toBe(52);
   });
 
   it("pins the dashboard-only favicon scope and the icon placements", async () => {
@@ -373,10 +492,17 @@ describe("branding settings API (ticket 70)", () => {
     expect(frame).toContain('chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png"');
     expect(frame).toContain('postMessage({ type: "sfcw:branding", config }, "*")');
     // The loader applies branding only from the frame's forwarded message —
-    // it never calls the API from the college page context.
+    // it never calls the API from the college page context — and sizes the
+    // launcher from the resolved width and height, with the corner radius
+    // at 25% of the smaller dimension (ticket 71) and the frame hanging
+    // above the configured height.
     const loader = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
     expect(loader).not.toContain("/api/v1/");
     expect(loader).toContain('type === "sfcw:branding"');
+    expect(loader).toContain("width:var(--sfcw-w,64px);height:var(--sfcw-h,64px)");
+    expect(loader).toContain("border-radius:calc(min(var(--sfcw-w,64px),var(--sfcw-h,64px)) * .25)");
+    expect(loader).toContain("bottom:calc(16px + var(--sfcw-h,64px) + 4px)");
+    expect(loader).not.toContain("--sfcw-outer");
     // The sidebar crest is untouched by branding (ticket 70's out-of-scope).
     const header = await readFile(path.join(repoRoot(), "src/app/dashboard/header.tsx"), "utf8");
     expect(header).toContain("/brand/cropped-SFC-Final-Logo-Single.png");

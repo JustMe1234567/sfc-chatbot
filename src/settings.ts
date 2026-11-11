@@ -4,6 +4,7 @@ import {
   isStoredBrandingImageDataUrl,
   resolveChatheadConfig,
   type ChatheadConfig,
+  type ResolvedChatheadConfig,
 } from "./domain/branding";
 import { normalizeText } from "./domain/matcher";
 import type { SupportHours } from "./domain/types";
@@ -399,7 +400,7 @@ export async function getSettingRow(db: AppDatabase, key: string): Promise<Setti
   );
 }
 
-function storedImageIsValid(row: SettingRow | null): boolean {
+function storedImageIsValid(row: SettingRow | null): row is SettingRow {
   return row !== null && isStoredBrandingImageDataUrl(row.value);
 }
 
@@ -440,15 +441,15 @@ export function setDashboardFaviconDataUrl(db: AppDatabase, dataUrl: string | nu
   return setBrandingImageDataUrl(db, DASHBOARD_FAVICON_KEY, dataUrl);
 }
 
-export function getChatheadConfig(db: AppDatabase): Promise<ChatheadConfig> {
+export function getChatheadConfig(db: AppDatabase): Promise<ResolvedChatheadConfig> {
   return getSetting(db, CHATHEAD_KEY).then((raw) => {
     if (!raw) {
-      return { ...CHATHEAD_DEFAULTS };
+      return resolveChatheadConfig(CHATHEAD_DEFAULTS);
     }
     try {
       return resolveChatheadConfig(JSON.parse(raw) as unknown);
     } catch {
-      return { ...CHATHEAD_DEFAULTS };
+      return resolveChatheadConfig(CHATHEAD_DEFAULTS);
     }
   });
 }
