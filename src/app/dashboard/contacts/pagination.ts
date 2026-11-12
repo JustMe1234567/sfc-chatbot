@@ -3,10 +3,80 @@
  * from the URL and choosing the numbered links to show — the same
  * URL-driven pattern as the Delivery history's (ticket 50). No database
  * access — the data seam lives in the Store port's contact-request page queries.
+ * Ticket 74 adds the search/sort URL resolution beside it.
  */
+
+import type {
+  ContactListOptions,
+  ContactSortColumn,
+  ContactSortDirection,
+} from "@/domain/types";
 
 /** Rows shown per Visitor contacts page (ticket 69). */
 export const CONTACTS_PAGE_SIZE = 10;
+
+/** The displayed columns, in table order (ticket 74). */
+export const CONTACT_SORT_COLUMNS: ContactSortColumn[] = [
+  "name",
+  "email",
+  "phone",
+  "medium",
+  "requested",
+];
+
+/** The column labels as the sort controls and card labels show them. */
+export const CONTACT_SORT_LABELS: Record<ContactSortColumn, string> = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  medium: "Medium",
+  requested: "Date requested",
+};
+
+/** "Selecting Name, Email, Phone, or Medium begins ascending; selecting
+ * Date requested begins descending" (ticket 74). */
+export function defaultContactSortDirection(sort: ContactSortColumn): ContactSortDirection {
+  return sort === "requested" ? "desc" : "asc";
+}
+
+/**
+ * Resolves the view state a contacts URL asks for (ticket 74). Everything
+ * invalid falls back without error: an unknown sort column or direction to
+ * that column's default, and the query to its trimmed form (an empty or
+ * whitespace-only query means no search).
+ */
+export function resolveContactsView(searchParams: {
+  q?: string | string[];
+  sort?: string | string[] | undefined;
+  dir?: string | string[] | undefined;
+}): { query: string; sort: ContactSortColumn; direction: ContactSortDirection } {
+  const first = (value: string | string[] | undefined): string | undefined =>
+    Array.isArray(value) ? value[0] : value;
+  const query = (first(searchParams.q) ?? "").trim();
+  const rawSort = first(searchParams.sort);
+  const sort = CONTACT_SORT_COLUMNS.includes(rawSort as ContactSortColumn)
+    ? (rawSort as ContactSortColumn)
+    : "requested";
+  const rawDirection = first(searchParams.dir);
+  const direction =
+    rawDirection === "asc" || rawDirection === "desc"
+      ? rawDirection
+      : defaultContactSortDirection(sort);
+  return { query, sort, direction };
+}
+
+/** The Store options for a resolved view: only a non-empty query searches. */
+export function contactsListOptions(view: {
+  query: string;
+  sort: ContactSortColumn;
+  direction: ContactSortDirection;
+}): ContactListOptions {
+  return {
+    ...(view.query ? { query: view.query } : {}),
+    sort: view.sort,
+    direction: view.direction,
+  };
+}
 
 /** A short list shows every page; a long one windows around the current. */
 const PAGER_WINDOW_MAX_PAGES = 7;

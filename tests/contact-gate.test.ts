@@ -352,9 +352,7 @@ describe("staff see the name beside the state", () => {
         role: "visitor",
         text: "Contact gate: a legacy visitor's pre-gate question.",
         createdAt: new Date().toISOString(),
-        topic: null,
-        handoffOption: null,
-        choices: null,
+        choices: undefined,
       });
     }
     const { deskLabel } = await import("../src/domain/inbox");

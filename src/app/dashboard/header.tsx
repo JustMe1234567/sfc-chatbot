@@ -294,11 +294,19 @@ export default function DashboardHeader({
   title,
   name,
   role,
+  hideTitle = false,
 }: {
   area: HeaderArea;
   title: string;
   name: string;
   role: string;
+  /**
+   * Renders the page title visually-hidden instead of in the heading row
+   * (ticket 74): the Visitor contacts content carries the reference-style
+   * title itself, and the accessible structure stays one h1 deep. Other
+   * routes are unchanged.
+   */
+  hideTitle?: boolean;
 }) {
   // The desktop default is the compact icon rail (ticket 57): the server
   // render and the hydration pass agree on collapsed, so default staff see
@@ -405,7 +413,7 @@ export default function DashboardHeader({
           {MENU_MARK}
           <span className={styles.menuLabel}>Menu</span>
         </button>
-        <h1 className={styles.contentTitle}>{title}</h1>
+        <h1 className={hideTitle ? styles.srOnly : styles.contentTitle}>{title}</h1>
       </div>
     </>
   );

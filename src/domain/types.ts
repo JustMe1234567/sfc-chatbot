@@ -49,6 +49,30 @@ export type MessageRole = "visitor" | "bot" | "staff";
 export type ContactMedium = "chat" | "email" | "phone";
 
 /**
+ * The Visitor contacts list's server-side discovery controls (ticket 74).
+ * `query` is already trimmed by the caller; an empty string means no
+ * search. `sort` names a displayed column and `direction` its order —
+ * "requested" is the page's default with "desc", the other columns
+ * default to "asc".
+ */
+export type ContactSortColumn = "name" | "email" | "phone" | "medium" | "requested";
+export type ContactSortDirection = "asc" | "desc";
+
+export interface ContactListOptions {
+  query?: string;
+  sort?: ContactSortColumn;
+  direction?: ContactSortDirection;
+}
+
+/** One saved contact row: the conversation plus its latest request's
+ * medium and timestamp, paired from the same request row (ticket 74). */
+export interface ContactListRow {
+  conversation: Conversation;
+  medium: ContactMedium;
+  requestedAt: string;
+}
+
+/**
  * One explicit visitor ask to be reached (ticket 69). Creating the request
  * is what promotes the conversation's temporary contact details into the
  * saved contact list; exactly one request may be open per conversation at
@@ -247,18 +271,27 @@ export interface Store {
     at: string,
   ): Promise<ContactRequest | null>;
   /**
-   * One page of conversations with at least one contact request (ticket
-   * 69) — the Visitor contacts list's rows — with each conversation's
-   * latest requested medium. Derived live from the requests table: no
-   * copied rows, so retention, manual delete, and clear-history remove the
-   * entry together with the conversation.
+   * One page of the Visitor contacts list (tickets 69 and 74): conversations
+   * with at least one contact request — the list's rows — each paired with
+   * its latest request's medium and created_at from the same request row.
+   * Derived live from the requests table: no copied rows, so retention,
+   * manual delete, and clear-history remove the entry together with the
+   * conversation. Ticket 74 adds server-side search (case-insensitive
+   * across name, email, and phone; the caller trims) and sorting by a
+   * displayed column and direction; the conversation id is always the
+   * final tie-break so page boundaries stay stable.
    */
   listConversationsWithContactRequest(
     page: number,
     pageSize: number,
-  ): Promise<{ conversation: Conversation; medium: ContactMedium }[]>;
-  /** How many conversations have at least one contact request (ticket 69). */
-  countConversationsWithContactRequest(): Promise<number>;
+    options?: ContactListOptions,
+  ): Promise<ContactListRow[]>;
+  /**
+   * How many conversations have at least one contact request — with the
+   * same search applied when given, so the count describes the full
+   * matching set (ticket 74).
+   */
+  countConversationsWithContactRequest(options?: ContactListOptions): Promise<number>;
   /** Marks the visitor as present right now (polling and posting count). */
   touchVisitorPresence(id: string): Promise<void>;
   /**

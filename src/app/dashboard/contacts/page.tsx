@@ -3,10 +3,18 @@ import Link from "next/link";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
-import { DESK_STATE_LABELS } from "@/domain/inbox";
-import type { ConversationState } from "@/domain/types";
+import type { ContactListRow, ContactSortColumn } from "@/domain/types";
 import { getChatbotService } from "@/db/service";
-import { CONTACTS_PAGE_SIZE, contactsPageLinks, resolveContactsPage } from "./pagination";
+import {
+  CONTACTS_PAGE_SIZE,
+  CONTACT_SORT_COLUMNS,
+  CONTACT_SORT_LABELS,
+  contactsListOptions,
+  contactsPageLinks,
+  resolveContactsPage,
+  resolveContactsView,
+  defaultContactSortDirection,
+} from "./pagination";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
 
@@ -20,23 +28,17 @@ const MEDIUM_LABELS: Record<string, string> = {
   phone: "Phone",
 };
 
-/** Row chips share the desk's state family (ticket 12). */
-const STATE_CHIPS: Record<ConversationState, string | undefined> = {
-  bot_active: styles.chipBot,
-  awaiting_staff: styles.chipWaiting,
-  claimed: styles.chipClaimed,
-  closed: styles.chipClosed,
-};
-
 /**
- * The Visitor contacts list (ticket 69): conversations whose visitor created
- * at least one contact request — the explicit ask that promotes the
- * temporary chat-start details into the saved contact list. Derived live
- * from the requests table (no copied rows, so retention and deletion remove
- * entries with their conversations); each row shows the visitor's name,
- * email, phone, latest requested medium, and the chat-start time. Owners
- * and staff, the roles that work follow-ups; each row is one link to the
- * conversation itself.
+ * The Visitor contacts list, redesigned per the supplied reference (ticket
+ * 74): one visible reference-style heading (the shared header's title is
+ * visually hidden on this route alone), a count pill and labeled search
+ * field, and a bordered table — Name, Email, Phone, Medium, and Date
+ * requested — whose every column sorts through the URL (`sort`/`dir`)
+ * alongside the existing `page` and the new `q`. Search is server-side and
+ * case-insensitive across name, email, and phone, applied before counting
+ * and pagination so the pill and pager describe the whole matching set.
+ * Each row is one link to its conversation; phones get stacked labeled
+ * cards through the same markup.
  */
 export default async function VisitorContactsPage({
   searchParams,
@@ -53,13 +55,102 @@ export default async function VisitorContactsPage({
     );
   }
 
+  const params = await searchParams;
+  const view = resolveContactsView(params);
+  const options = contactsListOptions(view);
+
   const { store } = await getChatbotService();
-  // The pager's total is one aggregate count; the rows are the page slice
-  // only (ticket 50's shape).
-  const total = await store.countConversationsWithContactRequest();
-  const { page, totalPages } = resolveContactsPage((await searchParams).page, total);
-  const rows = await store.listConversationsWithContactRequest(page, CONTACTS_PAGE_SIZE);
-  const pageHref = (target: number) => `/dashboard/contacts?page=${target}`;
+  // The pill's total and the pager describe the whole matching set: the
+  // filtered count is one aggregate, the rows are the page slice only
+  // (ticket 50's shape).
+  const total = await store.countConversationsWithContactRequest(options);
+  const { page, totalPages } = resolveContactsPage(params.page, total);
+  const rows: ContactListRow[] = await store.listConversationsWithContactRequest(
+    page,
+    CONTACTS_PAGE_SIZE,
+    options,
+  );
+
+  // Every link preserves the current search and sort; only the page moves.
+  const viewHref = (overrides: Record<string, string | undefined>) => {
+    const query = new URLSearchParams();
+    const merged = {
+      q: view.query || undefined,
+      sort: view.sort === "requested" ? undefined : view.sort,
+      dir:
+        view.direction === defaultContactSortDirection(view.sort) ? undefined : view.direction,
+      ...overrides,
+    };
+    for (const [key, value] of Object.entries(merged)) {
+      if (value !== undefined) {
+        query.set(key, value);
+      }
+    }
+    const encoded = query.toString();
+    return encoded ? `/dashboard/contacts?${encoded}` : "/dashboard/contacts";
+  };
+  const pageHref = (target: number) => {
+    const base = viewHref({});
+    return base === "/dashboard/contacts" ? `${base}?page=${target}` : `${base}&page=${target}`;
+  };
+
+  /** The sort control's target: the same column toggles direction; a new
+      column starts at its default. Either way page 1 (ticket 74). */
+  const sortHref = (column: ContactSortColumn) =>
+    viewHref({
+      sort: column,
+      dir:
+        view.sort === column
+          ? view.direction === "asc"
+            ? "desc"
+            : "asc"
+          : defaultContactSortDirection(column),
+      page: undefined,
+    });
+
+  /** Sort controls expose the active direction through the column th's
+      aria-sort and a chevron icon; inactive columns show a neutral mark. */
+  const sortIcon = (column: ContactSortColumn) => {
+    const active = view.sort === column;
+    const descending = active && view.direction === "desc";
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width={16}
+        height={16}
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={styles.contactsSortIcon}
+        data-inactive={active ? undefined : ""}
+      >
+        {active ? (
+          descending ? (
+            <path d="M12 5v14M6 13l6 6 6-6" />
+          ) : (
+            <path d="M12 19V5M6 11l6-6 6 6" />
+          )
+        ) : (
+          <>
+            <path d="M8 10l4-4 4 4" />
+            <path d="M8 14l4 4 4-4" />
+          </>
+        )}
+      </svg>
+    );
+  };
+
+  const pillLabel =
+    total === 1
+      ? view.query
+        ? "1 matching contact"
+        : "1 saved contact"
+      : view.query
+        ? `${total} matching contacts`
+        : `${total} saved contacts`;
 
   return (
     <main className={styles.shell}>
@@ -68,6 +159,7 @@ export default async function VisitorContactsPage({
         title="Visitor contacts"
         name={guard.staff.name}
         role={guard.staff.role}
+        hideTitle
       />
 
       <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
@@ -87,7 +179,11 @@ export default async function VisitorContactsPage({
               </div>
             </div>
 
-            {total === 0 ? (
+            {/* Two distinct empty states (ticket 74): no saved contacts at
+                all versus a search that matched none of them. The pill and
+                search stay visible while searching so the query can be
+                changed or cleared in place. */}
+            {total === 0 && !view.query ? (
               <div className={styles.alertEmpty}>
                 <strong>No saved contacts yet</strong>
                 <p>
@@ -97,40 +193,148 @@ export default async function VisitorContactsPage({
               </div>
             ) : (
               <>
-                <ol className={styles.emailList}>
-                  {rows.map(({ conversation, medium }) => (
-                    <li key={conversation.id}>
-                      {/* The whole row is the link to the conversation — plain
-                          text inside, no nested interactive elements. */}
+                <div className={styles.contactsToolbar}>
+                  <span className={styles.contactsPill}>
+                    <svg
+                      viewBox="0 0 24 24"
+                      width={18}
+                      height={18}
+                      aria-hidden="true"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="9" cy="8.5" r="3" />
+                      <path d="M3.5 19c.5-3.5 2.8-5 5.5-5s5 1.5 5.5 5" />
+                      <circle cx="17" cy="9.5" r="2.4" />
+                      <path d="M16.6 14.3c2.2.4 3.9 1.8 4.3 4.2" />
+                    </svg>
+                    {pillLabel}
+                  </span>
+                  <form
+                    className={styles.contactsSearch}
+                    action="/dashboard/contacts"
+                    method="get"
+                    role="search"
+                  >
+                    {view.sort !== "requested" ? (
+                      <input type="hidden" name="sort" value={view.sort} />
+                    ) : null}
+                    {view.direction !== defaultContactSortDirection(view.sort) ? (
+                      <input type="hidden" name="dir" value={view.direction} />
+                    ) : null}
+                    <svg
+                      viewBox="0 0 24 24"
+                      width={18}
+                      height={18}
+                      aria-hidden="true"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.8}
+                      strokeLinecap="round"
+                      className={styles.contactsSearchIcon}
+                    >
+                      <circle cx="11" cy="11" r="6.5" />
+                      <path d="M20 20l-4.2-4.2" />
+                    </svg>
+                    <input
+                      type="search"
+                      name="q"
+                      defaultValue={view.query}
+                      aria-label="Search contacts"
+                      placeholder="Search contacts..."
+                    />
+                    <button type="submit" className={styles.contactsSearchSubmit}>
+                      Search
+                    </button>
+                    {view.query ? (
                       <Link
-                        className={styles.emailRow}
-                        href={`/dashboard/inbox/${conversation.id}`}
+                        className={styles.contactsSearchClear}
+                        href={viewHref({ q: undefined, page: undefined })}
                       >
-                        <span className={styles.emailRowMain}>
-                          <span className={styles.emailAddress}>
-                            {conversation.visitorName ?? "Visitor"}
-                          </span>
-                          <span className={styles.emailRowMeta}>
-                            <span>{conversation.visitorEmail}</span>
-                            <span>{conversation.visitorPhone}</span>
-                            <span
-                              className={`${styles.chip} ${STATE_CHIPS[conversation.state] ?? styles.chipClosed}`}
-                            >
-                              {MEDIUM_LABELS[medium] ?? medium}
-                            </span>
-                            {/* The chat-start time (ticket 69): the moment
-                                the initial contact form was accepted. */}
-                            <time dateTime={conversation.createdAt}>
-                              Chat started{" "}
-                              {new Date(conversation.createdAt).toLocaleString("en-GB")}
-                            </time>
-                          </span>
-                        </span>
+                        Clear
                       </Link>
-                    </li>
-                  ))}
-                </ol>
-                {totalPages > 1 ? (
+                    ) : null}
+                  </form>
+                </div>
+
+                {rows.length === 0 ? (
+                  <div className={styles.alertEmpty}>
+                    <strong>No contacts match your search</strong>
+                    <p>
+                      No saved contact matches “{view.query}”.{" "}
+                      <Link href={viewHref({ q: undefined, page: undefined })}>
+                        Clear the search
+                      </Link>{" "}
+                      to see every saved contact.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={styles.contactsTableWrap}>
+                    <table className={styles.contactsTable}>
+                      <thead>
+                        <tr>
+                          {CONTACT_SORT_COLUMNS.map((column) => {
+                            const active = view.sort === column;
+                            const activeDirection =
+                              active ? view.direction : defaultContactSortDirection(column);
+                            return (
+                              <th
+                                key={column}
+                                scope="col"
+                                aria-sort={
+                                  active
+                                    ? activeDirection === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                <Link
+                                  className={`${styles.contactsSort} ${active ? styles.contactsSortActive : ""}`}
+                                  href={sortHref(column)}
+                                >
+                                  {CONTACT_SORT_LABELS[column]}
+                                  {sortIcon(column)}
+                                </Link>
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(({ conversation, medium, requestedAt }) => (
+                          <tr key={conversation.id}>
+                            <td data-label="Name">
+                              {/* The link is the row's accessible and pointer
+                                  target; the CSS stretches it over the row. */}
+                              <Link
+                                className={styles.contactsRowLink}
+                                href={`/dashboard/inbox/${conversation.id}`}
+                              >
+                                <span className={styles.contactsName}>
+                                  {conversation.visitorName ?? "Visitor"}
+                                </span>
+                              </Link>
+                            </td>
+                            <td data-label="Email">{conversation.visitorEmail}</td>
+                            <td data-label="Phone">{conversation.visitorPhone}</td>
+                            <td data-label="Medium">{MEDIUM_LABELS[medium] ?? medium}</td>
+                            <td data-label="Date requested">
+                              <time dateTime={requestedAt}>
+                                {new Date(requestedAt).toLocaleString("en-GB")}
+                              </time>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {totalPages > 1 && rows.length > 0 ? (
                   <nav className={styles.pager} aria-label="Visitor contacts pages">
                     {page > 1 ? (
                       <Link className={styles.pagerLink} href={pageHref(page - 1)}>

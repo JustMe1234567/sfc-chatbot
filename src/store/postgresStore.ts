@@ -105,35 +105,78 @@ export function createPostgresStore(sql: PostgresSql): Store {
     // The Visitor emails list (ticket 53): the SQLite store's live-derived
     // page query, with the same last_activity_at/id ordering — conversations
     // carry no seq, so the id is the shared deterministic tie-break.
-    // The Visitor contacts list (ticket 69): conversations with at least
-    // one contact request, derived live from the requests table, so a
-    // conversation purged by any deletion path drops out with no extra
-    // bookkeeping. Newest activity first; the id tie-break keeps page
-    // boundaries stable (matching the SQLite store). Each row carries the
-    // latest requested medium (latest created_at, the request id breaking
-    // same-instant ties).
-    async listConversationsWithContactRequest(page, pageSize) {
+    // The Visitor contacts list (tickets 69 and 74): the same statement
+    // shape as the SQLite store — an inner query pairing each conversation
+    // with its latest request's medium and created_at (plus the search
+    // filter, case-insensitive across name, email, and phone), and an
+    // outer query sorting by the displayed column with the conversation
+    // id as the final tie-break.
+    async listConversationsWithContactRequest(page, pageSize, options) {
+      const search = options?.query ?? "";
+      const sort = options?.sort ?? "requested";
+      const direction = options?.direction ?? (sort === "requested" ? "desc" : "asc");
+      const sortExpressions: Record<string, string> = {
+        name: "lower(visitor_name)",
+        email: "lower(visitor_email)",
+        phone: "lower(visitor_phone)",
+        medium: "latest_medium",
+        requested: "latest_requested_at",
+      };
+      // Escape LIKE wildcards in the trimmed query before lowering.
+      const lowerLike = `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`).toLowerCase()}%`;
+      const searchParams = search ? [lowerLike, lowerLike, lowerLike] : [];
+      const searchClause = search
+        ? `AND (lower(visitor_name) LIKE $3 ESCAPE '\\' OR lower(visitor_email) LIKE $4 ESCAPE '\\' OR lower(visitor_phone) LIKE $5 ESCAPE '\\')`
+        : "";
       const rows = await sql.unsafe(
-        `SELECT ${CONVERSATION_COLUMNS},
-           (SELECT medium FROM contact_requests cr
-            WHERE cr.conversation_id = conversations.id
-            ORDER BY cr.created_at DESC, cr.id DESC LIMIT 1) AS latest_medium
-         FROM conversations
-         WHERE id IN (SELECT conversation_id FROM contact_requests)
-         ORDER BY last_activity_at DESC, id DESC LIMIT $1 OFFSET $2`,
-        [pageSize, (page - 1) * pageSize],
+        `SELECT * FROM (
+           SELECT ${CONVERSATION_COLUMNS},
+             (SELECT cr.medium FROM contact_requests cr
+              WHERE cr.conversation_id = conversations.id
+              ORDER BY cr.created_at DESC, cr.id DESC LIMIT 1) AS latest_medium,
+             (SELECT cr.created_at FROM contact_requests cr
+              WHERE cr.conversation_id = conversations.id
+              ORDER BY cr.created_at DESC, cr.id DESC LIMIT 1) AS latest_requested_at
+           FROM conversations
+           WHERE id IN (SELECT conversation_id FROM contact_requests)
+           ${searchClause}
+         )
+         ORDER BY ${sortExpressions[sort]} ${direction.toUpperCase()}, id DESC
+         LIMIT $1 OFFSET $2`,
+        [pageSize, (page - 1) * pageSize, ...searchParams],
       );
-      return (rows as unknown as (ConversationRow & { latest_medium: ContactRequest["medium"] })[]).map(
-        (row) => ({ conversation: rowToConversation(row), medium: row.latest_medium }),
-      );
+      return (rows as unknown as (ConversationRow & {
+        latest_medium: ContactRequest["medium"];
+        latest_requested_at: string;
+      })[]).map((row) => ({
+        conversation: rowToConversation(row),
+        medium: row.latest_medium,
+        requestedAt: row.latest_requested_at,
+      }));
     },
 
-    async countConversationsWithContactRequest() {
-      // Cast to int: bigint comes back as a string through postgres.js.
-      const row = (await sql`SELECT COUNT(DISTINCT conversation_id)::int AS n FROM contact_requests`)[0] as {
-        n: number;
-      };
-      return Number(row.n);
+    async countConversationsWithContactRequest(options) {
+      // Cast to int: bigint comes back as a string through postgres.js. The
+      // search clause is conditional (a LIKE against NULL would exclude
+      // rows from the unfiltered count); parameters bind only when
+      // searching.
+      const search = options?.query ?? "";
+      // Positional parameters via unsafe: postgres.js would bind a string
+      // interpolated into its template as a VALUE, so the conditional
+      // clause has to ship as statement text with its own placeholders.
+      const like = `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`).toLowerCase()}%`;
+      const searchClause = search
+        ? `WHERE (lower(visitor_name) LIKE $1 ESCAPE '\\' OR lower(visitor_email) LIKE $1 ESCAPE '\\' OR lower(visitor_phone) LIKE $1 ESCAPE '\\')`
+        : "";
+      const rows = (await sql.unsafe(
+        `SELECT COUNT(DISTINCT conversation_id)::int AS n FROM contact_requests
+        WHERE conversation_id IN (
+          SELECT id FROM conversations
+          ${searchClause}
+        )`,
+        search ? [like] : [],
+      )) as unknown as { n: number }[];
+      return Number(rows[0]?.n ?? 0);
     },
 
     // The one-open-request guarantee (ticket 69) is the guarded INSERT:

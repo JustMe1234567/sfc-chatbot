@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
+  ContactListOptions,
   ContactRequest,
   RetentionRun,
   ReturnToken,
@@ -92,41 +93,81 @@ export function createSqliteStore(db: DatabaseSync): Store {
       ).run(contact.name, contact.email, contact.phone, id);
     },
 
-    // The Visitor contacts list (ticket 69): conversations with at least
-    // one contact request, derived live from the requests table, so a
+    // The Visitor contacts list (tickets 69 and 74): conversations with at
+    // least one contact request, derived live from the requests table, so a
     // conversation purged by any deletion path drops out with no extra
-    // bookkeeping. Newest activity first; the id tie-break keeps page
-    // boundaries stable when two conversations share an instant (the
-    // Postgres store uses the same tie-break — conversations carry no seq).
-    // Each row carries the latest requested medium (latest created_at, the
-    // request id breaking same-instant ties).
-    async listConversationsWithContactRequest(page, pageSize) {
+    // bookkeeping. Each row pairs the latest request's medium and created_at
+    // from the same request row (latest created_at, the request id breaking
+    // same-instant ties). Ticket 74 wraps that as an inner query so search
+    // (case-insensitive across name, email, and phone) applies to the whole
+    // set before pagination, and the outer query sorts by the displayed
+    // column — lower() for text columns — with the conversation id as the
+    // final tie-break. The Postgres store builds the identical statement.
+    async listConversationsWithContactRequest(page, pageSize, options) {
+      const search = options?.query ?? "";
+      const sort = options?.sort ?? "requested";
+      const direction = options?.direction ?? (sort === "requested" ? "desc" : "asc");
+      const sortExpressions: Record<string, string> = {
+        name: "lower(visitor_name)",
+        email: "lower(visitor_email)",
+        phone: "lower(visitor_phone)",
+        medium: "latest_medium",
+        requested: "latest_requested_at",
+      };
+      const lowerLike = `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`).toLowerCase()}%`;
+      const searchClause = search
+        ? `AND (lower(visitor_name) LIKE ? ESCAPE '\\' OR lower(visitor_email) LIKE ? ESCAPE '\\' OR lower(visitor_phone) LIKE ? ESCAPE '\\')`
+        : "";
       const rows = db
         .prepare(
-          `SELECT ${CONVERSATION_COLUMNS} FROM conversations
-           WHERE id IN (SELECT conversation_id FROM contact_requests)
-           ORDER BY last_activity_at DESC, id DESC LIMIT ? OFFSET ?`,
+          `SELECT * FROM (
+             SELECT ${CONVERSATION_COLUMNS},
+               (SELECT cr.medium FROM contact_requests cr
+                WHERE cr.conversation_id = conversations.id
+                ORDER BY cr.created_at DESC, cr.id DESC LIMIT 1) AS latest_medium,
+               (SELECT cr.created_at FROM contact_requests cr
+                WHERE cr.conversation_id = conversations.id
+                ORDER BY cr.created_at DESC, cr.id DESC LIMIT 1) AS latest_requested_at
+             FROM conversations
+             WHERE id IN (SELECT conversation_id FROM contact_requests)
+             ${searchClause}
+           )
+           ORDER BY ${sortExpressions[sort]} ${direction.toUpperCase()}, id DESC
+           LIMIT ? OFFSET ?`,
         )
-        .all(pageSize, (page - 1) * pageSize) as unknown as ConversationRow[];
-      const latestMedium = db.prepare(
-        `SELECT medium FROM contact_requests WHERE conversation_id = ?
-         ORDER BY created_at DESC, id DESC LIMIT 1`,
-      );
-      return rows.map((row) => {
-        const conversation = rowToConversation(row);
-        const latest = latestMedium.get(conversation.id) as
-          | { medium: ContactRequest["medium"] }
-          | undefined;
-        return { conversation, medium: latest!.medium };
-      });
+        .all(
+          ...(search ? [lowerLike, lowerLike, lowerLike] : []),
+          pageSize,
+          (page - 1) * pageSize,
+        ) as unknown as (ConversationRow & {
+          latest_medium: ContactRequest["medium"];
+          latest_requested_at: string;
+        })[];
+      return rows.map((row) => ({
+        conversation: rowToConversation(row),
+        medium: row.latest_medium,
+        requestedAt: row.latest_requested_at,
+      }));
     },
 
-    async countConversationsWithContactRequest() {
+    async countConversationsWithContactRequest(options) {
+      const search = options?.query ?? "";
+      // The search clause is conditional so an unfiltered count keeps
+      // including rows with any NULL contact fields (a LIKE against NULL
+      // would exclude them); the three parameters bind only when searching.
+      const like = `%${search.replace(/[\\%_]/g, (ch) => `\\${ch}`).toLowerCase()}%`;
+      const searchClause = search
+        ? `WHERE (lower(visitor_name) LIKE ? ESCAPE '\\' OR lower(visitor_email) LIKE ? ESCAPE '\\' OR lower(visitor_phone) LIKE ? ESCAPE '\\')`
+        : "";
       const row = db
         .prepare(
-          "SELECT COUNT(DISTINCT conversation_id) AS n FROM contact_requests",
+          `SELECT COUNT(DISTINCT conversation_id) AS n FROM contact_requests
+           WHERE conversation_id IN (
+             SELECT id FROM conversations
+             ${searchClause}
+           )`,
         )
-        .get() as { n: number | bigint };
+        .get(...(search ? [like, like, like] : [])) as { n: number | bigint };
       return Number(row.n);
     },
 

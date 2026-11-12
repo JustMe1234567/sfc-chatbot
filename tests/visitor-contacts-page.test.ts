@@ -18,7 +18,6 @@ import type { Conversation } from "../src/domain/types";
 
 const PAGE_PATH = "src/app/dashboard/contacts/page.tsx";
 const HEADER_PATH = "src/app/dashboard/header.tsx";
-const CSS_PATH = "src/app/dashboard/dashboard.module.css";
 
 let seededNewestFirst: string[] = [];
 
@@ -228,15 +227,15 @@ describe("the Visitor contacts page (ticket 69)", () => {
     // Next 16 server-component convention: searchParams arrives as a Promise.
     expect(source).toContain("searchParams: Promise<");
     expect(source).toContain("await searchParams");
-    // The page fetches the count for the pager and only the page's rows.
-    expect(source).toContain("countConversationsWithContactRequest()");
+    // The page fetches the filtered count for the pill and pager and only
+    // the page's rows (ticket 74 passes the resolved search and sort).
+    expect(source).toContain("countConversationsWithContactRequest(options)");
     expect(source).toContain("listConversationsWithContactRequest(");
 
     // Real links, aria-current on the live page, dead links impossible.
     expect(source).toContain('aria-current={link.page === page ? "page" : undefined}');
     expect(source).toContain("page > 1");
     expect(source).toContain("page < totalPages");
-    expect(source).toContain("/dashboard/contacts?page=");
   });
 
   it("is gated to the follow-up roles and renders rows as whole links", async () => {
@@ -246,13 +245,15 @@ describe("the Visitor contacts page (ticket 69)", () => {
     expect(source).toContain("requireStaff");
     expect(source).toContain("STAFF_ROLES");
 
-    // The row is one link to the conversation; the row shows the saved
-    // contact's name, email, phone, latest medium, and chat-start time.
+    // Each row links to its conversation and shows the saved contact's
+    // name, email, phone, latest medium, and the latest request's time
+    // (ticket 74's Date requested — not the chat-start time, ticket 69's
+    // label, superseded by the reference).
     expect(source).toContain('href={`/dashboard/inbox/${conversation.id}`}');
     expect(source).toContain("conversation.visitorEmail");
     expect(source).toContain("conversation.visitorPhone");
     expect(source).toContain("conversation.visitorName");
-    expect(source).toContain("Chat started");
+    expect(source).toContain("requestedAt");
     expect(source).not.toContain("mailto:");
   });
 
@@ -264,12 +265,5 @@ describe("the Visitor contacts page (ticket 69)", () => {
     );
     expect(header).toContain("contacts: (");
     expect(header).not.toContain('"/dashboard/emails"');
-  });
-
-  it("styles the list rows with the existing family", async () => {
-    const css = await readFile(path.join(repoRoot(), CSS_PATH), "utf8");
-    for (const className of [".emailList", ".emailRow", ".emailAddress", ".emailRowMeta"]) {
-      expect(css, className).toContain(className);
-    }
   });
 });

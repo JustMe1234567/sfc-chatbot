@@ -2764,6 +2764,203 @@ a:focus-visible {
    content-head control (ticket 52). The page scrolls as one document again
    — the viewport-high shell and its internal scroll area are desktop
    accommodations for the fixed rail (ticket 58). */
+/* Visitor contacts redesign (ticket 74): the count pill and labeled search
+   sit on one toolbar row; the bordered table sorts through link controls
+   with aria-sort chevrons; phones restack every row as a labeled card. */
+.contactsToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 12px;
+  flex-wrap: wrap;
+}
+
+.contactsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--sfc-blue-soft);
+  color: var(--sfc-blue);
+  font: 600 13px/1.2 system-ui, sans-serif;
+}
+
+.contactsSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  flex: 1;
+  max-width: 420px;
+  min-width: 220px;
+}
+
+.contactsSearchIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.contactsSearch input[type="search"] {
+  flex: 1;
+  font: 14px/1.4 system-ui, sans-serif;
+  padding: 9px 10px 9px 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.contactsSearch input[type="search"]:focus-visible {
+  outline: 2px solid var(--sfc-gold);
+  outline-offset: 1px;
+}
+
+.contactsSearchSubmit {
+  border: 0;
+  border-radius: 8px;
+  background: var(--sfc-blue);
+  color: var(--surface);
+  font: 600 13px system-ui, sans-serif;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.contactsSearchClear {
+  font: 550 13px system-ui, sans-serif;
+  color: var(--sfc-blue);
+}
+
+.contactsTableWrap {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.contactsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+
+.contactsTable thead {
+  background: var(--sfc-blue-soft);
+}
+
+.contactsTable th {
+  text-align: left;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.contactsSort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 16px;
+  font: 700 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.contactsSort:focus-visible {
+  outline: 2px solid var(--sfc-gold);
+  outline-offset: -2px;
+}
+
+.contactsSortActive {
+  color: var(--sfc-blue);
+}
+
+.contactsSortIcon[data-inactive] {
+  opacity: 0.55;
+}
+
+.contactsTable td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.contactsTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.contactsRowLink {
+  position: static;
+  color: inherit;
+  font-weight: 700;
+}
+
+/* The row link stretches over the whole row so a click anywhere opens the
+   conversation, while the DOM keeps one honest link in the name cell. */
+.contactsTable tbody tr {
+  position: relative;
+}
+
+.contactsRowLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.contactsTable tbody tr:focus-within,
+.contactsTable tbody tr:hover {
+  background: var(--page);
+}
+
+/* Phones: the table restacks as labeled cards — every value keeps its
+   column label, no horizontal scrolling. */
+@media (max-width: 720px) {
+  .contactsTable thead {
+    display: none;
+  }
+
+  .contactsTable,
+  .contactsTable tbody,
+  .contactsTable tr,
+  .contactsTable td {
+    display: block;
+    width: 100%;
+  }
+
+  .contactsTable tr {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0;
+  }
+
+  .contactsTable tr:last-child {
+    border-bottom: 0;
+  }
+
+  .contactsTable td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 4px 14px;
+    border-bottom: 0;
+  }
+
+  .contactsTable td::before {
+    content: attr(data-label);
+    font: 600 11px/1.4 system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex: none;
+  }
+
+  .contactsTable td[data-label="Name"] {
+    padding-top: 8px;
+  }
+}
+
 @media (max-width: 720px) {
   .shell {
     display: block;
