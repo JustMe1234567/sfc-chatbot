@@ -2864,6 +2864,7 @@ a:focus-visible {
   font: 700 12px/1 system-ui, sans-serif;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  text-decoration: none;
   color: var(--ink);
 }
 
@@ -2895,6 +2896,7 @@ a:focus-visible {
   position: static;
   color: inherit;
   font-weight: 700;
+  text-decoration: none;
 }
 
 /* The row link stretches over the whole row so a click anywhere opens the

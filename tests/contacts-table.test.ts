@@ -435,4 +435,15 @@ describe("the contacts page contract (ticket 74)", () => {
     expect(css).toContain("content: attr(data-label)");
     expect(css).not.toMatch(/\.contactsTableWrap \{[^}]*overflow-x: scroll/s);
   });
+
+  it("drops the default link underline on the sort headers and row link (ticket 75)", async () => {
+    const css = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/dashboard.module.css"),
+      "utf8",
+    );
+    // The removal lives on the two ticket-74 link rules themselves, like
+    // every other dashboard link style — no global or page-wide reset.
+    expect(css).toMatch(/\.contactsSort \{[^}]*text-decoration: none/s);
+    expect(css).toMatch(/\.contactsRowLink \{[^}]*text-decoration: none/s);
+  });
 });
