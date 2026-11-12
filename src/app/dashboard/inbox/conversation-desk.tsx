@@ -171,7 +171,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 href="/dashboard/inbox"
                 aria-current={view === "active" ? "page" : undefined}
               >
-                Conversations
+                Active
                 {attentionTierCount > 0 ? (
                   <span className={styles.countAttention}>{attentionTierCount} new</span>
                 ) : null}

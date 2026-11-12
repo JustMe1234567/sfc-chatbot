@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
 import { isConversationActive } from "@/domain/activity";
@@ -39,6 +39,20 @@ export default async function DeskConversationPage({ params }: PageProps) {
   const conversation = await store.getConversation(id);
   if (!conversation) {
     notFound();
+  }
+  // Empty sessions are hidden from the live lists (ticket 73): a direct
+  // link to a clear-created fresh successor reads better as the cleared
+  // conversation it replaced — the predecessor is closed, so the redirect
+  // lands on History with its retained transcript. Empty sessions without
+  // a predecessor keep their current direct-route behavior.
+  const visitorAuthored = (await store.listMessages(id)).some(
+    (message) => message.role === "visitor",
+  );
+  if (!visitorAuthored) {
+    const predecessorId = await store.findPredecessorId(id);
+    if (predecessorId) {
+      redirect(`/dashboard/inbox/${predecessorId}`);
+    }
   }
   return (
     <ConversationDesk

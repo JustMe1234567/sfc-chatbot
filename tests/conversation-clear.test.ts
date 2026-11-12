@@ -184,8 +184,20 @@ describe("clearing after escalation and while claimed", () => {
       )
     ).json()) as { incoming: { id: string }[]; active: { id: string }[] };
     expect(desk.incoming.some((item) => item.id === old.id)).toBe(false);
-    // The successor appears as its own active chat.
-    expect(desk.active.some((item) => item.id === fresh.id)).toBe(true);
+    // The fresh successor has no visitor-authored message yet, so the desk
+    // omits it (ticket 73) — no blank `Visitor · bot` row.
+    expect(desk.active.some((item) => item.id === fresh.id)).toBe(false);
+    // The successor's first visitor question makes it a real chat: the
+    // ordinary poll surfaces it on the active desk. The fresh chat's contact
+    // columns start empty, so the visitor re-accepts the gate first.
+    expect((await submitContact({ id: fresh.id, token: fresh.token })).status).toBe(200);
+    expect((await ask({ id: fresh.id, token: fresh.token }, "Clear test: a real question this time.")).status).toBe(200);
+    const deskAfter = (await (
+      await GET(
+        new Request(`${TEST_ORIGIN}/api/staff/conversations`, { headers: { cookie: jar.header() } }),
+      )
+    ).json()) as { active: { id: string }[] };
+    expect(deskAfter.active.some((item) => item.id === fresh.id)).toBe(true);
   });
 
   it("ends a claimed conversation and stops further staff replies", async () => {
@@ -203,8 +215,8 @@ describe("clearing after escalation and while claimed", () => {
     const reclaim = await staffAction(jar, old.id, "claim");
     expect(reclaim.status).toBe(409);
 
-    // The successor is a distinct chat on the active desk, and the claimed
-    // conversation has left it.
+    // The claimed conversation has left the active desk, and the fresh
+    // successor is omitted until its first visitor question (ticket 73).
     const { GET: deskGet } = await import("../src/app/api/staff/conversations/route");
     const desk = (await (
       await deskGet(
@@ -212,11 +224,18 @@ describe("clearing after escalation and while claimed", () => {
       )
     ).json()) as { active: { id: string }[] };
     expect(desk.active.some((item) => item.id === old.id)).toBe(false);
-    expect(desk.active.some((item) => item.id === fresh.id)).toBe(true);
+    expect(desk.active.some((item) => item.id === fresh.id)).toBe(false);
 
     expect((await submitContact({ id: fresh.id, token: fresh.token })).status).toBe(200);
     const freshAsk = await ask({ id: fresh.id, token: fresh.token }, "Clear test: starting over; speak to a human.");
     expect(freshAsk.status).toBe(200);
+    // The first visitor question makes the successor visible on the desk.
+    const deskAfter = (await (
+      await deskGet(
+        new Request(`${TEST_ORIGIN}/api/staff/conversations`, { headers: { cookie: jar.header() } }),
+      )
+    ).json()) as { active: { id: string }[] };
+    expect(deskAfter.active.some((item) => item.id === fresh.id)).toBe(true);
     // The phrase asks first now (ticket 69); Yes puts the successor waiting.
     await confirmHandoffYes({ id: fresh.id, token: fresh.token });
     // And staff can work the successor: claim it.

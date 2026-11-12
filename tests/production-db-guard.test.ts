@@ -61,6 +61,8 @@ describe("assertConfiguredDatabaseUrl (ticket 22)", () => {
     expect(() => assertConfiguredDatabaseUrl()).not.toThrow();
   });
 
+  // The service import pulls the whole auth+pg+kysely chain; under the
+  // full PG suite's worker load that alone can exceed the default budget.
   it("getChatbotService refuses to build a service in production without a URL", async () => {
     vi.stubEnv("NODE_ENV", "production");
     withoutDatabaseUrl();
@@ -68,5 +70,5 @@ describe("assertConfiguredDatabaseUrl (ticket 22)", () => {
     await expect(getChatbotService()).rejects.toThrowError(
       /DATABASE_URL.*docs\/deployment\.md/s,
     );
-  });
+  }, 120_000);
 });

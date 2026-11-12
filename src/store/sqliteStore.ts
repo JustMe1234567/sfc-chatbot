@@ -73,6 +73,15 @@ export function createSqliteStore(db: DatabaseSync): Store {
       return row ? rowToConversation(row) : null;
     },
 
+    // The reverse replaced_by lookup (ticket 73): the predecessor is the
+    // row whose forward link points at the asked-for conversation.
+    async findPredecessorId(id) {
+      const row = db
+        .prepare("SELECT id FROM conversations WHERE replaced_by = ?")
+        .get(id) as { id: string } | undefined;
+      return row ? row.id : null;
+    },
+
     async updateConversationState(id, state) {
       db.prepare("UPDATE conversations SET state = ? WHERE id = ?").run(state, id);
     },

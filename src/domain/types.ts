@@ -192,6 +192,14 @@ export interface RetentionRun {
 export interface Store {
   createConversation(conversation: Conversation): Promise<void>;
   getConversation(id: string): Promise<Conversation | null>;
+  /**
+   * The conversation this one replaced, via the existing forward
+   * replaced_by link (ticket 73): asking for a clear-created successor
+   * returns the closed predecessor's id; null when nothing points here.
+   * Read-only — the link itself is written by clearConversation for retry
+   * safety and never changes.
+   */
+  findPredecessorId(id: string): Promise<string | null>;
   updateConversationState(id: string, state: ConversationState): Promise<void>;
   listConversationsByState(state: ConversationState): Promise<Conversation[]>;
   /** Every conversation, any state: the conversation desk's source. */

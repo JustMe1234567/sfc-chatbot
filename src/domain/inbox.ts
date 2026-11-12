@@ -49,9 +49,25 @@ async function toDeskItem(
   conversation: Awaited<ReturnType<Store["listConversations"]>>[number],
   openRequests: Map<string, OpenContactRequestView>,
 ): Promise<DeskItem> {
+  return (await toDeskItemWithMessages(store, conversation, openRequests)).item;
+}
+
+/**
+ * The desk item plus whether the visitor has said anything yet (ticket 73):
+ * conversations without a visitor-authored message — a clear-created fresh
+ * successor, or a contact-form-only session — are omitted from the staff's
+ * live lists until the first visitor message lands, so blank rows never
+ * crowd the desk. The flag stays out of the public DeskItem shape; the
+ * API response simply omits those rows.
+ */
+async function toDeskItemWithMessages(
+  store: Store,
+  conversation: Awaited<ReturnType<Store["listConversations"]>>[number],
+  openRequests: Map<string, OpenContactRequestView>,
+): Promise<{ item: DeskItem; visitorAuthored: boolean }> {
   const messages = await store.listMessages(conversation.id);
   const last = messages.at(-1);
-  return {
+  const item: DeskItem = {
     id: conversation.id,
     state: conversation.state,
     visitorName: conversation.visitorName,
@@ -66,6 +82,7 @@ async function toDeskItem(
       ? { role: last.role, text: last.text, createdAt: last.createdAt }
       : null,
   };
+  return { item, visitorAuthored: messages.some((m) => m.role === "visitor") };
 }
 
 function byNewestActivity(a: DeskItem, b: DeskItem): number {
@@ -99,8 +116,17 @@ export async function summarizeConversationDesk(
   const conversations = await store.listConversations();
   const openRequests = await openRequestViews(store);
   const items = (
-    await Promise.all(conversations.map((c) => toDeskItem(store, c, openRequests)))
-  ).filter((item) => item.active);
+    await Promise.all(
+      conversations.map((c) => toDeskItemWithMessages(store, c, openRequests)),
+    )
+  )
+    // The live lists show only conversations the visitor has actually said
+    // something in (ticket 73): clear-created fresh successors and
+    // contact-form-only sessions stay invisible until their first visitor
+    // message, then appear through the ordinary poll.
+    .filter((entry) => entry.visitorAuthored)
+    .map((entry) => entry.item)
+    .filter((item) => item.active);
   const incoming = items
     .filter((item) => item.state === "awaiting_staff")
     .sort(byNewestActivity);

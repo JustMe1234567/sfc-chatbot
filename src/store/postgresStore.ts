@@ -83,6 +83,17 @@ export function createPostgresStore(sql: PostgresSql): Store {
       return row ? rowToConversation(row) : null;
     },
 
+    // The reverse replaced_by lookup (ticket 73): the predecessor is the
+    // row whose forward link points at the asked-for conversation.
+    async findPredecessorId(id) {
+      const rows = await sql.unsafe(
+        "SELECT id FROM conversations WHERE replaced_by = $1",
+        [id],
+      );
+      const row = rows[0] as { id: string } | undefined;
+      return row ? row.id : null;
+    },
+
     async updateConversationState(id, state) {
       await sql`UPDATE conversations SET state = ${state} WHERE id = ${id}`;
     },

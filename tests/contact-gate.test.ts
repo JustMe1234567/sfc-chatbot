@@ -339,6 +339,24 @@ describe("staff see the name beside the state", () => {
   it("carries the name on the desk list, with a fallback for legacy conversations", async () => {
     const named = await startConversation({ fullName: "Priya Raman" });
     const legacy = await legacyConversation();
+    // Rows appear on the desk once the visitor has said something (ticket
+    // 73): both conversations ask, so the name and its fallback render.
+    expect((await ask(named, "Contact gate: a named visitor's question.")).status).toBe(200);
+    // The legacy fallback is real pre-gate data: the visitor's words are
+    // already in the store (no gate ever applied to them).
+    {
+      const { store } = await service();
+      await store.appendMessage({
+        id: crypto.randomUUID(),
+        conversationId: legacy.id,
+        role: "visitor",
+        text: "Contact gate: a legacy visitor's pre-gate question.",
+        createdAt: new Date().toISOString(),
+        topic: null,
+        handoffOption: null,
+        choices: null,
+      });
+    }
     const { deskLabel } = await import("../src/domain/inbox");
 
     const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
