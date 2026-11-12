@@ -2,10 +2,9 @@
 // through the real UI in headless Chromium, then captures the staff surfaces
 // at three viewport widths. Usage: node scripts/design-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
-import { TOTP, URI } from "otpauth";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { enrollAndSignIn, freshTotpSlate, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3122"}`;
@@ -17,59 +16,18 @@ const WIDTHS = [
   [390, 760, "phone"],
 ];
 
-for (let attempt = 0; ; attempt++) {
-  try {
-    await fetch(`${BASE}/api/healthz`);
-    break;
-  } catch {
-    if (attempt > 40) throw new Error("server never came up");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-}
+await waitForServer(BASE);
 
 // The enrollment flow needs a clean slate: wipe any prior TOTP enrollment
 // for the screenshot owner (the script enrolls fresh each run).
-const db = new DatabaseSync("chatbot.db");
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare('DELETE FROM twoFactor WHERE userId = ?').run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-}
+freshTotpSlate("chatbot.db", EMAIL);
 
 const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();
 await page.setViewportSize({ width: 1280, height: 800 });
 
-// Enroll TOTP through the UI. A password-only session reaches /dashboard/
-// enroll directly (the login page's code stage presumes an existing token).
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(1500);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-// URI.parse is the code path the test suite proves correct; a bare
-// Secret({b32}) decodes better-auth's ASCII-string secrets differently.
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-// Enrollment signs out; sign back in with the full password + code flow.
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 async function shot(path, name) {

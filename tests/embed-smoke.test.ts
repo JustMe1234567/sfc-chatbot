@@ -79,16 +79,30 @@ describe("WordPress embed smoke check", () => {
     // The frame page's only persistent storage is the analytics browser id
     // (ticket 17): an anonymous random UUID in the widget's own presence
     // module, never the conversation credential, which stays session-scoped.
-    const presence = await readFile(path.join(repoRoot(), "src/widget/presence.ts"), "utf8");
-    expect(frame).toMatch(/localStorage/);
-    expect(frame).toMatch(/startPresenceHeartbeat/);
+    // (Ticket 33 moved the heartbeat into the frame's presence hook and the
+    // Escape cascade into its clear-flow hook; the pins follow the code.)
+    const presenceModule = await readFile(
+      path.join(repoRoot(), "src/widget/presence.ts"),
+      "utf8",
+    );
+    const presenceHook = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/usePresence.ts"),
+      "utf8",
+    );
+    const clearFlow = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/useClearFlow.ts"),
+      "utf8",
+    );
+    expect(presenceHook).toMatch(/localStorage/);
+    expect(presenceHook).toMatch(/startPresenceHeartbeat/);
+    expect(presenceHook).not.toMatch(/localStorage\.(get|set)/);
     expect(frame).not.toMatch(/localStorage\.(get|set)/);
-    expect(presence).toContain('getItem(BROWSER_ID_STORAGE_KEY)');
-    expect(presence).not.toMatch(/sessionStorage|token|credential/i);
+    expect(presenceModule).toContain('getItem(BROWSER_ID_STORAGE_KEY)');
+    expect(presenceModule).not.toMatch(/sessionStorage|token|credential/i);
     // Keyboard and screen-reader hooks the browser check exercises live.
     expect(frame).toContain('role="log"');
     expect(frame).toContain("aria-live");
-    expect(frame).toContain("Escape");
+    expect(clearFlow).toContain("Escape");
     expect(frame).toContain("Your question");
   });
 
@@ -97,12 +111,16 @@ describe("WordPress embed smoke check", () => {
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
+    const stream = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/useConversationStream.ts"),
+      "utf8",
+    );
     // The composer locks while staff help is requested but unclaimed, with
     // an inline explanation; claiming re-enables it through the normal
     // state application, and the API rejects anything posted directly.
     expect(frame).toContain("Waiting for a staff member to take over…");
     expect(frame).toContain("composerLocked");
-    expect(frame).toContain('code === "awaiting_staff"');
+    expect(stream).toContain('code === "awaiting_staff"');
     // The lock's start and the takeover are each announced once — via the
     // handoff and claimed notices' own live regions (ticket 25 moved the
     // lock's announcer from this line to the notice).
@@ -175,20 +193,22 @@ describe("WordPress embed smoke check", () => {
   });
 
   it("greets a fresh chat without creating a conversation (ticket 41)", async () => {
-    const frame = await readFile(
-      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+    const content = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/usePublishedContent.ts"),
       "utf8",
     );
     // The greeting comes from the published setting, with the domain default
-    // as the safe fallback, and renders inside the message log.
-    expect(frame).toContain("/api/v1/welcome");
-    expect(frame).toContain("DEFAULT_WELCOME_MESSAGE");
+    // as the safe fallback, and renders inside the message log. (Ticket 33
+    // moved the fetch into the frame's published-content hook; the pin
+    // follows the code.)
+    expect(content).toContain("/api/v1/welcome");
+    expect(content).toContain("DEFAULT_WELCOME_MESSAGE");
     // Presentation-only: the greeting path never opens a conversation —
     // ensureSession stays behind the visitor's first question. The slice
-    // covers the fetch helper and the effect that uses it.
-    const welcomePath = frame.slice(
-      frame.indexOf("The published greeting text, or the default"),
-      frame.indexOf("The saved/declined email confirmations leave on their own"),
+    // covers the fetch helper.
+    const welcomePath = content.slice(
+      content.indexOf("The published greeting text, or the default"),
+      content.indexOf("The configured chatbot icon (ticket 70)"),
     );
     expect(welcomePath).not.toContain("ensureSession");
     expect(welcomePath).toContain("/api/v1/welcome");
@@ -300,7 +320,12 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain('role="menu"');
     expect(frame).toContain('role="menuitem"');
     expect(frame).toContain('event.key === "ArrowDown"');
-    expect(frame).toContain('event.key !== "Escape"');
+    // The Escape cascade lives in the frame's clear-flow hook (ticket 33).
+    const clearFlowSource = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/useClearFlow.ts"),
+      "utf8",
+    );
+    expect(clearFlowSource).toContain('event.key !== "Escape"');
     expect(frame).not.toContain("styles.clearRow");
     expect(frameCss).toMatch(/\.menuPanel,\s*\.confirmBox \{[^}]*position: absolute/s);
     expect(frameCss).toContain("prefers-reduced-motion: no-preference");

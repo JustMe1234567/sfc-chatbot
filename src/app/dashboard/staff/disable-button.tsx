@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStaffAction } from "../use-staff-action";
 import ConfirmDialog from "../confirm-dialog";
 import styles from "../dashboard.module.css";
 
@@ -12,34 +12,26 @@ import styles from "../dashboard.module.css";
  * pending verb lives on the dialog's confirm control while the request runs.
  */
 export default function DisableButton({ memberId, name }: { memberId: string; name: string }) {
-  const router = useRouter();
+  const staff = useStaffAction();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
 
   function close() {
     setOpen(false);
-    setError("");
+    staff.setError("");
     triggerRef.current?.focus();
   }
 
   async function confirm() {
-    setBusy(true);
-    setError("");
-    const response = await fetch(`/api/staff/members/${memberId}/disable`, {
-      method: "POST",
-    });
-    setBusy(false);
-    if (!response.ok) {
-      const failure = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setError(failure?.error?.message ?? "Could not disable the account.");
+    const result = await staff.run(
+      () => fetch(`/api/staff/members/${memberId}/disable`, { method: "POST" }),
+      "Could not disable the account.",
+    );
+    if (!result.ok) {
+      // The dialog stays open; the inline error explains the refusal.
       return;
     }
     close();
-    router.refresh();
   }
 
   return (
@@ -57,8 +49,8 @@ export default function DisableButton({ memberId, name }: { memberId: string; na
           title={`Disable ${name}?`}
           confirmLabel="Disable"
           pendingLabel="Disabling…"
-          pending={busy}
-          error={error}
+          pending={staff.busy}
+          error={staff.error}
           onConfirm={() => void confirm()}
           onCancel={close}
         >

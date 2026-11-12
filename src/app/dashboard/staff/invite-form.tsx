@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useStaffAction } from "../use-staff-action";
 import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
@@ -10,41 +10,35 @@ import styles from "../dashboard.module.css";
  * it is displayed exactly once here for the owner to share out of band.
  */
 export default function InviteForm() {
-  const router = useRouter();
+  const staff = useStaffAction();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"staff" | "editor">("staff");
   const [initialPassword, setInitialPassword] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || name.trim().length === 0 || email.trim().length === 0) {
+    if (staff.busy || name.trim().length === 0 || email.trim().length === 0) {
       return;
     }
-    setBusy(true);
-    setMessage("");
-    const response = await fetch("/api/staff/members", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), email: email.trim(), role }),
-    });
-    setBusy(false);
-    if (!response.ok) {
+    const result = await staff.run(
+      () =>
+        fetch("/api/staff/members", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), email: email.trim(), role }),
+        }),
+      "Could not invite the member.",
+    );
+    if (!result.ok) {
       setInitialPassword(null);
-      const failure = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setMessage(failure?.error?.message ?? "Could not invite the member.");
       return;
     }
-    const body = (await response.json()) as { initialPassword: string };
+    const body = result.body as { initialPassword: string };
     setInitialPassword(body.initialPassword);
     setName("");
     setEmail("");
     setRole("staff");
-    router.refresh();
   }
 
   return (
@@ -80,7 +74,7 @@ export default function InviteForm() {
       </select>
       <PendingButton
         type="submit"
-        pending={busy}
+        pending={staff.busy}
         pendingLabel="Creating…"
         disabled={name.trim().length === 0 || email.trim().length === 0}
       >
@@ -92,9 +86,9 @@ export default function InviteForm() {
           <code>{initialPassword}</code>
         </div>
       ) : null}
-      {message ? (
+      {staff.error ? (
         <p className={styles.hint} role="alert">
-          {message}
+          {staff.error}
         </p>
       ) : null}
     </form>

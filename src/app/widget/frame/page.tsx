@@ -3,36 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_LENGTH, MAX_NAME_LENGTH } from "@/domain/limits";
 import { distinctOptions, topicLabelsShadowedByOptions } from "@/domain/handoffOptions";
-import type { MessageChoice, MessageRole } from "@/domain/types";
-import {
-  dropSession as dropStoredSession,
-  readSession,
-  writeSession,
-  type StoredSession,
-} from "@/lib/visitorSession";
-import { startPresenceHeartbeat } from "@/widget/presence";
-import { DEFAULT_WELCOME_MESSAGE } from "@/domain/welcome";
-import {
-  emptyArrivalState,
-  nextArrivalState,
-  type ArrivalMessage,
-} from "@/widget/arrivals";
+import { useClearFlow } from "./hooks/useClearFlow";
+import { useContactGate } from "./hooks/useContactGate";
+import { useConversationStream } from "./hooks/useConversationStream";
+import { usePanelState } from "./hooks/usePanelState";
+import { usePresence } from "./hooks/usePresence";
+import { usePublishedContent, type TopicButton } from "./hooks/usePublishedContent";
 import styles from "./frame.module.css";
-
-interface DisplayedMessage {
-  id: string;
-  role: MessageRole;
-  text: string;
-  link?: string;
-  choices?: MessageChoice[];
-}
-
-/** A published answer rule's topic button, served by /api/v1/topics. */
-interface TopicButton {
-  id: string;
-  topic: string;
-  question: string;
-}
 
 function isHttpLink(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -117,334 +94,61 @@ function TopicsStrip({
 }
 
 export default function WidgetFrame() {
-  const [messages, setMessages] = useState<DisplayedMessage[]>([]);
-  const [handoff, setHandoff] = useState(false);
-  const [claimed, setClaimed] = useState(false);
-  const [question, setQuestion] = useState("");
-  const [topics, setTopics] = useState<TopicButton[]>([]);
-  // The click-to-handoff options (ticket 67): configured wordings whose
-  // click hands off to staff, fetched with the topics on every mount.
-  const [handoffOptions, setHandoffOptions] = useState<string[]>([]);
-  const [error, setError] = useState("");
-  const [sending, setSending] = useState(false);
-  // The contact gate (ticket 66): every chat starts at the required contact
-  // form, and the composer, topics, and suggestions stay hidden until the
-  // server has accepted the details. A stored session flips it off
-  // optimistically on mount; the first authorized read confirms it.
-  const [contactRequired, setContactRequired] = useState(true);
-  const [contact, setContact] = useState({ fullName: "", email: "", phone: "" });
-  const [contactError, setContactError] = useState("");
-  const [contactBusy, setContactBusy] = useState(false);
-  const sessionRef = useRef<StoredSession | null>(null);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  // Bumped whenever the visitor's conversation is replaced (ticket 14): any
-  // in-flight request from an older generation must never repaint the chat.
-  const generationRef = useRef(0);
-  // Synchronous mirror of the sending flag: state updates land after React
-  // renders, but the duplicate-send guard must hold during awaits.
-  const sendingRef = useRef(false);
-  // Synchronous mirror of the gate's pending flag: the duplicate-submit
-  // guard must hold during awaits, exactly like the send guard.
-  const contactBusyRef = useRef(false);
-  // Arrival bookkeeping (ticket 15): which messages have ever been on
-  // screen, so entrance animations run once for genuinely new messages and
-  // never for history restores, polling refreshes, or the persisted twin of
-  // a just-sent optimistic bubble.
-  const arrivalStateRef = useRef(emptyArrivalState());
-  const [arrivingIds, setArrivingIds] = useState<Set<string>>(new Set());
-  const [noticesArrive, setNoticesArrive] = useState(false);
-  const [clearState, setClearState] = useState<"idle" | "confirm" | "busy">("idle");
-  // The fresh-chat greeting (ticket 41): null until a conversation the
-  // visitor can actually use starts out empty and the published text has
-  // settled. The timestamp rides along (ticket 46) so the pair stays atomic.
-  const [welcome, setWelcome] = useState<{ text: string; at: string } | null>(null);
-  // The configured chatbot icon's URL (ticket 70); null keeps the bundled
-  // crest on every surface until a read succeeds.
-  const [chatbotIconUrl, setChatbotIconUrl] = useState<string | null>(null);
-  const chatbotIconSrc = chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png";
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const historyRequestRef = useRef<string | null>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const menuItemRef = useRef<HTMLButtonElement>(null);
-  const confirmClearRef = useRef<HTMLButtonElement>(null);
 
-  const showError = useCallback(() => {
-    setError("The chat is temporarily unavailable. Please try again.");
-  }, []);
+  // One hook per concern (ticket 33): the loader handshake and keyboard
+  // focus, the presence heartbeat, the published settings, the conversation
+  // stream, the contact gate, and the clear flow. The page composes them
+  // and renders.
+  const panel = usePanelState(inputRef, closeButtonRef);
+  usePresence();
+  const content = usePublishedContent();
+  const stream = useConversationStream({
+    panelOpen: panel.panelOpen,
+    clearWelcome: content.clearWelcome,
+    inputRef,
+  });
+  const gate = useContactGate({
+    sessionRef: stream.sessionRef,
+    dropSession: stream.dropSession,
+    showLockedFreshChat: stream.showLockedFreshChat,
+    setContactRequired: stream.setContactRequired,
+    clearError: stream.clearError,
+    hasMessages: stream.messages.length > 0,
+    greet: content.greet,
+    inputRef,
+  });
+  const clear = useClearFlow({
+    sessionRef: stream.sessionRef,
+    generationRef: stream.generationRef,
+    dropSession: stream.dropSession,
+    adoptSession: stream.adoptSession,
+    bumpGeneration: stream.bumpGeneration,
+    showLockedFreshChat: stream.showLockedFreshChat,
+    showError: stream.showError,
+    clearError: stream.clearError,
+    setQuestion: stream.setQuestion,
+    isSending: stream.isSending,
+    requestClose: panel.requestClose,
+  });
 
-  function applyArrivals(messages: ArrivalMessage[], animate: boolean): void {
-    const { state, arrivals } = nextArrivalState(arrivalStateRef.current, messages, animate);
-    arrivalStateRef.current = state;
-    if (arrivals.size > 0) {
-      setArrivingIds((current) => new Set([...current, ...arrivals]));
-    }
-  }
-
-  /** A fresh conversation starts with a clean arrival slate. */
-  function resetArrivals(): void {
-    arrivalStateRef.current = emptyArrivalState();
-    setArrivingIds(new Set());
-    setNoticesArrive(false);
-  }
-
-  /** The handoff/claim notice animates only when it appears live, never on
-      a history restore; every conversation-state application funnels here. */
-  function applyConversationState(state: string, animate: boolean): void {
-    setHandoff(state === "awaiting_staff");
-    setClaimed(state === "claimed");
-    if (animate && state !== "bot_active") {
-      setNoticesArrive(true);
-    }
-    if (!animate) {
-      setNoticesArrive(false);
-    }
-  }
-
-  const applyHistory = useCallback(
-    (body: {
-      conversation: { state: string };
-      messages: DisplayedMessage[];
-      contactRequired?: boolean;
-    }, animate: boolean) => {
-      applyArrivals(body.messages, animate);
-      setMessages(body.messages);
-      applyConversationState(body.conversation.state, animate);
-      // The server owns the gate (ticket 66): a conversation without
-      // accepted contact details brings the form back, whatever the client
-      // assumed.
-      setContactRequired(body.contactRequired === true);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  // One authorized history read (ticket 61), shared by the mount load and
-  // the poller. A sessionless visitor fetches nothing; a send in flight
-  // holds the poller off so a mid-send read cannot repaint over the
-  // optimistic bubble or the bot reply the send response carries. The
-  // in-flight latch is keyed by generation and session so requests never
-  // stack, and generation checks keep stale responses from repainting a
-  // cleared or replaced chat (ticket 14).
-  const refreshHistory = useCallback(
-    async (animate = true, reportError = false) => {
-      const session = sessionRef.current;
-      if (!session || sendingRef.current) {
-        return;
-      }
-      const generation = generationRef.current;
-      const requestKey = `${generation}:${session.id}`;
-      if (historyRequestRef.current === requestKey) {
-        return;
-      }
-      historyRequestRef.current = requestKey;
-      try {
-        const response = await fetch(
-          `/api/v1/conversations/${encodeURIComponent(session.id)}/messages`,
-          { headers: { Authorization: `Bearer ${session.token}` } },
-        );
-        if (generationRef.current !== generation || sessionRef.current?.id !== session.id) {
-          return;
-        }
-        if (response.status === 401 || response.status === 404) {
-          dropSession();
-          setContactRequired(true);
-          return;
-        }
-        if (!response.ok) {
-          if (reportError) showError();
-          return;
-        }
-        const body = await response.json();
-        if (generationRef.current === generation && sessionRef.current?.id === session.id) {
-          applyHistory(body, animate);
-        }
-      } catch {
-        if (
-          reportError &&
-          generationRef.current === generation &&
-          sessionRef.current?.id === session.id
-        ) {
-          showError();
-        }
-      } finally {
-        if (historyRequestRef.current === requestKey) {
-          historyRequestRef.current = null;
-        }
-      }
-    },
-    [applyHistory, showError],
-  );
-
-  // Load the surviving history once on mount: a reload of the WordPress page
-  // reloads this iframe, which re-reads chatbot-origin session storage. The
-  // gate stays on until the server confirms the conversation's accepted
-  // details (ticket 66) — a stored session alone proves nothing.
-  useEffect(() => {
-    const session = readSession();
-    if (!session) {
-      return;
-    }
-    sessionRef.current = session;
-    void refreshHistory(false, true);
-  }, [refreshHistory]);
-
-  // The panel's open state comes from the loader (ticket 61): after
-  // hydration the frame asks with sfcw:ready and applies only sfcw:state
-  // messages its parent window sent. Outside an embed (a standalone dev
-  // preview) the frame is the visible chat, so it reads as open.
-  useEffect(() => {
-    if (window.parent === window) {
-      setPanelOpen(true);
-      // The standalone preview is the open panel too (ticket 26): same
-      // deliberate target under the keyboard.
-      focusPanelTarget(false);
-      return;
-    }
-    function onPanelState(event: MessageEvent): void {
-      if (event.source === window.parent && event.data?.type === "sfcw:state") {
-        setPanelOpen(event.data.open === true);
-        if (event.data.open === true) {
-          // The open landed (ticket 26): message tasks run after the loader
-          // has already unhidden the frame, so the deliberate target is
-          // focusable here — on every open, not just first load. The ring
-          // follows the opener's modality via the loader's viaKeyboard
-          // flag (absent on stale cached loaders: mouse-safe default).
-          focusPanelTarget(event.data.viaKeyboard === true);
-        }
-      }
-    }
-    window.addEventListener("message", onPanelState);
-    window.parent.postMessage({ type: "sfcw:ready" }, "*");
-    return () => window.removeEventListener("message", onPanelState);
-  }, []);
-
-  // Published topic buttons, re-fetched on every widget open so staff
-  // publishing changes what visitors see without a redeploy. Failure is
-  // silent: the chat remains usable by typing a question.
-  useEffect(() => {
-    fetch("/api/v1/topics")
-      .then(async (response) =>
-        response.ok ? ((await response.json()) as { topics: TopicButton[] }) : null,
-      )
-      .then((body) => {
-        if (body) {
-          setTopics(body.topics);
-        }
-      })
-      .catch(() => {});
-    // The handoff options (ticket 67) ride along: same public, silent-failure
-    // contract, so an editor's change lands on the next widget open.
-    fetch("/api/v1/handoff-options")
-      .then(async (response) =>
-        response.ok ? ((await response.json()) as { options: string[] }) : null,
-      )
-      .then((body) => {
-        if (body) {
-          setHandoffOptions(body.options);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  /** The published greeting text, or the default when the read fails —
-      ticket 41's safe fallback keeps the chat usable either way. */
-  async function fetchWelcomeText(): Promise<string> {
-    try {
-      const response = await fetch("/api/v1/welcome");
-      if (!response.ok) {
-        return DEFAULT_WELCOME_MESSAGE;
-      }
-      return ((await response.json()) as { text: string }).text ?? DEFAULT_WELCOME_MESSAGE;
-    } catch {
-      return DEFAULT_WELCOME_MESSAGE;
-    }
-  }
-
-  /** The configured chatbot icon (ticket 70): fetched once with the same
-      safe-fallback rules as the greeting — a failed read leaves the bundled
-      crest on the fresh header, the conversation header, and the greeting
-      avatar. The public branding read exposes only safe values, and the
-      fetched config is forwarded to the launcher: the loader makes no API
-      calls of its own (the security property the embed pins guard), so the
-      frame — which already talks to the chatbot origin — is the one reader. */
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/v1/branding")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((config) => {
-        if (cancelled || typeof config !== "object" || config === null) {
-          return;
-        }
-        const iconUrl = (config as { chatbotIconUrl?: unknown }).chatbotIconUrl;
-        if (typeof iconUrl === "string" && iconUrl.startsWith("/") && iconUrl.length <= 200) {
-          setChatbotIconUrl(iconUrl);
-        }
-        // Public values only; the college page receives nothing else.
-        window.parent?.postMessage({ type: "sfcw:branding", config }, "*");
-      })
-      .catch(() => {
-        // Bundled crest stays.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /** Shows the greeting with its captured-at local timestamp (ticket 46):
-      the stamp is presentation-only and captured once per fresh cycle so
-      re-renders never shift it. */
-  function greet(): void {
-    void fetchWelcomeText().then((text) => {
-      setWelcome({
-        text,
-        at: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      });
-    });
-  }
-
-  // Anonymous presence (ticket 17): the embedded page beats while it is
-  // actually visible, so staff see browsers on the site — not only visitors
-  // who opened the chat, and never a background tab. This iframe is mounted
-  // for the page's life whether or not the chat is open, so liveness follows
-  // page visibility, not the frame's; a hidden page stops beating at once.
-  // The identifier is a random UUID in this origin's localStorage, shared by
-  // the visitor's tabs and rotated on the server's retention schedule.
-  useEffect(() => {
-    return startPresenceHeartbeat({
-      storage: window.localStorage,
-      visibility: () => document.visibilityState,
-      send: async (browserId) => {
-        const response = await fetch("/api/v1/presence", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ browserId }),
-        });
-        if (!response.ok) {
-          return null;
-        }
-        return (await response.json()) as { retentionDays?: number };
-      },
-    });
-  }, []);
-
-  // An open chat checks every second (ticket 61). The closed frame keeps
-  // its original three-second cadence, and opening a saved chat checks
-  // immediately. Named like the dashboard's AutoRefresh intervals (ticket 34).
-  const OPEN_POLL_MS = 1_000;
-  const CLOSED_POLL_MS = 3_000;
-  useEffect(() => {
-    if (panelOpen) {
-      void refreshHistory();
-    }
-    const timer = setInterval(
-      () => void refreshHistory(),
-      panelOpen ? OPEN_POLL_MS : CLOSED_POLL_MS,
-    );
-    return () => clearInterval(timer);
-  }, [panelOpen, refreshHistory]);
+  const {
+    messages,
+    handoff,
+    claimed,
+    error,
+    sending,
+    contactRequired,
+    question,
+    setQuestion,
+    arrivingIds,
+    noticesArrive,
+    send,
+    dismissArrival,
+  } = stream;
+  const { topics, handoffOptions, chatbotIconSrc, welcome } = content;
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
@@ -455,399 +159,6 @@ export default function WidgetFrame() {
       inputRef.current?.focus();
     }
   }, [contactRequired]);
-
-  useEffect(() => {
-    if (menuOpen) {
-      menuItemRef.current?.focus();
-    }
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (clearState === "confirm") {
-      confirmClearRef.current?.focus();
-    }
-  }, [clearState]);
-
-  function requestClose(): void {
-    // The loader owns the iframe; Escape inside the frame asks it to close.
-    if (window.parent !== window) {
-      window.parent.postMessage({ type: "sfcw:close" }, "*");
-    }
-  }
-
-  /**
-   * Ticket 26: an open panel puts a deliberate target under the keyboard —
-   * the composer when it is usable, otherwise the always-present close
-   * button (fresh contact gate, or the ticket-43 waiting lock). The ring
-   * follows the opener's modality: the iframe document has no interaction
-   * history of its own, so the plain :focus-visible heuristic would light a
-   * ring for mouse users too; focusVisible is pinned from the loader's
-   * flag instead. Browsers without the option ignore it (graceful).
-   */
-  function focusPanelTarget(viaKeyboard: boolean): void {
-    const focusOptions: FocusOptions & { focusVisible?: boolean } = {
-      focusVisible: viaKeyboard,
-    };
-    const input = inputRef.current;
-    if (input && !input.disabled) {
-      input.focus(focusOptions);
-      return;
-    }
-    closeButtonRef.current?.focus(focusOptions);
-  }
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent): void {
-      if (event.key !== "Escape") {
-        return;
-      }
-      if (menuOpen) {
-        event.preventDefault();
-        setMenuOpen(false);
-        menuButtonRef.current?.focus();
-        return;
-      }
-      if (clearState === "confirm") {
-        event.preventDefault();
-        setClearState("idle");
-        menuButtonRef.current?.focus();
-        return;
-      }
-      requestClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [clearState, menuOpen]);
-
-  function dropSession(): void {
-    // The stored credential stopped working; the contact form returns
-    // (ticket 66) and the next accepted submission starts fresh.
-    dropStoredSession();
-    sessionRef.current = null;
-  }
-
-  async function postMessage(
-    session: StoredSession,
-    text: string,
-    choice?: string,
-    handoffClick = false,
-  ): Promise<Response> {
-    return fetch(`/api/v1/conversations/${encodeURIComponent(session.id)}/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.token}`,
-      },
-      // A selection is just the rule id: the transcript records the picked
-      // topic, exactly as the API does server-side. A handoff option (67)
-      // rides in its own field so the server can tell the deliberate click
-      // from typed text, which keeps normal answer matching.
-      body: JSON.stringify(choice ? { choice } : handoffClick ? { handoffOption: text } : { text }),
-    });
-  }
-
-  /**
-   * The contact gate's submission (ticket 66). A conversation this mount
-   * already holds a credential for — the successor after Clear chat, or a
-   * legacy session — is unlocked in place; otherwise the same details start
-   * exactly one fresh conversation. A credential that died, or a
-   * conversation that closed or went quiet, falls through to the fresh
-   * start, so no retry path can duplicate a conversation.
-   */
-  async function submitContact(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    if (contactBusyRef.current) {
-      return;
-    }
-    contactBusyRef.current = true;
-    setContactBusy(true);
-    setContactError("");
-    const details = {
-      fullName: contact.fullName.trim(),
-      email: contact.email.trim(),
-      phone: contact.phone.trim(),
-    };
-    try {
-      const existing = sessionRef.current ?? readSession();
-      if (existing) {
-        const response = await fetch(
-          `/api/v1/conversations/${encodeURIComponent(existing.id)}/contact`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${existing.token}`,
-            },
-            body: JSON.stringify(details),
-          },
-        );
-        if (response.ok) {
-          contactAccepted();
-          return;
-        }
-        if (response.status === 401 || response.status === 404 || response.status === 409) {
-          // Nothing here is resumable — the credential died or the
-          // conversation closed or went quiet: start fresh instead.
-          dropSession();
-        } else {
-          const failure = (await response.json().catch(() => null)) as {
-            error?: { message?: string };
-          } | null;
-          setContactError(failure?.error?.message ?? "Could not save your details. Try again.");
-          return;
-        }
-      }
-      const response = await fetch("/api/v1/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(details),
-      });
-      if (!response.ok) {
-        const failure = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setContactError(failure?.error?.message ?? "Could not start the chat. Try again.");
-        return;
-      }
-      const session = (await response.json()) as StoredSession;
-      writeSession(session);
-      sessionRef.current = session;
-      showLockedFreshChat();
-      contactAccepted();
-    } catch {
-      setContactError("Could not start the chat. Try again.");
-    } finally {
-      contactBusyRef.current = false;
-      setContactBusy(false);
-    }
-  }
-
-  /** The gate opens: the entered values carry into the transcript's labels,
-      and a conversation that starts (or unlocks) empty greets (ticket 41).
-      An unlocked chat with a transcript keeps its history instead. */
-  function contactAccepted(): void {
-    setContactRequired(false);
-    setContactError("");
-    setError("");
-    if (messages.length === 0) {
-      greet();
-    }
-    inputRef.current?.focus();
-  }
-
-  /** Returns a dead conversation to the gate with the visitor's words kept
-      in the composer (ticket 66): the form comes back, the transcript view
-      starts empty like any fresh chat, and nothing is auto-submitted. A
-      handoff click (67) has no words to hand back — restoring the option
-      would invite a typed send, which deliberately does not hand off. */
-  function returnToGate(text: string, choice?: string, handoffClick = false): void {
-    dropSession();
-    showLockedFreshChat();
-    setError("");
-    if (!choice && !handoffClick) {
-      setQuestion(text);
-    }
-  }
-
-  /** A fresh, locked view: empty transcript, clean arrivals, the gate on.
-      Every path that ends a usable conversation funnels here. */
-  function showLockedFreshChat(): void {
-    setMessages([]);
-    setWelcome(null);
-    resetArrivals();
-    applyConversationState("bot_active", false);
-    setContactRequired(true);
-  }
-
-  async function send(text: string, choice?: string, handoffClick = false): Promise<void> {
-    // The ref guard closes the pending-send race (ticket 18): the state flag
-    // alone only flips after awaits, so a second chip click during a slow
-    // request could double-send.
-    if (
-      text.length === 0 ||
-      text.length > MAX_MESSAGE_LENGTH ||
-      sendingRef.current ||
-      contactRequired
-    ) {
-      return;
-    }
-    sendingRef.current = true;
-    setSending(true);
-    const generation = generationRef.current;
-    setError("");
-    // The optimistic bubble is a genuine arrival; the poller's later
-    // persisted twin is silenced by the arrival state's word-based key.
-    const localMessage: DisplayedMessage = {
-      id: `local-${Date.now()}`,
-      role: "visitor",
-      text,
-    };
-    applyArrivals([localMessage], true);
-    setMessages((current) => [...current, localMessage]);
-    setQuestion("");
-    // A failed send must not leave a ghost bubble (ticket 43's failure
-    // recovery): the optimistic entry is removed on every final failure
-    // path, and the poller restores the truth if the request actually
-    // landed.
-    const dropOptimistic = () =>
-      setMessages((current) => current.filter((message) => message.id !== localMessage.id));
-    try {
-      const session = sessionRef.current ?? readSession();
-      if (!session) {
-        dropOptimistic();
-        returnToGate(text, choice, handoffClick);
-        return;
-      }
-      const response = await postMessage(session, text, choice, handoffClick);
-      if (generationRef.current !== generation) {
-        return; // The chat was cleared mid-send; the message dies with it.
-      }
-      if (response.status === 401 || response.status === 404) {
-        // The stored credential stopped working: the gate returns (66) and
-        // the visitor's words stay in the composer for the fresh chat.
-        dropOptimistic();
-        returnToGate(text, choice, handoffClick);
-        return;
-      }
-      if (response.status === 409) {
-        const conflict = (await response.json()) as {
-          error?: { code?: string; message?: string };
-        };
-        if (conflict.error?.code === "contact_required") {
-          // The server demanded the details on the conversation this mount
-          // already holds: the gate returns, but the credential stays — the
-          // form's submission unlocks this conversation in place (66).
-          dropOptimistic();
-          setError("");
-          if (!choice && !handoffClick) {
-            setQuestion(text);
-          }
-          setContactRequired(true);
-          return;
-        }
-        if (
-          conflict.error?.code === "conversation_closed" ||
-          // Quiet for a day: the old conversation is history (ticket 12) —
-          // the gate returns, and the next chat starts with a submission.
-          conflict.error?.code === "conversation_inactive"
-        ) {
-          dropOptimistic();
-          returnToGate(text, choice, handoffClick);
-          return;
-        }
-        if (conflict.error?.code === "awaiting_staff") {
-          // The waiting lock (ticket 43): the escalation landed while this
-          // message was in flight. Drop the bubble and hand the words back.
-          dropOptimistic();
-          if (!choice && !handoffClick) {
-            setQuestion(text);
-          }
-          setError(
-            conflict.error.message ?? "Waiting for a staff member to take over.",
-          );
-          return;
-        }
-        dropOptimistic();
-        showError();
-        return;
-      }
-      if (!response.ok) {
-        dropOptimistic();
-        const failure = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setError(
-          failure?.error?.message ?? "The chat is temporarily unavailable. Please try again.",
-        );
-        return;
-      }
-      const body = (await response.json()) as {
-        conversation: { state: string };
-        reply: DisplayedMessage | null;
-      };
-      // A clear can land inside the parse await; nothing from the old
-      // conversation may repaint the fresh chat afterwards.
-      if (generationRef.current !== generation) {
-        return;
-      }
-      applyConversationState(body.conversation.state, true);
-      if (body.reply) {
-        const reply = body.reply as DisplayedMessage;
-        applyArrivals([reply], true);
-        setMessages((current) => [...current, reply]);
-      }
-    } catch {
-      dropOptimistic();
-      showError();
-    } finally {
-      sendingRef.current = false;
-      setSending(false);
-      inputRef.current?.focus();
-    }
-  }
-
-  async function submit(event: React.FormEvent): Promise<void> {
-    event.preventDefault();
-    await send(question.trim());
-  }
-
-  /**
-   * The visitor's Clear conversation (ticket 14): ends this chat server-side
-   * and swaps in the one fresh conversation the server returns. That
-   * successor starts without contact details (ticket 66), so the gate
-   * returns before anything can be asked. A request that fails with 401/404
-   * already ended server-side (the credential was revoked or expired), so
-   * the gate simply returns — the visitor still starts exactly one new
-   * chat. The generation bump strands every in-flight request from the old
-   * chat.
-   */
-  async function confirmClear(): Promise<void> {
-    const session = sessionRef.current ?? readSession();
-    if (!session || clearState === "busy") {
-      return;
-    }
-    const generation = generationRef.current;
-    setClearState("busy");
-    try {
-      const response = await fetch(
-        `/api/v1/conversations/${encodeURIComponent(session.id)}/clear`,
-        { method: "POST", headers: { Authorization: `Bearer ${session.token}` } },
-      );
-      if (response.status === 401 || response.status === 404) {
-        // The credential was already dead (revoked or expired): the clear
-        // ended server-side either way, so the gate's next accepted
-        // submission starts the one fresh chat.
-        dropSession();
-        generationRef.current = generation + 1;
-        showLockedFreshChat();
-        setQuestion("");
-        setError("");
-        return;
-      }
-      if (!response.ok) {
-        // The conversation survives server-side; the visitor stays in it.
-        showError();
-        return;
-      }
-      const fresh = (await response.json()) as StoredSession;
-      // The double-clear race can land inside the parse await.
-      if (generationRef.current !== generation) {
-        return;
-      }
-      generationRef.current = generation + 1;
-      writeSession(fresh);
-      sessionRef.current = fresh;
-      // The successor starts without contact details (ticket 66), so the
-      // gate returns before anything can be asked.
-      showLockedFreshChat();
-      setQuestion("");
-      setError("");
-    } catch {
-      showError();
-    } finally {
-      setClearState("idle");
-    }
-  }
 
   // Staff help requested but nobody claimed yet: the composer locks (ticket
   // 43). Claiming — or a fresh conversation after Clear — re-enables it.
@@ -891,22 +202,22 @@ export default function WidgetFrame() {
   const headerMenu = (
     <span className={styles.menuWrap}>
       <button
-        ref={menuButtonRef}
+        ref={clear.menuButtonRef}
         type="button"
         className={styles.menuButton}
         aria-label="Conversation options"
         aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        disabled={sending || clearState === "busy"}
+        aria-expanded={clear.menuOpen}
+        disabled={sending || clear.clearState === "busy"}
         onClick={() => {
-          if (!sendingRef.current && clearState !== "busy") {
-            setMenuOpen((open) => !open);
+          if (!stream.isSending() && clear.clearState !== "busy") {
+            clear.setMenuOpen((open) => !open);
           }
         }}
       >
         <span aria-hidden="true">⋯</span>
       </button>
-      {menuOpen ? (
+      {clear.menuOpen ? (
         <span
           className={styles.menuPanel}
           role="menu"
@@ -919,29 +230,29 @@ export default function WidgetFrame() {
               event.key === "End"
             ) {
               event.preventDefault();
-              menuItemRef.current?.focus();
+              clear.menuItemRef.current?.focus();
             }
           }}
         >
           <button
-            ref={menuItemRef}
+            ref={clear.menuItemRef}
             type="button"
             role="menuitem"
             className={styles.menuItem}
-            disabled={sending || clearState === "busy"}
+            disabled={sending || clear.clearState === "busy"}
             onClick={() => {
-              if (sendingRef.current || clearState === "busy") {
+              if (stream.isSending() || clear.clearState === "busy") {
                 return;
               }
-              setMenuOpen(false);
-              setClearState("confirm");
+              clear.setMenuOpen(false);
+              clear.setClearState("confirm");
             }}
           >
             Clear conversation
           </button>
         </span>
       ) : null}
-      {clearState !== "idle" ? (
+      {clear.clearState !== "idle" ? (
         <span
           className={styles.confirmBox}
           role="group"
@@ -953,21 +264,21 @@ export default function WidgetFrame() {
           </span>
           <span className={styles.confirmButtons}>
             <button
-              ref={confirmClearRef}
+              ref={clear.confirmClearRef}
               type="button"
               className={styles.confirmClear}
-              disabled={clearState === "busy"}
-              onClick={() => void confirmClear()}
+              disabled={clear.clearState === "busy"}
+              onClick={() => void clear.confirmClear()}
             >
-              {clearState === "busy" ? "Clearing…" : "Clear chat"}
+              {clear.clearState === "busy" ? "Clearing…" : "Clear chat"}
             </button>
             <button
               type="button"
               className={styles.confirmKeep}
-              disabled={clearState === "busy"}
+              disabled={clear.clearState === "busy"}
               onClick={() => {
-                setClearState("idle");
-                menuButtonRef.current?.focus();
+                clear.setClearState("idle");
+                clear.menuButtonRef.current?.focus();
               }}
             >
               Keep chatting
@@ -1009,15 +320,7 @@ export default function WidgetFrame() {
           data-arrive={arrivingIds.has(message.id) ? "" : undefined}
           onAnimationEnd={
             arrivingIds.has(message.id)
-              ? () =>
-                  setArrivingIds((current) => {
-                    if (!current.has(message.id)) {
-                      return current;
-                    }
-                    const next = new Set(current);
-                    next.delete(message.id);
-                    return next;
-                  })
+              ? () => dismissArrival(message.id)
               : undefined
           }
         >
@@ -1063,7 +366,7 @@ export default function WidgetFrame() {
               ref={closeButtonRef}
               className={styles.close}
               aria-label="Close chat"
-              onClick={requestClose}
+              onClick={panel.requestClose}
             >
               &times;
             </button>
@@ -1092,7 +395,7 @@ export default function WidgetFrame() {
               ref={closeButtonRef}
               className={styles.close}
               aria-label="Close chat"
-              onClick={requestClose}
+              onClick={panel.requestClose}
             >
               &times;
             </button>
@@ -1230,7 +533,7 @@ export default function WidgetFrame() {
         // The gate (ticket 66): every new chat starts here — three clearly
         // labeled required fields and brief copy, with no way to dismiss it.
         // Closing the widget changes nothing: reopening shows the same form.
-        <form className={styles.contactForm} onSubmit={submitContact}>
+        <form className={styles.contactForm} onSubmit={gate.submitContact}>
           <p className={styles.contactIntro}>
             Please share your contact details to start this chat.
           </p>
@@ -1244,9 +547,9 @@ export default function WidgetFrame() {
             required
             maxLength={MAX_NAME_LENGTH}
             placeholder="Jane Doe"
-            value={contact.fullName}
+            value={gate.contact.fullName}
             onChange={(event) =>
-              setContact({ ...contact, fullName: event.target.value })
+              gate.setContact({ ...gate.contact, fullName: event.target.value })
             }
           />
           <label className={styles.contactLabel} htmlFor="sfcw-email">
@@ -1259,9 +562,9 @@ export default function WidgetFrame() {
             autoComplete="email"
             required
             placeholder="you@example.org"
-            value={contact.email}
+            value={gate.contact.email}
             onChange={(event) =>
-              setContact({ ...contact, email: event.target.value })
+              gate.setContact({ ...gate.contact, email: event.target.value })
             }
           />
           <label className={styles.contactLabel} htmlFor="sfcw-phone">
@@ -1274,18 +577,18 @@ export default function WidgetFrame() {
             autoComplete="tel"
             required
             placeholder="(555) 555-0100"
-            value={contact.phone}
+            value={gate.contact.phone}
             onChange={(event) =>
-              setContact({ ...contact, phone: event.target.value })
+              gate.setContact({ ...gate.contact, phone: event.target.value })
             }
           />
           <button
             type="submit"
             className={styles.contactSubmit}
-            disabled={contactBusy}
-            aria-busy={contactBusy || undefined}
+            disabled={gate.contactBusy}
+            aria-busy={gate.contactBusy || undefined}
           >
-            {contactBusy ? (
+            {gate.contactBusy ? (
               <>
                 <span className={styles.pendingSpinner} aria-hidden="true" />
                 Starting…
@@ -1294,14 +597,20 @@ export default function WidgetFrame() {
               "Start chat"
             )}
           </button>
-          {contactError ? (
+          {gate.contactError ? (
             <p className={styles.contactError} role="alert">
-              {contactError}
+              {gate.contactError}
             </p>
           ) : null}
         </form>
       ) : (
-        <form className={styles.form} onSubmit={submit}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send(question.trim());
+          }}
+        >
           <label className={styles.srOnly} htmlFor="sfcw-question">
             Your question
           </label>

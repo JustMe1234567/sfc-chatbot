@@ -4,11 +4,16 @@
 // then the dashboard in normal and reduced-motion modes at two widths.
 // Usage: node scripts/motion-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
-import { TOTP, URI } from "otpauth";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
+import {
+  enrollAndSignIn,
+  freshTotpSlate,
+  signInWithTotp,
+  waitForServer,
+} from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3125"}`;
@@ -16,28 +21,13 @@ const EMAIL = process.env.SHOT_EMAIL ?? "owner@example.edu";
 const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-motion-check-31";
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/motion-demo.db";
 
-for (let attempt = 0; ; attempt++) {
-  try {
-    await fetch(`${BASE}/api/healthz`);
-    break;
-  } catch {
-    if (attempt > 40) throw new Error("server never came up");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-}
+await waitForServer(BASE);
 
 // A service route initializes migrations + seeds; healthz alone does not.
 await fetch(`${BASE}/api/v1/topics`);
 
 // Clean enrollment slate (same as the other screenshot drivers).
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-}
-db.close();
+freshTotpSlate(DB_PATH, EMAIL);
 
 // Provision the screenshot owner if this scratch DB is fresh.
 const seedDb = new DatabaseSync(DB_PATH);
@@ -177,26 +167,7 @@ mkdirSync(OUT, { recursive: true });
   const page = await context.newPage();
   page.on("pageerror", (error) => console.log("PAGE ERROR:", String(error).slice(0, 200)));
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`${BASE}/dashboard/login`);
-  await page.fill("#email", EMAIL);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForTimeout(3000);
-  await page.goto(`${BASE}/dashboard/enroll`);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("code", { timeout: 15000 });
-  const totp = URI.parse(`otpauth://totp/x?secret=${(await page.textContent("code")).trim()}`);
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-  await page.fill("#email", EMAIL);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 15000 });
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+  const totp = await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
   console.log("signed in");
 
   const buttonDuration = await page
@@ -218,14 +189,7 @@ mkdirSync(OUT, { recursive: true });
   const reduceContext = await browser.newContext({ reducedMotion: "reduce" });
   const reducePage = await reduceContext.newPage();
   await reducePage.setViewportSize({ width: 1280, height: 800 });
-  await reducePage.goto(`${BASE}/dashboard/login`);
-  await reducePage.fill("#email", EMAIL);
-  await reducePage.fill("#password", PASSWORD);
-  await reducePage.click("button[type=submit]");
-  await reducePage.waitForSelector("#totp", { timeout: 15000 });
-  await reducePage.fill("#totp", totp.generate());
-  await reducePage.click("button[type=submit]");
-  await reducePage.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+  await signInWithTotp(reducePage, BASE, EMAIL, PASSWORD, totp);
   const reduceButton = await reducePage
     .locator("button")
     .first()

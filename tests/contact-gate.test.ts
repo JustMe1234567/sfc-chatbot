@@ -483,14 +483,27 @@ describe("contact details leave with the conversation", () => {
 });
 
 describe("the widget's contact gate", () => {
+  // Ticket 33 moved the frame page's logic into hooks per concern: the
+  // conversation stream owns the gate flag and the send guard, the
+  // contact-gate hook owns the form flow, and the clear-flow hook owns the
+  // clear. The pins follow the code.
+  const STREAM = "src/app/widget/frame/hooks/useConversationStream.ts";
+  const GATE = "src/app/widget/frame/hooks/useContactGate.ts";
+  const CLEAR = "src/app/widget/frame/hooks/useClearFlow.ts";
+
+  async function read(rel: string): Promise<string> {
+    return readFile(path.join(repoRoot(), rel), "utf8");
+  }
+
   it("opens on three clearly labeled required fields with brief copy", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
+    const stream = await read(STREAM);
     // The gate is on from the first paint; only a stored session's
     // confirmed conversation turns it off.
-    expect(frame).toContain("useState(true)");
+    expect(stream).toContain("useState(true)");
     for (const [id, label] of [
       ["sfcw-name", "Full name"],
       ["sfcw-email", "Email"],
@@ -511,6 +524,7 @@ describe("the widget's contact gate", () => {
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
+    const stream = await read(STREAM);
     // The form replaces the composer rather than sitting beside it, and
     // carries no dismiss control: closing the widget is the only exit, and
     // reopening shows the same form.
@@ -527,7 +541,7 @@ describe("the widget's contact gate", () => {
     expect(frame).toContain("!freshStart && !contactRequired && visibleTopics.length > 0");
     expect(frame).toContain("message.choices && !contactRequired");
     // A send can never start while the gate stands.
-    expect(frame).toMatch(/sendingRef\.current \|\|\s*contactRequired/);
+    expect(stream).toMatch(/sendingRef\.current \|\|\s*contactRequired/);
   });
 
   it("submits to the server, shows pending and failure feedback, and keeps the values", async () => {
@@ -535,32 +549,31 @@ describe("the widget's contact gate", () => {
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
+    const gate = await read(GATE);
     // Unlock the conversation already held, otherwise start one — always
     // with the details, never the old bodiless create.
-    expect(frame).toContain("/contact`");
-    expect(frame).toMatch(/fetch\("\/api\/v1\/conversations", \{\s*method: "POST",\s*headers/);
-    expect(frame).not.toContain('fetch("/api/v1/conversations", { method: "POST" })');
+    expect(gate).toContain("/contact`");
+    expect(gate).toMatch(/fetch\("\/api\/v1\/conversations", \{\s*method: "POST",\s*headers/);
+    expect(gate).not.toContain('fetch("/api/v1/conversations", { method: "POST" })');
     // The duplicate-submit guard holds across awaits.
-    expect(frame).toContain("if (contactBusyRef.current) {");
+    expect(gate).toContain("if (contactBusyRef.current) {");
     // Pending and failure feedback are visible and announced.
     expect(frame).toContain("Starting…");
-    expect(frame).toContain("aria-busy={contactBusy || undefined}");
+    expect(frame).toContain("aria-busy={gate.contactBusy || undefined}");
     expect(frame).toMatch(/className=\{styles\.contactError\} role="alert"/);
     // A failed submission leaves the typed values alone: the form state is
     // only ever written by the inputs themselves.
     expect(frame.match(/setContact\(/g)).toHaveLength(3);
     // The welcome greeting follows a successful save.
-    expect(frame).toMatch(/function contactAccepted\(\): void \{[\s\S]*?greet\(\);/);
+    expect(gate).toMatch(/function contactAccepted\(\): void \{[\s\S]*?greet\(\);/);
   });
 
   it("returns to the form after Clear chat and after a lapsed or closed chat", async () => {
-    const frame = await readFile(
-      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
-      "utf8",
-    );
-    const clear = frame.slice(
-      frame.indexOf("async function confirmClear"),
-      frame.indexOf("const composerLocked"),
+    const stream = await read(STREAM);
+    const clearFlow = await read(CLEAR);
+    const clear = clearFlow.slice(
+      clearFlow.indexOf("async function confirmClear"),
+      clearFlow.indexOf("return {", clearFlow.indexOf("async function confirmClear")),
     );
     // Only a dead credential returns to the gate directly; any other
     // failure keeps the conversation the server still holds open.
@@ -571,12 +584,12 @@ describe("the widget's contact gate", () => {
     // A dead credential, a closure, or a quiet day return to the gate; the
     // server's own demand keeps the credential so the form unlocks the
     // same conversation in place.
-    expect(frame).toContain('conflict.error?.code === "conversation_closed"');
-    expect(frame).toContain('conflict.error?.code === "conversation_inactive"');
-    expect(frame).toContain('conflict.error?.code === "contact_required"');
-    expect(frame).toMatch(
+    expect(stream).toContain('conflict.error?.code === "conversation_closed"');
+    expect(stream).toContain('conflict.error?.code === "conversation_inactive"');
+    expect(stream).toContain('conflict.error?.code === "contact_required"');
+    expect(stream).toMatch(
       /code === "contact_required"[\s\S]*?setContactRequired\(true\);\s*return;/,
     );
-    expect(frame).toMatch(/function showLockedFreshChat[\s\S]*?setContactRequired\(true\)/);
+    expect(stream).toMatch(/function showLockedFreshChat[\s\S]*?setContactRequired\(true\)/);
   });
 });

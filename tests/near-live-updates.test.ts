@@ -14,7 +14,12 @@ import { repoRoot } from "../src/paths";
  * for hidden tabs and catching up the moment the tab returns.
  */
 
-const FRAME = "src/app/widget/frame/page.tsx";
+// Ticket 33 moved the frame page's logic into hooks per concern: the poll,
+// the history latch, and the send ladder live in the conversation-stream
+// hook; the loader handshake lives in the panel-state hook. The pins follow
+// the code.
+const STREAM = "src/app/widget/frame/hooks/useConversationStream.ts";
+const PANEL = "src/app/widget/frame/hooks/usePanelState.ts";
 const LOADER = "src/widget/loader.ts";
 const BUILT = "public/widget/v1.js";
 const AUTO_REFRESH = "src/app/dashboard/conversations/[id]/auto-refresh.tsx";
@@ -26,63 +31,63 @@ async function read(rel: string): Promise<string> {
 
 describe("the visitor's polling cadence (ticket 61)", () => {
   it("checks every second while open and the original three while closed", async () => {
-    const frame = await read(FRAME);
+    const stream = await read(STREAM);
     // One interval, two cadences, picked by the panel state the loader
     // reports (the cadences are named constants since ticket 34, and the
     // pin asserts their values so a quiet cadence change still fails here).
-    expect(frame).toContain("panelOpen ? OPEN_POLL_MS : CLOSED_POLL_MS");
-    expect(frame).toContain("const OPEN_POLL_MS = 1_000;");
-    expect(frame).toContain("const CLOSED_POLL_MS = 3_000;");
+    expect(stream).toContain("panelOpen ? OPEN_POLL_MS : CLOSED_POLL_MS");
+    expect(stream).toContain("const OPEN_POLL_MS = 1_000;");
+    expect(stream).toContain("const CLOSED_POLL_MS = 3_000;");
     // Ticket 59's closed tier must stay gone.
-    expect(frame).not.toMatch(/30_000|30000/);
-    expect(frame).not.toContain("historyPolling");
+    expect(stream).not.toMatch(/30_000|30000/);
+    expect(stream).not.toContain("historyPolling");
     // Opening a saved chat checks immediately, not a tick later.
-    expect(frame).toMatch(/if \(panelOpen\) \{\s*void refreshHistory\(\);\s*\}/);
+    expect(stream).toMatch(/if \(panelOpen\) \{\s*void refreshHistory\(\);\s*\}/);
     // The tick re-arms on panel transitions and keeps the fresh callback.
-    expect(frame).toMatch(/\}, \[panelOpen, refreshHistory\]\);/);
+    expect(stream).toMatch(/\}, \[panelOpen, refreshHistory\]\);/);
   });
 
   it("learns the panel state through the loader's ready/state handshake", async () => {
-    const frame = await read(FRAME);
+    const panel = await read(PANEL);
     // The frame asks the loader for the current state after hydration and
     // applies only messages the parent window actually sent.
-    expect(frame).toContain('window.parent.postMessage({ type: "sfcw:ready" }, "*")');
-    expect(frame).toContain('event.data?.type === "sfcw:state"');
-    expect(frame).toContain("event.source === window.parent");
+    expect(panel).toContain('window.parent.postMessage({ type: "sfcw:ready" }, "*")');
+    expect(panel).toContain('event.data?.type === "sfcw:state"');
+    expect(panel).toContain("event.source === window.parent");
     // Standalone (dev preview outside the embed) reads as open.
-    expect(frame).toMatch(/if \(window\.parent === window\) \{\s*setPanelOpen\(true\);/);
+    expect(panel).toMatch(/if \(window\.parent === window\) \{\s*setPanelOpen\(true\);/);
   });
 
   it("fetches nothing without a session and never stacks history requests", async () => {
-    const frame = await read(FRAME);
+    const stream = await read(STREAM);
     // A fresh visitor has no conversation session: the guard makes every
     // tick a no-op, and a send in flight holds the poller off too (the bot
     // answer arrives with the send response, not a poll).
-    expect(frame).toContain("if (!session || sendingRef.current) {");
+    expect(stream).toContain("if (!session || sendingRef.current) {");
     // The in-flight latch is keyed by generation and session, so a request
     // for the previous chat never blocks (or answers for) the current one,
     // and only its own key releases the latch in finally.
-    expect(frame).toContain("historyRequestRef.current === requestKey");
-    expect(frame).toMatch(/const requestKey = `\$\{generation\}:\$\{session\.id\}`;/);
-    expect(frame).toMatch(/if \(historyRequestRef\.current === requestKey\) \{\s*historyRequestRef\.current = null;\s*\}/);
+    expect(stream).toContain("historyRequestRef.current === requestKey");
+    expect(stream).toMatch(/const requestKey = `\$\{generation\}:\$\{session\.id\}`;/);
+    expect(stream).toMatch(/if \(historyRequestRef\.current === requestKey\) \{\s*historyRequestRef\.current = null;\s*\}/);
     // Stale responses still cannot repaint: both checks gate applyHistory.
-    expect(frame).toMatch(
+    expect(stream).toMatch(
       /if \(generationRef\.current === generation && sessionRef\.current\?\.id === session\.id\) \{\s*applyHistory\(body, animate\);/,
     );
     // The single authorized history endpoint is unchanged.
-    expect(frame).toContain("/api/v1/conversations/${encodeURIComponent(session.id)}/messages");
+    expect(stream).toContain("/api/v1/conversations/${encodeURIComponent(session.id)}/messages");
   });
 
   it("keeps the bot answer on the send request, not a poll", async () => {
-    const frame = await read(FRAME);
+    const stream = await read(STREAM);
     // The send path (optimistic bubble, postMessage, inline reply) is
     // ticket 12/18/46 behavior and untouched by this ticket.
-    expect(frame).toContain("sendingRef.current = true;");
+    expect(stream).toContain("sendingRef.current = true;");
     // (Ticket 67 added the handoffClick flag; the send path is otherwise
     // ticket 12/18/46 behavior and untouched by that ticket.)
-    expect(frame).toContain("postMessage(session, text, choice, handoffClick)");
+    expect(stream).toContain("postMessage(session, text, choice, handoffClick)");
     // The visitor's own send still rides the same session credential.
-    expect(frame).toContain("Authorization: `Bearer ${session.token}`");
+    expect(stream).toContain("Authorization: `Bearer ${session.token}`");
   });
 });
 

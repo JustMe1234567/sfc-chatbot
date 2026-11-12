@@ -486,11 +486,15 @@ describe("branding settings API (ticket 70)", () => {
     // The frame reads branding once and falls back to the bundled crest on
     // all three surfaces (fresh header, conversation header, greeting); it
     // forwards the public config to the launcher, because the loader makes
-    // no API calls of its own.
-    const frame = await readFile(path.join(repoRoot(), "src/app/widget/frame/page.tsx"), "utf8");
-    expect(frame).toContain('fetch("/api/v1/branding")');
-    expect(frame).toContain('chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png"');
-    expect(frame).toContain('postMessage({ type: "sfcw:branding", config }, "*")');
+    // no API calls of its own. (Ticket 33 moved the read into the frame's
+    // published-content hook; the pin follows the code.)
+    const content = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/usePublishedContent.ts"),
+      "utf8",
+    );
+    expect(content).toContain('fetch("/api/v1/branding")');
+    expect(content).toContain('chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png"');
+    expect(content).toContain('postMessage({ type: "sfcw:branding", config }, "*")');
     // The loader applies branding only from the frame's forwarded message —
     // it never calls the API from the college page context — and sizes the
     // launcher from the resolved width and height, with the corner radius

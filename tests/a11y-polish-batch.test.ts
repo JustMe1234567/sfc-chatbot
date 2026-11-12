@@ -42,12 +42,14 @@ describe("a11y polish batch (ticket 29)", () => {
   });
 
   it("cancels the clear confirm on Escape before closing the widget (via ticket 39)", async () => {
-    const frame = await readFile(
-      path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
+    // Ticket 33 moved the Escape cascade into the frame's clear-flow hook;
+    // the pin follows the code.
+    const clearFlow = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/useClearFlow.ts"),
       "utf8",
     );
-    const start = frame.indexOf('function onKeyDown');
-    const slice = frame.slice(start, frame.indexOf("requestClose();", start));
+    const start = clearFlow.indexOf('function onKeyDown');
+    const slice = clearFlow.slice(start, clearFlow.indexOf("requestClose();", start));
     // The confirm branch stands between the menu branch and the close, so
     // Escape always cancels the dialog first.
     const menuAt = slice.indexOf('menuOpen');

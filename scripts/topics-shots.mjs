@@ -9,20 +9,13 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
+import { waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3124"}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/topics-demo.db";
 
-for (let attempt = 0; ; attempt++) {
-  try {
-    await fetch(`${BASE}/api/healthz`);
-    break;
-  } catch {
-    if (attempt > 40) throw new Error("server never came up");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-}
+await waitForServer(BASE);
 
 /** Extra published topics beyond the seeds; one label wraps two lines. The
     first phrase doubles as the question the chip sends (as with seeds). */

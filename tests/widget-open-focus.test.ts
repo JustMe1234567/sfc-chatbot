@@ -24,18 +24,24 @@ describe("widget focus on open (ticket 26)", () => {
   });
 
   it("focuses a deliberate target on every open, ring pinned to modality", async () => {
+    // Ticket 33 moved the handshake and focus into the frame's panel-state
+    // hook; the pin follows the code.
+    const panel = await readFile(
+      path.join(repoRoot(), "src/app/widget/frame/hooks/usePanelState.ts"),
+      "utf8",
+    );
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
     // The composer when it is usable (the contact gate or the waiting lock
     // route to the close button), on every open — not just first load.
-    expect(frame).toMatch(/function focusPanelTarget\(/);
-    expect(frame).toMatch(/if \(input && !input\.disabled\)/);
-    expect(frame).toMatch(/closeButtonRef\.current\?\.focus\(focusOptions\)/);
-    expect(frame).toMatch(/focusPanelTarget\(event\.data\.viaKeyboard === true\)/);
+    expect(panel).toMatch(/function focusPanelTarget\(/);
+    expect(panel).toMatch(/if \(input && !input\.disabled\)/);
+    expect(panel).toMatch(/closeButtonRef\.current\?\.focus\(focusOptions\)/);
+    expect(panel).toMatch(/focusPanelTarget\(event\.data\.viaKeyboard === true\)/);
     // The standalone preview is the open panel too.
-    expect(frame).toContain("focusPanelTarget(false);");
+    expect(panel).toContain("focusPanelTarget(false);");
     // Both mutually exclusive header variants feed the same fallback ref.
     expect((frame.match(/ref=\{closeButtonRef\}/g) ?? []).length).toBe(2);
   });

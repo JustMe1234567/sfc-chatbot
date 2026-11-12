@@ -168,6 +168,16 @@ async function recordMediumRequest(
   return NextResponse.json({ conversation, reply });
 }
 
+/**
+ * The shared visitor-input preflight (ticket 33): the closed and quiet-day
+ * refusals, the rate limit, the visitor's words recorded, presence touched,
+ * visitor activity marked, and the bot-active verdict. Every POST branch —
+ * topic picks, the persisted confirmation's actions, handoff-option clicks,
+ * and typed text — records through here, so the sequence cannot drift
+ * between them. Returns the caller's failure response, or recorded:false
+ * with the standard { conversation, reply: null } body when staff help is
+ * already in play.
+ */
 async function recordVisitorChoice(
   conversation: Conversation,
   store: Store,
@@ -445,6 +455,12 @@ async function postHandler(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+  // The typed path checks its conflicts up front, in this order — a closure
+  // or a quiet day beats the waiting lock — then records through the same
+  // shared preflight the choice paths use (ticket 33), so the rate limit,
+  // the record, presence, and the activity mark cannot drift between the
+  // two paths. recordVisitorChoice's own closed/inactive re-checks are
+  // no-ops on this unchanged snapshot.
   if (conversation.state === "closed") {
     // The staff side closed this conversation; the widget's contact form
     // returns and the visitor's next submission starts a fresh one (66).
@@ -464,23 +480,12 @@ async function postHandler(request: Request, context: RouteContext) {
   if (conversation.state === "awaiting_staff") {
     return awaitingStaffResponse();
   }
-  if (!(await messageLimiter.check(conversation.id))) {
-    return NextResponse.json(
-      { error: { code: "rate_limited", message: "Too many questions. Please try again shortly." } },
-      { status: 429 },
-    );
-  }
 
   const service = await getChatbotService();
   const { store, db } = service;
-  await store.appendMessage(newMessage(conversation.id, "visitor", validation.text));
-  await store.touchVisitorPresence(conversation.id);
-  await recordVisitorActivity(store, conversation.id, new Date());
-
-  // Once staff help is requested, automated answers pause for the rest of the
-  // conversation; only one escalation is raised per conversation.
-  if (conversation.state !== "bot_active") {
-    return NextResponse.json({ conversation, reply: null });
+  const selection = await recordVisitorChoice(conversation, store, validation.text);
+  if (!selection.recorded) {
+    return selection.response;
   }
 
   // Explicit handoff wording wins over every answer rule (ticket 06) — and

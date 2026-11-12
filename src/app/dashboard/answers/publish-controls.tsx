@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import type { AnswerRuleStatus } from "@/domain/types";
+import { useStaffAction } from "../use-staff-action";
 import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
@@ -18,30 +17,20 @@ export default function PublishControls({
   ruleId: string;
   status: AnswerRuleStatus;
 }) {
-  const router = useRouter();
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
+  const staff = useStaffAction();
   const published = status === "published";
 
   async function act(): Promise<void> {
-    if (busy) {
+    if (staff.busy) {
       return;
     }
-    setBusy(true);
-    setMessage("");
-    const result = await fetch(
-      `/api/staff/answer-rules/${ruleId}/${published ? "unpublish" : "publish"}`,
-      { method: "POST" },
+    await staff.run(
+      () =>
+        fetch(`/api/staff/answer-rules/${ruleId}/${published ? "unpublish" : "publish"}`, {
+          method: "POST",
+        }),
+      "That did not work.",
     );
-    setBusy(false);
-    if (!result.ok) {
-      const failure = (await result.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setMessage(failure?.error?.message ?? "That did not work.");
-      return;
-    }
-    router.refresh();
   }
 
   return (
@@ -49,7 +38,7 @@ export default function PublishControls({
       <PendingButton
         type="button"
         className={styles.secondaryButton}
-        pending={busy}
+        pending={staff.busy}
         pendingLabel={published ? "Unpublishing…" : "Publishing…"}
         onClick={act}
       >
@@ -60,9 +49,9 @@ export default function PublishControls({
           ? "Published: answering visitors now."
           : "Draft: not answering visitors until published."}
       </span>
-      {message ? (
+      {staff.error ? (
         <span className={styles.hint} role="alert">
-          {message}
+          {staff.error}
         </span>
       ) : null}
     </div>

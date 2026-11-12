@@ -4,11 +4,11 @@
 // beats presence, then captures the analytics page at three widths.
 // Usage: node scripts/analytics-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
-import { TOTP, URI } from "otpauth";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
+import { enrollAndSignIn, freshTotpSlate, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3123"}`;
@@ -17,28 +17,14 @@ const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-analytics-check-11";
 const DB_PATH =
   process.env.CHATBOT_DB ?? ".scratch/college-website-chat/analytics-demo.db";
 
-for (let attempt = 0; ; attempt++) {
-  try {
-    await fetch(`${BASE}/api/healthz`);
-    break;
-  } catch {
-    if (attempt > 40) throw new Error("server never came up");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-}
+await waitForServer(BASE);
 
 // A clean enrollment slate (same as design-shots): wipe any TOTP enrollment
 // left by an earlier partial run, since twoFactor.enable rejects while a
 // factor is already active.
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
+if (freshTotpSlate(DB_PATH, EMAIL)) {
   console.log("wiped prior enrollment for", EMAIL);
 }
-db.close();
 
 // --- Seed: two live browsers, three chats, two escalations. ---------------
 async function presence(browserId) {
@@ -116,30 +102,7 @@ page.on("response", async (response) => {
 });
 await page.setViewportSize({ width: 1280, height: 800 });
 
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 

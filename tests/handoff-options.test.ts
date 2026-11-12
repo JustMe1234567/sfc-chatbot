@@ -554,17 +554,23 @@ describe("duplicate chips for the same phrase", () => {
 
 describe("the widget and admin surfaces carry the feature (source contract)", () => {
   const WIDGET = "src/app/widget/frame/page.tsx";
+  // Ticket 33 moved the fetch into the frame's published-content hook and
+  // the click field into its conversation-stream hook; the pins follow the
+  // code.
+  const CONTENT = "src/app/widget/frame/hooks/usePublishedContent.ts";
+  const STREAM = "src/app/widget/frame/hooks/useConversationStream.ts";
 
   async function read(rel: string): Promise<string> {
     return readFile(path.join(repoRoot(), rel), "utf8");
   }
 
   it("fetches the options and posts them as a distinct click field", async () => {
-    const widget = await read(WIDGET);
-    expect(widget).toContain('fetch("/api/v1/handoff-options")');
-    expect(widget).toContain("handoffClick");
+    const content = await read(CONTENT);
+    expect(content).toContain('fetch("/api/v1/handoff-options")');
+    const stream = await read(STREAM);
+    expect(stream).toContain("handoffClick");
     // The click posts the option field, not typed text.
-    expect(widget).toMatch(/handoffClick \? \{ handoffOption: text \} : \{ text \}/);
+    expect(stream).toMatch(/handoffClick \? \{ handoffOption: text \} : \{ text \}/);
   });
 
   it("hides the options while typing, while sending, and once staff help is requested or claimed", async () => {
@@ -598,7 +604,8 @@ describe("the widget and admin surfaces carry the feature (source contract)", ()
     expect(widget).toContain("distinctOptions");
     // A failed click never stuffs the option into the composer: only typed
     // words are handed back.
-    expect(widget).toMatch(/!choice && !handoffClick/);
+    const stream = await read(STREAM);
+    expect(stream).toMatch(/!choice && !handoffClick/);
   });
 
   it("adds a separate options tab to the Answers workspace with its own save flow", async () => {
