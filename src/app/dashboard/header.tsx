@@ -107,9 +107,12 @@ const ICONS: Record<HeaderArea, ReactNode> = {
     </Mark>
   ),
   settings: (
+    // A conventional cog (ticket 72): one eight-tooth outline around a
+    // centered circular opening, hand-plotted on the same 24-grid so the
+    // shared Mark's stroke, size, and color treatment apply unchanged.
     <Mark>
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 2.8v2.9M12 18.3v2.9M2.8 12h2.9M18.3 12h2.9M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" />
+      <path d="M20.5 10.5L20.5 13.5L18.2 13.8L17.6 15.1L19.0 16.9L16.9 19.0L15.1 17.6L13.8 18.2L13.5 20.5L10.5 20.5L10.2 18.2L8.9 17.6L7.1 19.0L5.0 16.9L6.4 15.1L5.8 13.8L3.5 13.5L3.5 10.5L5.8 10.2L6.4 8.9L5.0 7.1L7.1 5.0L8.9 6.4L10.2 5.8L10.5 3.5L13.5 3.5L13.8 5.8L15.1 6.4L16.9 5.0L19.0 7.1L17.6 8.9L18.2 10.2Z" />
+      <circle cx="12" cy="12" r="3.1" />
     </Mark>
   ),
 };

@@ -57,6 +57,20 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
     expect(header).toContain("SIGN_OUT_MARK");
   });
 
+  it("draws Settings as a cog with a centered opening, not the old spokes (ticket 72)", async () => {
+    const header = await readHeader();
+    // The cog: one eight-tooth closed outline plus the centered circular
+    // opening, inside the settings entry of the shared Mark map.
+    const start = header.indexOf("settings: (");
+    const slice = header.slice(start, header.indexOf("</Mark>", start));
+    expect(slice).toContain('<circle cx="12" cy="12" r="3.1" />');
+    // The gear outline is a single closed path (Z) of plotted tooth points,
+    // not the old center-plus-radial-spokes sun.
+    expect(slice).toMatch(/d="M[\dL. ]+Z"/);
+    expect(slice).not.toContain('r="3.2"');
+    expect(slice).not.toContain("M12 2.8v2.9");
+  });
+
   it("persists the collapse choice and falls back to compact (ticket 57)", async () => {
     const header = await readHeader();
     const preference = await readFile(path.join(repoRoot(), PREFERENCE), "utf8");
