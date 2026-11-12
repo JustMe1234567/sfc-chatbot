@@ -6,6 +6,7 @@ import {
   loadHistory,
   loadHistoryAs,
   startConversation,
+  confirmHandoffYes,
   TEST_ORIGIN,
   useTempDatabase,
   warmChatbotService,
@@ -83,6 +84,7 @@ async function staffClaimReply(conversationId: string, replyText: string): Promi
 async function escalatedConversation(email: string): Promise<ConversationStart> {
   const conversation = await startConversation({ email });
   await ask(conversation, "Something no rule covers; I need to speak to a human.");
+  await confirmHandoffYes(conversation);
   return conversation;
 }
 
