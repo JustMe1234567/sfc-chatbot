@@ -1,6 +1,6 @@
 # Hosted Supabase staff authentication
 
-Status: ready-for-agent
+Status: needs-info
 
 Approved 2026-11-14: replace Better Auth with Supabase Auth; staff-only email/password, invitation-only, mandatory TOTP for owner/staff/editor. Preserve current permissions, immediate disabling, reset/global logout revocation, and visitor credentials. Localhost and Vercel test deployment use a dedicated hosted test project. Production launch is excluded. Source database remains intact: transfer only answer rules, settings (including handoff options/phrases), and branding into a fresh target; no identities, conversations, contacts, audit, analytics, notification, session, or rate-limit records.
 
@@ -28,3 +28,7 @@ Provider and staff API seams test all roles, invalid/stale/unverified/aal1 ident
 ## Documentation
 
 Record ADR superseding offline Better Auth choice, update staff-account terms, environment example, deployment runbook and ticket 11. Trusted CLI invites first owner; dashboard cannot create owners. Resend SMTP for Auth; chat alerts unchanged. Operator-assisted MFA recovery with identity verification and session revocation. Archive old source intact; migrate configuration with obsolete staff attribution cleared.
+
+## Comments
+
+- 2026-11-15: Local implementation, isolated-provider tests, production build, migrations, configuration-transfer tooling, ADR, glossary, and deployment runbook are complete. Hosted acceptance is waiting for the dedicated Supabase test project URL/credentials, Vercel test project URL, and first-owner email. Secrets must be configured in local/Vercel environment settings, not added to this issue.

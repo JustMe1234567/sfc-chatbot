@@ -1,8 +1,10 @@
 import { TOTP, URI } from "otpauth";
-import { countQuery, testPostgresUrl, TEST_ORIGIN, useTempDatabase } from "./helpers";
+import { randomUUID } from "node:crypto";
+import { countQuery, TEST_ORIGIN, useTempDatabase } from "./helpers";
+import { registerFakeStaff } from "./fake-auth-provider";
 
 /**
- * Cookie jar + request helpers for driving the real better-auth HTTP handler
+ * Cookie jar + request helpers for driving the authentication provider HTTP seam
  * the way a browser dashboard would (cookie-authenticated), so flows are
  * tested at the HTTP seam rather than through server-internal APIs.
  */
@@ -85,14 +87,34 @@ export async function provisionStaff(input: {
   role?: "owner" | "staff" | "editor";
 }): Promise<{ userId: string; email: string; role: string }> {
   const { getChatbotService } = await import("../src/db/service");
-  const { auth, db } = await getChatbotService();
-  const { provisionStaffMember } = await import("../src/auth/provision");
-  return provisionStaffMember(auth, db, {
+  const { db } = await getChatbotService();
+  const userId = randomUUID();
+  const authUserId = randomUUID();
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO staff_members
+     ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role",
+      "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    userId,
+    input.name,
+    input.email.toLowerCase(),
+    true,
+    now,
+    now,
+    input.role ?? "staff",
+    false,
+    false,
+    authUserId,
+    "accepted",
+  );
+  registerFakeStaff({
+    userId: authUserId,
     email: input.email,
-    password: input.password,
     name: input.name,
-    role: input.role ?? "staff",
+    password: input.password,
   });
+  return { userId, email: input.email, role: input.role ?? "staff" };
 }
 
 /** Full second-factor enrollment for a provisioned, verified staff member. */
@@ -135,8 +157,8 @@ export async function signInWithTotp(
   const signIn = await authRequest(jar, "/api/auth/sign-in/email", {
     body: { email, password },
   });
-  const result = (await signIn.json()) as { twoFactorRedirect?: boolean; twoFactor?: boolean };
-  if (!signIn.ok || !(result.twoFactorRedirect || result.twoFactor)) {
+  const result = (await signIn.json()) as { twoFactorRedirect?: boolean };
+  if (!signIn.ok || !result.twoFactorRedirect) {
     throw new Error(`expected two-factor challenge: ${signIn.status} ${JSON.stringify(result)}`);
   }
   const verify = await authRequest(jar, "/api/auth/two-factor/verify-totp", {

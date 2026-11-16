@@ -2,6 +2,11 @@
 
 Status: ready-for-agent
 
+> Authentication and deployment note (2026-11-15): ADR-0004 and
+> `.scratch/supabase-auth/spec.md` supersede this document's Better Auth,
+> offline-login, and full-database-migration statements. Staff now use
+> Supabase Auth and only configuration moves into the fresh hosted target.
+
 ## Problem Statement
 
 Public visitors need quick answers to routine questions about the college. The college also needs to receive questions that its approved content cannot answer and continue those conversations with a person. The WordPress website has no current chatbot implementation in this repository.

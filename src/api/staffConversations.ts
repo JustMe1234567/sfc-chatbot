@@ -18,7 +18,7 @@ export type LoadedConversationResult =
 
 /** Display name of a staff account, for claim-conflict messages. */
 export async function staffName(db: AppDatabase, userId: string): Promise<string | null> {
-  const row = await db.get<{ name: string }>('SELECT "name" FROM "user" WHERE "id" = ?', userId);
+  const row = await db.get<{ name: string }>('SELECT "name" FROM staff_members WHERE "id" = ?', userId);
   return row?.name ?? null;
 }
 

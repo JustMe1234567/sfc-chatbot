@@ -11,7 +11,8 @@ export default function StaffLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [stage, setStage] = useState<"credentials" | "totp">("credentials");
+  const [stage, setStage] = useState<"credentials" | "totp" | "forgot">("credentials");
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -25,8 +26,7 @@ export default function StaffLoginPage() {
       setError("Sign-in failed. Check your email and password.");
       return;
     }
-    const data = result.data as { twoFactorRedirect?: boolean; twoFactor?: boolean } | undefined;
-    if (data?.twoFactorRedirect || data?.twoFactor) {
+    if (result.data?.twoFactorRedirect) {
       setStage("totp");
       return;
     }
@@ -47,9 +47,22 @@ export default function StaffLoginPage() {
     router.push("/dashboard/inbox");
   }
 
+  async function submitForgot(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setBusy(true);
+    await authClient.forgetPassword(email);
+    setBusy(false);
+    setNotice("If that address belongs to an active staff account, a recovery email has been sent.");
+  }
+
   return (
     <main className={styles.loginShell}>
-      <form className={styles.loginCard} onSubmit={submitCredentials}>
+      <form
+        className={styles.loginCard}
+        onSubmit={stage === "totp" ? submitTotp : stage === "forgot" ? submitForgot : submitCredentials}
+      >
         <h1 className={styles.srOnly}>Staff sign-in</h1>
         <div className={styles.loginBrand}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -83,8 +96,11 @@ export default function StaffLoginPage() {
             <PendingButton type="submit" pending={busy} pendingLabel="Signing in…">
               Sign in
             </PendingButton>
+            <button type="button" className={styles.ghostButton} onClick={() => setStage("forgot")}>
+              Forgot password?
+            </button>
           </>
-        ) : (
+        ) : stage === "totp" ? (
           <>
             <label htmlFor="totp">Authenticator code</label>
             <input
@@ -99,12 +115,30 @@ export default function StaffLoginPage() {
               type="submit"
               pending={busy}
               pendingLabel="Verifying…"
-              onClick={submitTotp}
             >
               Verify code
             </PendingButton>
           </>
+        ) : (
+          <>
+            <label htmlFor="recovery-email">Email</label>
+            <input
+              id="recovery-email"
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+            <PendingButton type="submit" pending={busy} pendingLabel="Sending…">
+              Send recovery email
+            </PendingButton>
+            <button type="button" className={styles.ghostButton} onClick={() => setStage("credentials")}>
+              Back to sign in
+            </button>
+          </>
         )}
+        {notice ? <p className={styles.hint} role="status">{notice}</p> : null}
         {error ? (
           <p className={styles.error} role="alert">
             {error}

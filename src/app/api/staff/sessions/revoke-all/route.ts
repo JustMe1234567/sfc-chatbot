@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     return guard.response;
   }
 
-  const { db } = await getChatbotService();
-  await db.run('DELETE FROM "session" WHERE "userId" = ?', guard.staff.userId);
+  const { auth } = await getChatbotService();
+  await auth.revokeAll(guard.staff.authUserId);
   return NextResponse.json({ status: true });
 }

@@ -57,13 +57,11 @@ async function stopServers(): Promise<void> {
   }
 }
 
-// A SQLite-specific proof (ticket 01): the visitor's conversation survives a
-// Next.js process restart because the store is a file. On Postgres (ticket
-// 11) persistence across processes is the platform's own property — the
-// database outlives every function — so this suite runs on SQLite only.
-const describeSqliteOnly = process.env.CHATBOT_TEST_POSTGRES_URL
-  ? describe.skip
-  : describe;
+// Live application startup now requires the hosted Supabase Auth + Postgres
+// project, so a standalone SQLite Next.js process is no longer a supported
+// runtime. Function-recycle continuity is exercised in the hosted Vercel
+// verification; isolated route flows keep their SQLite coverage.
+const describeSqliteOnly = describe.skip;
 
 describeSqliteOnly("visitor journey across a Next.js process restart", () => {
   let firstRunBaseUrl: string;

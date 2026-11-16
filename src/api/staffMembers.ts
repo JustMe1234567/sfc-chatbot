@@ -9,6 +9,7 @@ export interface StaffMemberRow {
   banned: boolean;
   emailVerified: boolean;
   twoFactorEnabled: boolean;
+  invitationStatus: "pending" | "sent" | "accepted";
 }
 
 /** Flag columns are INTEGER 0/1 on SQLite and BOOLEAN on Postgres. */
@@ -24,14 +25,15 @@ interface UserFlagRow {
   banned: unknown;
   emailVerified: unknown;
   twoFactorEnabled: unknown;
+  invitationStatus: "pending" | "sent" | "accepted";
   [column: string]: unknown;
 }
 
 /** The staff roster for transfer pickers and the owner's management page. */
 export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[]> {
   const rows = await db.all<UserFlagRow>(
-    `SELECT "id", "name", "email", "role", "banned", "emailVerified", "twoFactorEnabled"
-     FROM "user" ORDER BY "createdAt"`,
+    `SELECT "id", "name", "email", "role", "banned", "emailVerified", "twoFactorEnabled", "invitationStatus"
+     FROM staff_members ORDER BY "createdAt"`,
   );
   return rows.map((row) => ({
     id: row.id,
@@ -41,6 +43,7 @@ export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[
     banned: truthy(row.banned),
     emailVerified: truthy(row.emailVerified),
     twoFactorEnabled: truthy(row.twoFactorEnabled),
+    invitationStatus: row.invitationStatus,
   }));
 }
 
@@ -61,7 +64,7 @@ export async function activeInboxMember(
     email_verified: unknown;
     two_factor_enabled: unknown;
   }>(
-    'SELECT "id", "name", "role", "banned", "emailVerified" AS email_verified, "twoFactorEnabled" AS two_factor_enabled FROM "user" WHERE "id" = ?',
+    'SELECT "id", "name", "role", "banned", "emailVerified" AS email_verified, "twoFactorEnabled" AS two_factor_enabled FROM staff_members WHERE "id" = ?',
     userId,
   );
   if (!row) {

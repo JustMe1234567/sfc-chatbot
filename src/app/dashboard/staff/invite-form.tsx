@@ -6,15 +6,15 @@ import PendingButton from "../pending-button";
 import styles from "../dashboard.module.css";
 
 /**
- * Owner invite form (ticket 08). The server generates the initial password;
- * it is displayed exactly once here for the owner to share out of band.
+ * Owner invite form. Supabase sends the acceptance link and password setup
+ * instructions to the named member.
  */
 export default function InviteForm() {
   const staff = useStaffAction();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"staff" | "editor">("staff");
-  const [initialPassword, setInitialPassword] = useState<string | null>(null);
+  const [invited, setInvited] = useState<string | null>(null);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -31,11 +31,10 @@ export default function InviteForm() {
       "Could not invite the member.",
     );
     if (!result.ok) {
-      setInitialPassword(null);
+      setInvited(null);
       return;
     }
-    const body = result.body as { initialPassword: string };
-    setInitialPassword(body.initialPassword);
+    setInvited(email.trim());
     setName("");
     setEmail("");
     setRole("staff");
@@ -45,8 +44,8 @@ export default function InviteForm() {
     <form className={styles.ruleCard} onSubmit={submit}>
       <h2>Invite a staff member</h2>
       <p className={styles.hint}>
-        The initial password is shown once: share it with the person securely.
-        Their first sign-in forces authenticator setup, like every account.
+        The member receives a secure email link to set a password and enroll
+        an authenticator before dashboard access is granted.
       </p>
       <label htmlFor="invite-name">Name</label>
       <input
@@ -75,15 +74,14 @@ export default function InviteForm() {
       <PendingButton
         type="submit"
         pending={staff.busy}
-        pendingLabel="Creating…"
+        pendingLabel="Sending…"
         disabled={name.trim().length === 0 || email.trim().length === 0}
       >
-        Create account
+        Send invitation
       </PendingButton>
-      {initialPassword ? (
+      {invited ? (
         <div className={styles.publishBar} role="status">
-          <span className={styles.hint}>Initial password (shown once):</span>
-          <code>{initialPassword}</code>
+          <span className={styles.hint}>Invitation sent to {invited}.</span>
         </div>
       ) : null}
       {staff.error ? (

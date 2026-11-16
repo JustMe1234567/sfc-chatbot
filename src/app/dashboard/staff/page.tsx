@@ -49,7 +49,7 @@ export default async function StaffPage() {
               </div>
               <div className={styles.preview}>{member.email}</div>
               <div className={styles.meta}>
-                {member.twoFactorEnabled ? "second factor enrolled" : "second factor not enrolled"}
+                Invitation: {member.invitationStatus} · {member.twoFactorEnabled ? "second factor enrolled" : "second factor not enrolled"}
               </div>
               {!member.banned && member.role !== "owner" && member.id !== guard.staff.userId ? (
                 <DisableButton memberId={member.id} name={member.name} />

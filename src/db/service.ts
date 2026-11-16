@@ -5,30 +5,27 @@ import { createPostgresStore } from "../store/postgresStore";
 import { seedAnswerRules } from "../store/seed";
 import { seedEscalationPhrases, seedHandoffOptions } from "../settings";
 import { migratePostgres, openPostgres, type PostgresSql } from "./postgres";
-import { createAuth, type Auth } from "../auth/server";
+import type { AuthProvider } from "../auth/provider";
+import { assertSupabaseConfigured, createSupabaseAuth } from "../auth/supabase-provider";
 import { createMailTransportFromEnv } from "../mail/transport";
 import type { MailTransport } from "../mail/outbox";
 import { appBaseUrl, appDatabaseUrl, appDbPath, assertConfiguredDatabaseUrl } from "../config";
 import type { Store } from "../domain/types";
 import type { DatabaseSync } from "node:sqlite";
-import { NodeSqliteDialect } from "@better-auth/kysely-adapter/node-sqlite-dialect";
-import { Pool } from "pg";
-import { PostgresDialect } from "kysely";
 
 export interface ChatbotService {
   store: Store;
   /** The portable query surface for settings, notifications, and staff admin. */
   db: AppDatabase;
-  auth: Auth;
+  auth: AuthProvider;
   mail: MailTransport;
 }
 
 let servicePromise: Promise<ChatbotService> | null = null;
 
 /**
- * The database backend: SQLite (development default, CHATBOT_DB) or Postgres
- * (production; Supabase via DATABASE_URL). Everything above the Store and
- * the portable query surface is identical on both.
+ * Hosted runs use Supabase Postgres. SQLite remains behind the same service
+ * boundary for isolated tests, where Vitest installs the fake auth provider.
  */
 function activeDatabaseUrl(): string | null {
   return appDatabaseUrl();
@@ -42,10 +39,8 @@ async function buildSqliteService(): Promise<ChatbotService> {
   await seedEscalationPhrases(appDb);
   await seedHandoffOptions(appDb);
   const mail = createMailTransportFromEnv(appDb);
-  const auth = createAuth({
+  const auth = createSupabaseAuth({
     db: appDb,
-    dialect: new NodeSqliteDialect({ database: db }),
-    kyselyType: "sqlite",
     mail,
     baseUrl: appBaseUrl(),
   });
@@ -60,18 +55,8 @@ async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
   await seedEscalationPhrases(appDb);
   await seedHandoffOptions(appDb);
   const mail = createMailTransportFromEnv(appDb);
-  const auth = createAuth({
+  const auth = createSupabaseAuth({
     db: appDb,
-    // Kysely speaks to Postgres through node-postgres with its own small
-    // pool (serverless functions hold few concurrent auth flows); the main
-    // query pool is the postgres.js one above.
-    dialect: new PostgresDialect({
-      pool: new Pool({
-        connectionString: activeDatabaseUrl() ?? undefined,
-        max: Number(process.env.PG_AUTH_POOL_MAX ?? 2),
-      }),
-    }),
-    kyselyType: "postgres",
     mail,
     baseUrl: appBaseUrl(),
   });
@@ -88,9 +73,11 @@ async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
 export function getChatbotService(): Promise<ChatbotService> {
   if (!servicePromise) {
     servicePromise = (async () => {
-      // Production has no usable SQLite fallback (ticket 22): refuse the
-      // store selection before opening anything.
+      // Hosted runs require Postgres and a matching Supabase Auth project.
+      // The test setup replaces the auth assertion/provider so controlled
+      // SQLite route tests can continue exercising application behavior.
       assertConfiguredDatabaseUrl();
+      assertSupabaseConfigured();
       const url = activeDatabaseUrl();
       if (url) {
         const sql = openPostgres(url);

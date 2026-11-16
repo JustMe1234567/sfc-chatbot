@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { AppDatabase } from "../db/appDatabase";
-import type { Auth, StaffRole } from "./server";
+import type { AuthProvider } from "./provider";
+import type { StaffRole } from "./server";
 
 export interface ProvisionInput {
   email: string;
   name: string;
-  password: string;
   role: StaffRole;
 }
 
@@ -12,32 +13,82 @@ export interface ProvisionedStaff {
   userId: string;
   email: string;
   role: string;
+  invitationStatus: "sent";
+}
+
+interface ExistingStaff {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  banned: unknown;
+  invitationStatus: "pending" | "sent" | "accepted";
+}
+
+function isBanned(value: unknown): boolean {
+  return value === true || value === 1 || value === "1";
 }
 
 /**
- * Server-side staff provisioning: the only way staff accounts come to exist.
- * Called by the owner bootstrap script; the dashboard invite flow (ticket 08)
- * reuses it. Account creation goes through the auth library's admin endpoint
- * in trusted server context (no session); the email is marked verified here
- * because provisioning happens at the owner's request, not via email flow.
+ * Creates or retries an invitation without ever accepting a role change as
+ * part of the retry. The application row is written first as `pending`, so a
+ * mail/provider failure is visible and safely retryable instead of leaving an
+ * untracked Supabase user.
  */
 export async function provisionStaffMember(
-  auth: Auth,
+  auth: AuthProvider,
   db: AppDatabase,
   input: ProvisionInput,
 ): Promise<ProvisionedStaff> {
-  const created = await auth.api.createUser({
-    body: {
-      email: input.email,
-      name: input.name,
-      password: input.password,
-      role: input.role,
-    },
-  });
-  const user = created?.user as { id?: string } | undefined;
-  if (!user?.id) {
-    throw new Error(`provisioning failed for ${input.email}: ${JSON.stringify(created).slice(0, 200)}`);
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim();
+  const existing = await db.get<ExistingStaff>(
+    `SELECT "id", "name", "email", "role", "banned", "invitationStatus"
+     FROM staff_members WHERE lower(email) = lower(?)`,
+    email,
+  );
+
+  let applicationId: string;
+  if (existing) {
+    if (
+      isBanned(existing.banned) ||
+      existing.invitationStatus === "accepted" ||
+      existing.name !== name ||
+      existing.role !== input.role
+    ) {
+      throw new Error("An accepted, disabled, or differently provisioned staff account already exists.");
+    }
+    applicationId = existing.id;
+  } else {
+    applicationId = randomUUID();
+    const now = new Date().toISOString();
+    await db.run(
+      `INSERT INTO staff_members
+       ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role",
+        "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      applicationId,
+      name,
+      email,
+      false,
+      now,
+      now,
+      input.role,
+      false,
+      false,
+      null,
+      "pending",
+    );
   }
-  await db.run('UPDATE "user" SET "emailVerified" = ? WHERE "id" = ?', true, user.id);
-  return { userId: user.id, email: input.email, role: input.role };
+
+  const invited = await auth.invite(email, name);
+  await db.run(
+    `UPDATE staff_members
+     SET "supabaseUserId" = ?, "invitationStatus" = 'sent', "updatedAt" = ?
+     WHERE "id" = ?`,
+    invited.userId,
+    new Date().toISOString(),
+    applicationId,
+  );
+  return { userId: applicationId, email, role: input.role, invitationStatus: "sent" };
 }

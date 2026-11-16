@@ -5,25 +5,20 @@ questions and get answers only from staff-curated answer rules; unknown
 questions escalate to staff (later tickets). No AI API is called.
 
 The approved spec and delivery tickets live in `.scratch/college-website-chat/`.
-The stack decision (Next.js App Router, SQLite during development, Supabase
-Postgres migration before Vercel production) is recorded in
-`docs/adr/0001-sqlite-first-with-server-owned-auth.md`.
+The current stack decision (Next.js App Router, Supabase Postgres, and
+Supabase Auth for staff) is recorded in ADRs 0003 and 0004.
 
 ## Run locally
 
 ```bash
 npm install
+npm run config:import # once, against a fresh test project (see the runbook)
 npm run dev
 ```
 
 Open <http://localhost:3000/demo/wordpress-test-page.html> and use the chat.
-The app seeds two published answer rules (admissions, fees) and one draft rule
-(scholarships) from `src/store/seed.ts` into SQLite at `CHATBOT_DB`
-(default `chatbot.db`, gitignored).
-
-No environment variables are needed for local development. Every variable
-the application reads — store selection, auth, email, Postgres tuning, the
-test-mode URL — is listed with realistic example values in
+Localhost uses the dedicated hosted Supabase test project for both Postgres
+and staff Auth. Configure `.env.local` from
 [`.env.example`](.env.example); production configuration lives in
 [docs/deployment.md](docs/deployment.md).
 
@@ -59,31 +54,21 @@ database (the spec's controlled-test-store seam). The restart test spawns
 Staff access is invite-only and second-factor protected:
 
 ```bash
-npm run bootstrap:owner -- --email owner@example.edu --password 'a-long-password' --name 'Owner'
+npm run bootstrap:owner -- --email owner@example.edu --name 'Owner'
 npm run dev
 ```
 
-Open <http://localhost:3000/dashboard>. The first sign-in forces TOTP
-enrollment (an authenticator app secret is displayed), then signs out; every
-later sign-in requires password plus the current code. Passwords, sessions,
-and staff records live in SQLite through Better Auth (`migrations/0002`);
-verification and reset emails land in the `mail_outbox` table in development.
-
-Environment settings: `CHATBOT_DB` (database file), `CHATBOT_BASE_URL`
-(public origin), `BETTER_AUTH_SECRET` (required outside local development).
-Secrets never reach client bundles: no `NEXT_PUBLIC_` variable carries them.
+Open <http://localhost:3000/dashboard>. The owner follows the emailed invite,
+creates a password, and enrolls TOTP. Supabase Auth owns credentials and
+sessions; `staff_members` owns application roles and disablement. Only the
+project URL and publishable key are public. The secret key and database URL
+remain server-only.
 
 ## Production database (Postgres)
 
-Setting `DATABASE_URL` switches the whole application — chat data, staff
-authentication, settings, analytics — to Postgres; without it the app runs
-on SQLite as above. The Postgres schema lives in `migrations/postgres/` and
-is applied automatically on first start. `docs/deployment.md` is the
-step-by-step Vercel + Supabase runbook: provisioning, the repeatable
-SQLite→Postgres data migration with verification, the session-revoking
-cutover, backups and rollback, and the pre-launch security review. The
-architecture decision is recorded in
-`docs/adr/0003-postgres-on-supabase-for-production.md`.
+`DATABASE_URL` names the same Supabase project as the Auth URL. The Postgres
+schema is applied automatically. `docs/deployment.md` covers project setup,
+configuration-only transfer, owner invitation, recovery, and test deployment.
 
 Run the full test suite against Postgres:
 
@@ -101,7 +86,7 @@ Scheduled maintenance (transcript retention + analytics expiry) runs through
 | --- | --- |
 | `src/app/` | Next.js App Router: pages, the widget frame, and API route handlers |
 | `src/api/` | Request-side helpers shared by route handlers (visitor + staff auth guards) |
-| `src/auth/` | Better Auth configuration and server-side staff provisioning |
+| `src/auth/` | Supabase Auth provider boundary and server-side staff provisioning |
 | `src/lib/` | Shared client helpers (auth client, visitor session storage) |
 | `src/domain/` | Pure matching, limits, tokens, hours, activity, retention sweep, entity types, and answer-rule input validation |
 | `src/store/` | SQLite and Postgres stores behind the `Store` port, shared row mappers, and seed content |
@@ -112,5 +97,5 @@ Scheduled maintenance (transcript retention + analytics expiry) runs through
 | `public/demo/` | WordPress-style test page for the embed |
 | `wordpress/` | Optional mu-plugin that enqueues the loader site-wide |
 
-SQLite is for development and stateful self-hosted preview only; production
-on Vercel runs on Supabase Postgres (see `docs/deployment.md`).
+SQLite remains an isolated application-test backend; localhost and Vercel use
+Supabase Postgres (see `docs/deployment.md`).

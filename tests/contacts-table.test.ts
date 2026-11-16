@@ -1,6 +1,5 @@
 // Postgres-mode files must not multiply at the cluster's connection ceiling.
 process.env.PG_POOL_MAX = process.env.PG_POOL_MAX ?? "2";
-process.env.PG_AUTH_POOL_MAX = process.env.PG_AUTH_POOL_MAX ?? "2";
 
 import { beforeAll, describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";

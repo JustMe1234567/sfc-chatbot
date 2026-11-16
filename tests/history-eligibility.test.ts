@@ -39,7 +39,7 @@ beforeAll(async () => {
   staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  staffUserId = (await db.get<{ id: string }>('SELECT id FROM "user" WHERE email = ?', STAFF_EMAIL))!.id;
+  staffUserId = (await db.get<{ id: string }>('SELECT id FROM staff_members WHERE email = ?', STAFF_EMAIL))!.id;
 });
 
 async function service() {

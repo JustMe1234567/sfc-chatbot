@@ -4,6 +4,7 @@ import {
   authRequest,
   CookieJar,
   enrollTotp,
+  latestOutboxMail,
   provisionStaff,
   signInWithTotp,
 } from "./auth-helpers";
@@ -24,7 +25,7 @@ let bobTotp: Awaited<ReturnType<typeof enrollTotp>>;
 async function staffId(email: string): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return ((await db.get<{ id: string }>('SELECT "id" FROM "user" WHERE "email" = ?', email)) as {
+  return ((await db.get<{ id: string }>('SELECT "id" FROM staff_members WHERE "email" = ?', email)) as {
     id: string;
   }).id;
 }
@@ -126,7 +127,7 @@ beforeAll(async () => {
 });
 
 describe("the owner invites named staff", () => {
-  it("creates a working account and shows the initial password exactly once", async () => {
+  it("sends an invitation and reports its status without issuing a password", async () => {
     const ownerJar = new CookieJar();
     await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
 
@@ -136,21 +137,37 @@ describe("the owner invites named staff", () => {
       role: "staff",
     });
     expect(invite.status).toBe(201);
-    const body = (await invite.json()) as { member: { id: string; email: string }; initialPassword: string };
+    const body = (await invite.json()) as {
+      member: { id: string; email: string };
+      invitationStatus: string;
+    };
     expect(body.member.email).toBe("carol@example.edu");
-    expect(body.initialPassword.length).toBeGreaterThanOrEqual(16);
+    expect(body.invitationStatus).toBe("sent");
+    expect(JSON.stringify(body)).not.toContain("password");
+    expect((await latestOutboxMail()).to).toBe("carol@example.edu");
 
-    // The invited member signs in with the generated password and is forced
-    // into the same second-factor enrollment as everyone else.
-    const carolJar = new CookieJar();
-    const signIn = await authRequest(carolJar, "/api/auth/sign-in/email", {
-      body: { email: "carol@example.edu", password: body.initialPassword },
+    const retry = await membersRequest(ownerJar, "POST", "/api/staff/members", {
+      name: "Carol",
+      email: "carol@example.edu",
+      role: "staff",
     });
-    expect(signIn.ok).toBe(true);
-    const enable = await authRequest(carolJar, "/api/auth/two-factor/enable", {
-      body: { password: body.initialPassword, method: "totp", issuer: "Springfield College chat" },
+    expect(retry.status).toBe(201);
+    const retryMail = await latestOutboxMail();
+    const token = /token_hash=([A-Za-z0-9]+)/.exec(retryMail.body)?.[1];
+    expect(token).toBeTruthy();
+    const invitedJar = new CookieJar();
+    const confirm = await authRequest(
+      invitedJar,
+      `/api/auth/confirm?token_hash=${token}&type=invite`,
+      { method: "GET" },
+    );
+    expect(confirm.status).toBe(303);
+    const setPassword = await authRequest(invitedJar, "/api/auth/set-password", {
+      body: { newPassword: "carol-secure-password-42" },
     });
-    expect(enable.ok).toBe(true);
+    expect(setPassword.ok).toBe(true);
+    await authRequest(invitedJar, "/api/auth/sign-out");
+    await enrollTotp(new CookieJar(), "carol@example.edu", "carol-secure-password-42");
 
     const duplicate = await membersRequest(ownerJar, "POST", "/api/staff/members", {
       name: "Carol Again",

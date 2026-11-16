@@ -1,8 +1,7 @@
 # Migrations
 
-Two independent sequences live here: `NNNN_*.sql` for SQLite (local
-development) and `postgres/NNNN_*.sql` for Postgres (production,
-Supabase). Each sequence is tracked in its database's `_migrations` table
+Two independent sequences live here: `NNNN_*.sql` for SQLite application
+tests and `postgres/NNNN_*.sql` for hosted Supabase Postgres. Each sequence is tracked in its database's `_migrations` table
 and applied in numeric order; new migrations take the next number in their
 sequence, and every Postgres migration mirrors its SQLite counterpart's
 ticket.
@@ -26,6 +25,8 @@ tables. Where each piece physically lives:
 | 58 answer rule lifecycle | 0014 | 0004 |
 | 66 visitor contact | 0015 | 0005 |
 | 24 shared rate limits | 0016 | 0006 |
+| 69 contact requests | 0017 | 0007 |
+| Supabase-linked staff records | 0018 | 0008 |
 
 ## Why SQLite skips 0009
 
@@ -35,14 +36,11 @@ from `0003_settings_and_notifications.sql` — and the next schema change,
 ticket 10's retention sweep, was committed directly as `0010`. The gap is
 historical: do not renumber existing files and do not reuse the number.
 
-## The dialects' defaults differ slightly — that is expected too
+## Legacy authentication tables
 
-`twoFactor` reads slightly differently in the two schemas (SQLite
-`0002_auth_and_mail.sql` vs `postgres/0001_auth_and_chat.sql`): SQLite has
-`backupCodes NOT NULL` / `verified INTEGER DEFAULT 1` / nullable
-`failedVerificationCount`; Postgres has nullable `backupCodes` /
-`verified BOOLEAN DEFAULT false` / `failedVerificationCount NOT NULL
-DEFAULT 0`. The differences are harmless — Better Auth treats the columns
-the same way, and `scripts/migrate-sqlite-to-postgres.ts` copies values
-verbatim — so the schemas are intentionally not realigned; realigning
-SQLite would cost a table rebuild for zero behavioral gain.
+Migration 0018/0008 renames `user` to the application-owned
+`staff_members` table, preserving every staff foreign key, and links rows to
+Supabase Auth. The earlier `session`, `account`, `verification`, and
+`twoFactor` tables remain inert migration artifacts so an existing database
+does not need a destructive table rebuild; runtime authentication never reads
+or writes them.

@@ -11,6 +11,7 @@ interface TargetRow {
   id: string;
   email: string;
   role: string;
+  supabaseUserId: string | null;
 }
 
 /**
@@ -39,7 +40,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   const service = await getChatbotService();
   const target = await service.db
-    .get<TargetRow>('SELECT "id", "email", "role" FROM "user" WHERE "id" = ?', id);
+    .get<TargetRow>('SELECT "id", "email", "role", "supabaseUserId" FROM staff_members WHERE "id" = ?', id);
   if (!target) {
     return NextResponse.json(
       { error: { code: "not_found", message: "Staff account not found." } },
@@ -58,12 +59,14 @@ export async function POST(request: Request, context: RouteContext) {
   // ends live access immediately, including dashboard polling. The flag is
   // a portable boolean bind (0/1 on SQLite, true/false on Postgres).
   await service.db.run(
-    'UPDATE "user" SET "banned" = ?, "banReason" = ? WHERE "id" = ?',
+    'UPDATE staff_members SET "banned" = ?, "banReason" = ? WHERE "id" = ?',
     true,
     "Disabled by the owner",
     id,
   );
-  await service.db.run('DELETE FROM "session" WHERE "userId" = ?', id);
+  if (target.supabaseUserId) {
+    await service.auth.disable(target.supabaseUserId);
+  }
   await audit(service.store, guard.staff.userId, "staff_disabled", {}, target.email);
 
   // Their claims cannot survive them: release each conversation back to the

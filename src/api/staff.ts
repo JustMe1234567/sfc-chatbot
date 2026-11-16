@@ -10,6 +10,7 @@ const CROSS_ORIGIN_BLOCKED = {
 
 export interface StaffContext {
   userId: string;
+  authUserId: string;
   email: string;
   name: string;
   role: StaffRole;
@@ -27,24 +28,43 @@ export async function requireStaff(
   requestHeaders: Headers,
   options?: { roles?: readonly string[] },
 ): Promise<{ staff: StaffContext } | { response: NextResponse }> {
-  const { auth } = await getChatbotService();
-  const session = await auth.api.getSession({ headers: requestHeaders }).catch(() => null);
+  const { auth, db } = await getChatbotService();
+  const identity = await auth.authenticate(requestHeaders).catch(() => null);
 
-  if (!session) {
+  if (!identity) {
     return { response: NextResponse.json(GENERIC_AUTH_ERROR, { status: 401 }) };
   }
-  const user = session.user as Record<string, unknown>;
-  if (user.emailVerified !== true) {
+  if (!identity.emailVerified) {
     return {
       response: NextResponse.json(GENERIC_AUTH_ERROR, { status: 403 }),
     };
   }
-  if (user.banned === true) {
+  const user = await db.get<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    banned: unknown;
+    emailVerified: unknown;
+    twoFactorEnabled: unknown;
+  }>(
+    `SELECT "id", "name", "email", "role", "banned", "emailVerified", "twoFactorEnabled"
+     FROM staff_members WHERE "supabaseUserId" = ?`,
+    identity.userId,
+  );
+  if (!user || user.banned === true || user.banned === 1 || user.banned === "1") {
     return {
       response: NextResponse.json(GENERIC_AUTH_ERROR, { status: 401 }),
     };
   }
-  if (user.twoFactorEnabled !== true) {
+  const staffEmailVerified =
+    user.emailVerified === true || user.emailVerified === 1 || user.emailVerified === "1";
+  if (!staffEmailVerified) {
+    return { response: NextResponse.json(GENERIC_AUTH_ERROR, { status: 403 }) };
+  }
+  const staffMfa =
+    user.twoFactorEnabled === true || user.twoFactorEnabled === 1 || user.twoFactorEnabled === "1";
+  if (!identity.mfaEnrolled || !staffMfa) {
     return {
       response: NextResponse.json(
         { error: { code: "two_factor_enrollment_required", message: "Enroll a second factor to continue." } },
@@ -52,7 +72,15 @@ export async function requireStaff(
       ),
     };
   }
-  const role = typeof user.role === "string" ? user.role : "";
+  if (identity.aal !== "aal2") {
+    return {
+      response: NextResponse.json(
+        { error: { code: "two_factor_challenge_required", message: "Verify your authenticator to continue." } },
+        { status: 403 },
+      ),
+    };
+  }
+  const role = user.role;
   const allowed = options?.roles ?? DASHBOARD_ROLES;
   if (!allowed.includes(role as StaffRole)) {
     return {
@@ -62,8 +90,9 @@ export async function requireStaff(
   return {
     staff: {
       userId: String(user.id),
-      email: String(user.email),
-      name: String(user.name),
+      authUserId: identity.userId,
+      email: user.email,
+      name: user.name,
       role: role as StaffRole,
     },
   };

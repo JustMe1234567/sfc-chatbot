@@ -3,7 +3,6 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 // The PG-mode suite runs at the local cluster's connection ceiling: cap this
 // file's pools so the whole suite's files keep their warmup budget.
 process.env.PG_POOL_MAX = "2";
-process.env.PG_AUTH_POOL_MAX = "2";
 import {
   ask,
   startConversation,

@@ -12,6 +12,7 @@ import {
   staffApiRequest,
   useTempDatabase,
 } from "./auth-helpers";
+import { expireFakeSessions, registerFakeStaff } from "./fake-auth-provider";
 
 const STAFF_EMAIL = "registrar@example.edu";
 const STAFF_PASSWORD = "correct-horse-battery";
@@ -50,6 +51,41 @@ describe("staff authentication gate", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects forged session cookies", async () => {
+    const { GET } = await import("../src/app/api/staff/conversations/route");
+    const response = await GET(
+      new Request(`${TEST_ORIGIN}/api/staff/conversations`, {
+        headers: { cookie: "sfc_test_auth=forged" },
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("does not grant dashboard access to an Auth user without a staff record", async () => {
+    registerFakeStaff({
+      userId: crypto.randomUUID(),
+      email: "unknown-auth-user@example.edu",
+      name: "Unknown",
+      password: "unknown-user-password-42",
+    });
+    const response = await authRequest(new CookieJar(), "/api/auth/sign-in/email", {
+      body: { email: "unknown-auth-user@example.edu", password: "unknown-user-password-42" },
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("blocks cross-origin authentication mutations", async () => {
+    const { POST } = await import("../src/app/api/auth/[...all]/route");
+    const response = await POST(
+      new Request(`${TEST_ORIGIN}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", origin: "https://evil.example" },
+        body: JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD }),
+      }),
+    );
+    expect(response.status).toBe(403);
+  });
+
   it("keeps public sign-up closed", async () => {
     const response = await authRequest(null, "/api/auth/sign-up/email", {
       body: { email: "intruder@example.edu", password: "intruder-password-1", name: "Intruder" },
@@ -61,7 +97,7 @@ describe("staff authentication gate", () => {
     await provisionStaff({ email: "unverified@example.edu", password: "valid-password-123", name: "Unverified" });
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    await db.run('UPDATE "user" SET "emailVerified" = ? WHERE "email" = ?', false, "unverified@example.edu");
+    await db.run('UPDATE staff_members SET "emailVerified" = ? WHERE "email" = ?', false, "unverified@example.edu");
 
     const jar = new CookieJar();
     const response = await authRequest(jar, "/api/auth/sign-in/email", {
@@ -155,28 +191,11 @@ describe("protected shared inbox", () => {
 
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    const userId = (
-      (await db.get<{ id: string }>('SELECT "id" FROM "user" WHERE "email" = ?', STAFF_EMAIL)) as {
-        id: string;
-      }
-    ).id;
-
-    // The owner performs the disable through the admin endpoint (the
-    // dashboard UI for it arrives in ticket 08).
-    const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-    const ban = await authRequest(ownerJar, "/api/auth/admin/ban-user", {
-      body: { userId, banReason: "ticket 02 test" },
-    });
-    expect(ban.ok).toBe(true);
+    await db.run('UPDATE staff_members SET "banned" = ? WHERE "email" = ?', true, STAFF_EMAIL);
 
     const after = await staffApiRequest(jar, "/api/staff/conversations");
     expect(after.status).toBe(401);
-
-    const unban = await authRequest(ownerJar, "/api/auth/admin/unban-user", {
-      body: { userId },
-    });
-    expect(unban.ok).toBe(true);
+    await db.run('UPDATE staff_members SET "banned" = ? WHERE "email" = ?', false, STAFF_EMAIL);
   });
 
   it("rejects a signed-out session cookie", async () => {
@@ -207,9 +226,7 @@ describe("protected shared inbox", () => {
   it("rejects an expired session", async () => {
     const jar = new CookieJar();
     await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
-    const { getChatbotService } = await import("../src/db/service");
-    const { db } = await getChatbotService();
-    await db.run('UPDATE "session" SET "expiresAt" = ?', new Date(Date.now() - 60_000).toISOString());
+    expireFakeSessions(STAFF_EMAIL);
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(401);
   });
@@ -227,14 +244,25 @@ describe("password reset", () => {
     const jar = new CookieJar();
     await signInWithTotp(jar, resetEmail, oldPassword, totp);
 
-    await authRequest(null, "/api/auth/request-password-reset", { body: { email: resetEmail } });
+    await authRequest(null, "/api/auth/forget-password", { body: { email: resetEmail } });
     const mail = await latestOutboxMail();
     expect(mail.to).toBe(resetEmail);
-    const token = /reset-password\/([A-Za-z0-9]+)/.exec(mail.body)?.[1];
+    const token = /token_hash=([A-Za-z0-9]+)/.exec(mail.body)?.[1];
     expect(token).toBeTruthy();
 
-    const reset = await authRequest(null, "/api/auth/reset-password", {
-      body: { newPassword, token },
+    const recoveryJar = new CookieJar();
+    const confirm = await authRequest(
+      recoveryJar,
+      `/api/auth/confirm?token_hash=${token}&type=recovery`,
+      { method: "GET" },
+    );
+    expect(confirm.status).toBe(303);
+    const verify = await authRequest(recoveryJar, "/api/auth/two-factor/verify-totp", {
+      body: { code: totp.generate() },
+    });
+    expect(verify.ok).toBe(true);
+    const reset = await authRequest(recoveryJar, "/api/auth/reset-password", {
+      body: { newPassword },
     });
     expect(reset.ok).toBe(true);
 
@@ -249,9 +277,11 @@ describe("password reset", () => {
     expect(inbox.status).toBe(200);
 
     // A replayed token is refused.
-    const replay = await authRequest(null, "/api/auth/reset-password", {
-      body: { newPassword: "replay-password-789", token },
-    });
+    const replay = await authRequest(
+      new CookieJar(),
+      `/api/auth/confirm?token_hash=${token}&type=recovery`,
+      { method: "GET" },
+    );
     expect(replay.ok).toBe(false);
   });
 });

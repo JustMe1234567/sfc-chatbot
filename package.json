@@ -14,6 +14,9 @@
     "typecheck": "tsc --noEmit",
     "build:widget": "tsx scripts/build-widget.ts",
     "bootstrap:owner": "tsx scripts/bootstrap-owner.ts",
+    "recover:staff": "tsx scripts/recover-staff-mfa.ts",
+    "config:export": "tsx scripts/export-configuration.ts",
+    "config:import": "tsx scripts/import-configuration.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -32,10 +35,9 @@
     "esbuild@0.28.2": true
   },
   "dependencies": {
-    "better-auth": "^1.7.12",
-    "kysely": "^0.29.7",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.0",
     "next": "^16.4.2",
-    "pg": "^8.23.1",
     "postgres": "^3.4.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

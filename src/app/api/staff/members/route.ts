@@ -18,11 +18,8 @@ export async function GET(request: Request) {
 }
 
 /**
- * Invite (ticket 08): the owner names a new staff member; the server
- * generates a strong initial password that is returned exactly once and
- * shared with the person out of band. Their first sign-in forces second-
- * factor enrollment, exactly like every other account. Creating additional
- * owner accounts stays with the server-side bootstrap script only.
+ * Invite a named staff member by email. Creating additional owner accounts
+ * stays with the trusted bootstrap command.
  */
 export async function POST(request: Request) {
   const blocked = sameOriginGuard(request);
@@ -54,22 +51,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // Generated once, returned once, never stored in plaintext beyond the
-  // auth library's own password hash.
-  const initialPassword = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const service = await getChatbotService();
   try {
     const member = await provisionStaffMember(service.auth, service.db, {
       email,
       name,
-      password: initialPassword,
       role: role as StaffRole,
     });
     await audit(service.store, guard.staff.userId, "staff_invited", {}, `${email} (${role})`);
-    return NextResponse.json({ member, initialPassword }, { status: 201 });
+    return NextResponse.json({ member, invitationStatus: "sent" }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (/already exist|unique/i.test(message)) {
+    if (/already exist|accepted|disabled|differently provisioned|unique/i.test(message)) {
       return NextResponse.json(
         { error: { code: "member_exists", message: "An account with this email already exists." } },
         { status: 409 },

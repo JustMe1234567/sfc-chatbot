@@ -20,15 +20,14 @@ export function trustedOrigins(): string[] {
   return [...new Set([base, "http://localhost:3000", "http://127.0.0.1:3000"])];
 }
 
-/** SQLite database file backing chat data and staff authentication. */
+/** SQLite database file used by the isolated application test backend. */
 export function appDbPath(): string {
   return process.env.CHATBOT_DB ?? path.join(repoRoot(), "chatbot.db");
 }
 
 /**
- * Postgres connection string (Supabase in production, a local cluster for
- * development and tests). When set, it takes precedence over CHATBOT_DB:
- * the application runs entirely on Postgres (ticket 11).
+ * Supabase Postgres connection string for localhost and hosted runs. Tests
+ * may omit it to select their controlled SQLite backend.
  */
 export function appDatabaseUrl(): string | null {
   const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;

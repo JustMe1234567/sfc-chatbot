@@ -1,18 +1,18 @@
-# 11: Move persistent chat and staff data to Supabase before Vercel launch
+# 11: Run the test deployment on Supabase and Vercel
 
-**What to build:** The completed chatbot and protected dashboard run on Vercel with Supabase Postgres as their persistent store. The owner can verify migrated answers and conversation history, and staff can resume work after a controlled sign-in cutover.
+**What to build:** The completed chatbot and protected dashboard run in a Vercel test project with Supabase Postgres and Supabase Auth. Transfer configuration into a fresh target, create fresh staff identities, and leave the original database intact. Production launch remains separate.
 
 **Blocked by:** 03: One reliable escalation email; 04: Staff claim and live reply; 05: Publish answer rules and topic buttons; 06: Ambiguous answers and handoff phrases; 07: Visitor email and secure return; 08: Manage staff access and conversation ownership; 09: Configured support hours; 10: Transcript retention.
 
 **Status:** ready-for-human
 
-- [x] Versioned Postgres migrations reproduce the production data model, including authentication, answer rules, visitor sessions, messages, staff actions, settings, and retention metadata.
-- [x] A documented, repeatable migration transfers SQLite records with stable identifiers and relationship checks; the owner verifies counts and representative histories before traffic switches.
-- [x] Staff sessions are revoked at cutover and staff sign in again with multifactor authentication. Password hashes and accounts are migrated only after compatibility is verified; otherwise the cutover includes a secure staff account reset path.
+- [x] Versioned Postgres migrations reproduce the application data model and link application-owned staff records to Supabase Auth identities.
+- [x] A documented configuration-only transfer preserves ordered answer rules, settings, handoff configuration, and branding while excluding identities and activity/history data and leaving the source untouched.
+- [x] Staff use fresh emailed invitations, passwords, and mandatory authenticator enrollment; old password hashes, factors, and sessions are not imported.
 - [x] Next.js server routes use Supabase Postgres through server-only credentials and enforce the same visitor, staff, and owner authorization checks. Neither WordPress nor a client bundle receives a Supabase service key or database connection string.
 - [x] The full public and staff API flow suite runs against Postgres, including concurrency, email, account disablement, reconnect, and retention.
 - [ ] A Vercel preview verifies WordPress embedding and browser flows on desktop and mobile. It must also cover conversation continuity across a Vercel function recycle mid-conversation (deploy per `docs/deployment.md`; the audit note stands: recycle continuity on Supabase is currently proven nowhere — restart-persistence proves only SQLite files across a local process restart).
-- [x] A rollback and backup plan is documented; the college IT or site owner approves Vercel, Supabase, email delivery, data access, and retention before production launch.
+- [x] A rollback and source-preservation plan is documented; the college IT or site owner approves Vercel, Supabase, SMTP, data access, and retention before production launch.
 - [x] A security review checks exposed bundles and API responses for secrets, staff authorization on every route, visitor isolation, CSRF protection, login abuse controls, session revocation, and the WordPress embed boundary before production launch.
 
 ## Comments
@@ -44,3 +44,5 @@
 2026-11-11: Cutover criterion note (ticket 24). The create, return, and message rate limiters now count into shared `rate_limit_hits` rows whenever the app runs on Postgres, so at cutover the abuse limits hold across serverless instances instead of multiplying by instance count; the in-memory limiters remain only for the credential-free reads and per-conversation guards, and as the whole limiter story on SQLite. A future deployment platform must keep providing shared-store counting — per-process memory alone does not meet the spec's "enforced on the server" requirement.
 
 2026-11-12: Public-POST origin posture decided (ticket 30), superseding the interim wording from the ticket-23 truth-up. `sameOriginGuard` stays scoped to cookie-authenticated mutations plus `/api/v1/presence`, and now requires Origin **or** a trusted-origin Referer on unsafe methods, rejecting a request that carries neither. The other public POSTs — conversation create, messages, clear, contact, and return redemption — gain no origin check, by decision: they are bearer-token endpoints whose credential lives in the widget iframe's sessionStorage and never auto-attaches, so cross-site request forgery cannot send it; conversation creation is inherently public (any visitor starts a chat) and is rate-limited per client key from platform-trusted headers (issue 20); and an Origin header is trivially forged by non-browser attackers, who are exactly the callers an origin check never stopped — the browser-borne cross-site paths those callers cannot forge are already rate-limited under the same per-client key. Rate limiting is the defense, recorded here so the posture is explicit rather than accidental. (The email-capture route the audit's list named left with ticket 66.)
+
+2026-11-15: Supabase Auth/configuration-only revision. ADR-0004 supersedes Better Auth and offline staff login. Localhost and Vercel test now share a dedicated hosted Supabase test project; `staff_members` owns roles/status while Supabase owns credentials, sessions, invitations, and TOTP. The old full SQLite→Postgres copy procedure is removed: `config:export`/`config:import` transfer only answer rules and settings (including handoff and branding), refuse a used target, clear obsolete publisher attribution, validate hashes/counts/order, and never write the source. The original database remains the rollback archive. The remaining open checkbox is still the human Vercel preview/function-recycle verification; production and WordPress cutover are out of scope.

@@ -53,7 +53,7 @@ async function escalate(): Promise<{ id: string; token: string }> {
 async function staffId(email: string): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  return ((await db.get<{ id: string }>('SELECT "id" FROM "user" WHERE "email" = ?', email)) as {
+  return ((await db.get<{ id: string }>('SELECT "id" FROM staff_members WHERE "email" = ?', email)) as {
     id: string;
   }).id;
 }

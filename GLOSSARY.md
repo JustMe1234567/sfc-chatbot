@@ -56,7 +56,13 @@ A visitor's explicit ask to be reached (ticket 69), in one of three media: **Cha
 The message history shared by a visitor, the bot, and any administrator who takes over.
 
 **Staff account**:
-The named identity of a college employee who can sign in to the private dashboard. Its permissions depend on the employee's assigned role.
+The named dashboard membership of a college employee. It becomes active only after an emailed invitation is accepted and an authenticator is enrolled; its permissions depend on the assigned owner, staff, or editor role.
+
+**Staff invitation**:
+An owner-issued, single-recipient email that lets a named employee create the password for a provisioned staff account. Retrying an invitation never changes the employee's name or role.
+
+**Authenticator recovery**:
+The controlled process for a staff member who has lost their authenticator. A trusted operator verifies the person, revokes their sessions and old factor, then grants a short recovery window before mandatory reenrollment.
 
 **Visitor session**:
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.

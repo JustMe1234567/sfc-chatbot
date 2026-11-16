@@ -14,8 +14,9 @@ import styles from "../dashboard.module.css";
  */
 export default function EnrollPage() {
   const router = useRouter();
-  const [password, setPassword] = useState("");
   const [totpUri, setTotpUri] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [factorId, setFactorId] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -25,19 +26,17 @@ export default function EnrollPage() {
     event.preventDefault();
     setError("");
     setBusy(true);
-    const result = await authClient.twoFactor.enable({
-      password,
-      method: "totp",
-      issuer: "Springfield College chat",
-    });
+    const result = await authClient.twoFactor.enable();
     setBusy(false);
     const uri = result.data && "totpURI" in result.data ? result.data.totpURI : null;
     if (result.error || !uri) {
-      setError("Enrollment failed. Check your password and try again.");
+      setError("Enrollment failed. Sign in again and retry.");
       return;
     }
     const url = new URL(uri);
     setTotpUri(uri);
+    setQrCode(result.data?.qrCode ?? null);
+    setFactorId(result.data?.factorId ?? null);
     setSecret(url.searchParams.get("secret"));
   }
 
@@ -45,7 +44,7 @@ export default function EnrollPage() {
     event.preventDefault();
     setError("");
     setBusy(true);
-    const result = await authClient.twoFactor.verifyTotp({ code });
+    const result = await authClient.twoFactor.verifyTotp({ code, ...(factorId ? { factorId } : {}) });
     if (result.error) {
       setBusy(false);
       setError("That code was not accepted. Try the current code from your authenticator.");
@@ -78,6 +77,13 @@ export default function EnrollPage() {
             <p className={styles.hint}>
               Scan this secret into your authenticator app, then enter the current code.
             </p>
+            {qrCode ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={qrCode.startsWith("data:") ? qrCode : `data:image/svg+xml;utf-8,${encodeURIComponent(qrCode)}`}
+                alt="Authenticator QR code"
+              />
+            ) : null}
             <code>{secret}</code>
             <label htmlFor="totp">Authenticator code</label>
             <input
@@ -93,20 +99,9 @@ export default function EnrollPage() {
             </PendingButton>
           </>
         ) : (
-          <>
-            <label htmlFor="password">Confirm your password</label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-            <PendingButton type="submit" pending={busy} pendingLabel="Verifying…">
-              Begin enrollment
-            </PendingButton>
-          </>
+          <PendingButton type="submit" pending={busy} pendingLabel="Preparing…">
+            Begin enrollment
+          </PendingButton>
         )}
         {error ? (
           <p className={styles.error} role="alert">
