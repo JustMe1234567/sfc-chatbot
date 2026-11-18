@@ -45,10 +45,21 @@ export const CUE_GAIN = 0.16;
  *  the start of one alert to the start of the next. */
 export const ALERT_REPEAT_MS = 30_000;
 
-/** The longest an alert may sound (ticket 77): well above the two-note
- *  chime it bounds, and far below the 30-second spacing, so alerts can
- *  never overlap their successors. */
+/** The longest an alert may sound (ticket 77): the buzzer pattern's full
+ *  window, far below the 30-second spacing, so alerts can never overlap
+ *  their successors. */
 export const ALERT_MAX_MS = 6_000;
+
+/** The needs-human alert is a buzzer (ticket 77, user review): each buzz
+ *  sounds for a second, silences for a second, and sounds again — three
+ *  one-second buzzes spanning the 6-second window. */
+export const BUZZ_ON_MS = 1_000;
+export const BUZZ_OFF_MS = 1_000;
+export const BUZZ_COUNT = 3;
+
+/** The buzz's tone: a square wave's harsh buzz, audible on laptop
+ *  speakers. */
+export const BUZZ_FREQUENCY_HZ = 350;
 
 /**
  * When the next repeating alert may begin (ticket 77): 30 seconds after

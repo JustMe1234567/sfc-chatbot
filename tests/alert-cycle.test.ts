@@ -5,6 +5,10 @@ import {
   ALERT_GAIN,
   ALERT_MAX_MS,
   ALERT_REPEAT_MS,
+  BUZZ_COUNT,
+  BUZZ_FREQUENCY_HZ,
+  BUZZ_OFF_MS,
+  BUZZ_ON_MS,
   CHIME_NOTES,
   CUE_GAIN,
   NOTE_RING_SECONDS,
@@ -14,15 +18,16 @@ import {
 import { repoRoot } from "../src/paths";
 
 /**
- * Ticket 77: the desk's louder, repeating needs-human alert. The alert
- * sounds at a 0.5 master gain (up from 44's 0.16), starts when a live desk
- * conversation enters Needs human, repeats every 30 seconds from the start
- * of one alert to the start of the next while the state remains, ends no
- * later than 6 seconds after it starts, never overlaps another sound, and
- * stops — current alert and future repeats — the moment the state clears
- * or sounds are muted. Unmuting with a conversation still waiting starts a
- * new cycle without waiting for another event. Ordinary new-message
- * attention keeps 44's one-cue behavior. The ticket's original
+ * Ticket 77: the desk's louder, repeating needs-human alert. The alert is
+ * a buzzer — one-second buzzes on and off across a 6-second window — at a
+ * 0.5 master gain (up from 44's 0.16), starting when a live desk
+ * conversation enters Needs human, repeating every 30 seconds from the
+ * start of one alert to the start of the next while the state remains,
+ * never overlapping another sound, and stopping — current alert and future
+ * repeats — the moment the state clears or sounds are muted. Unmuting with
+ * a conversation still waiting starts a new cycle without waiting for
+ * another event. Ordinary new-message attention keeps 44's one-cue
+ * behavior at the softer chime gain. The ticket's original
  * test-notification control was removed at the user's 2026-11-19 review.
  */
 
@@ -109,12 +114,21 @@ describe("the repeating needs-human alert (ticket 77)", () => {
 
   it("ends each alert no later than 6 seconds after it starts", () => {
     expect(ALERT_MAX_MS).toBe(6_000);
-    // The two-note chime is the alert: its last note's offset plus the
-    // ring-out is the whole sounded length, far inside the maximum.
-    const soundedSeconds = Math.max(
+    // The buzzer's pattern: one-second buzzes separated by one-second
+    // silences — the last buzz ends inside the 6-second window.
+    expect(BUZZ_ON_MS).toBe(1_000);
+    expect(BUZZ_OFF_MS).toBe(1_000);
+    expect(BUZZ_COUNT).toBe(3);
+    // Buzzes start at 0s, 2s, 4s; the last buzz ends at 5s and the
+    // trailing silence closes the pattern at the whole 6-second window.
+    expect(
+      (BUZZ_COUNT - 1) * (BUZZ_ON_MS + BUZZ_OFF_MS) + BUZZ_ON_MS + BUZZ_OFF_MS,
+    ).toBe(ALERT_MAX_MS);
+    // The ordinary cue is still the two-note chime, far inside the window.
+    const chimeSeconds = Math.max(
       ...CHIME_NOTES.map(([offset]) => offset + NOTE_RING_SECONDS),
     );
-    expect(soundedSeconds).toBeLessThanOrEqual(ALERT_MAX_MS / 1000);
+    expect(chimeSeconds).toBeLessThanOrEqual(ALERT_MAX_MS / 1000);
   });
 
   it("keeps the 30-second spacing while an alert still sounds, and caps over-long sounds", () => {
@@ -233,19 +247,24 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     );
   });
 
-  it("sounds escalation batches at the alert gain and keeps ordinary cues soft", async () => {
+  it("sounds escalation batches as the buzzer alert and keeps ordinary cues as the soft chime", async () => {
     const source = await readFile(
       path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
       "utf8",
     );
-    // The cycle's own beats play the louder alert.
-    expect(source).toContain("playChime(context, ALERT_GAIN, true)");
-    // A burst cue's volume follows its batch: a batch containing a
-    // Needs-human escalation is the louder alert, ordinary attention stays
-    // at 44's softer gain even mid-alarm.
-    expect(source).toContain(
-      "queuedNeedsHumanRef.current ? ALERT_GAIN : CUE_GAIN",
-    );
+    // The cycle's own beats play the buzzer.
+    expect(source).toContain("chimeEndsAtRef.current = playBuzzer(context)");
+    // A burst cue follows its batch: a batch containing a Needs-human
+    // escalation is the buzzer alert, ordinary attention stays at 44's
+    // softer chime even mid-alarm.
+    expect(source).toContain("? playBuzzer(context)");
+    expect(source).toContain(": playChime(context)");
+    // The buzz is a square-wave tone — the buzzer character — at the
+    // domain's frequency, gated by the on/off pattern constants.
+    expect(source).toContain('osc.type = "square"');
+    expect(source).toContain("osc.frequency.value = BUZZ_FREQUENCY_HZ");
+    expect(source).toContain("BUZZ_ON_MS / 1000");
+    expect(source).toContain("(BUZZ_ON_MS + BUZZ_OFF_MS)) / 1000");
     // The burst re-checks for a still-sounding cue at fire time — a beat
     // that started since the burst was scheduled is never overlapped.
     expect(source).toContain("fireBurst");

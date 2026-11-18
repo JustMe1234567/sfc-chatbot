@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ALERT_GAIN,
+  ALERT_MAX_MS,
+  BUZZ_COUNT,
+  BUZZ_FREQUENCY_HZ,
+  BUZZ_OFF_MS,
+  BUZZ_ON_MS,
   CHIME_NOTES,
   CUE_FRESH_MS,
   CUE_GAIN,
@@ -17,23 +22,24 @@ import type { AttentionEvent } from "@/domain/inbox";
 import styles from "../dashboard.module.css";
 
 /**
- * The desk's notification sound (tickets 44 and 77): a louder alert that
- * repeats every 30 seconds while at least one live desk conversation
- * remains in Needs human — starting the moment the state appears or audio
- * unlocks, stopping the moment the last waiting conversation is taken over
- * or otherwise leaves the state, and killed instantly by muting. Ordinary
- * new-message attention and contact requests keep 44's one-cue behavior at
- * the softer gain, even while the alarm runs. The needs-human cycle is
- * driven by the desk's state, not by events, so every waiting conversation
- * shares one cycle and no waiting count can stack alerts; a cue whose
- * batch contains an escalation is that alert. The event identities for the
- * one-cue path still arrive from the server on every poll (ticket 12's
- * refresh cycle); this component diffs them against the persisted
- * seen-set, so polling, re-rendering, navigation, and a second view can
- * never re-queue an episode. Playback is Web Audio — no asset, and every
- * failure path is caught, because a broken audio stack must never break
- * inbox polling. The visual indicators render server-side and are
- * unaffected by muting.
+ * The desk's notification sound (tickets 44 and 77): when at least one
+ * live desk conversation is in Needs human, a buzzer alert sounds —
+ * one-second buzzes on and off across a six-second window — and the whole
+ * alert repeats every 30 seconds, starting the moment the state appears or
+ * audio unlocks, stopping the moment the last waiting conversation is
+ * taken over or otherwise leaves the state, and killed instantly by
+ * muting. Ordinary new-message attention and contact requests keep 44's
+ * one-cue behavior at the softer chime gain, even while the alarm runs.
+ * The needs-human cycle is driven by the desk's state, not by events, so
+ * every waiting conversation shares one cycle and no waiting count can
+ * stack alerts; a cue whose batch contains an escalation is that alert.
+ * The event identities for the one-cue path still arrive from the server
+ * on every poll (ticket 12's refresh cycle); this component diffs them
+ * against the persisted seen-set, so polling, re-rendering, navigation,
+ * and a second view can never re-queue an episode. Playback is Web Audio —
+ * no asset, and every failure path is caught, because a broken audio stack
+ * must never break inbox polling. The visual indicators render
+ * server-side and are unaffected by muting.
  */
 
 /** Adjacent polls delivering different events coalesce into one cue. */
@@ -107,15 +113,15 @@ export default function AttentionSounds({
     }
   }
 
-  function playChime(context: AudioContext, gain: number, isAlert: boolean): number {
-    const start = context.currentTime + 0.01;
+  /** The master gain every cue shares, plus the handle muting and a
+   *  cleared needs-human state use to stop the sounding alert immediately
+   *  (ticket 77): disconnecting kills every oscillator the cue scheduled
+   *  at once. Only alerts carry isAlert — an ordinary cue always rings
+   *  out, as in ticket 44. */
+  function beginSound(context: AudioContext, gain: number, isAlert: boolean): GainNode {
     const master = context.createGain();
     master.gain.value = gain;
     master.connect(context.destination);
-    // The handle muting and a cleared needs-human state use to stop the
-    // sounding alert immediately (ticket 77): disconnecting kills every
-    // oscillator this cue scheduled at once. Only alerts carry it — an
-    // ordinary cue always rings out, as in ticket 44.
     currentSoundRef.current = {
       isAlert,
       stop: () => {
@@ -126,6 +132,14 @@ export default function AttentionSounds({
         }
       },
     };
+    return master;
+  }
+
+  /** The ordinary cue (ticket 44): the two-note front-desk ding at the
+   *  softer gain. */
+  function playChime(context: AudioContext): number {
+    const start = context.currentTime + 0.01;
+    const master = beginSound(context, CUE_GAIN, false);
     let endsAt = start;
     for (const [offset, frequency] of CHIME_NOTES) {
       const osc = context.createOscillator();
@@ -142,6 +156,32 @@ export default function AttentionSounds({
       endsAt = Math.max(endsAt, start + offset + NOTE_RING_SECONDS);
     }
     return Date.now() + Math.max(0, (endsAt - context.currentTime) * 1000);
+  }
+
+  /** The needs-human alert (ticket 77, user review): a buzzer — one-second
+   *  buzzes separated by one-second silences, spanning the 6-second
+   *  window. It occupies the whole window: nothing else may start until
+   *  the on-off pattern is fully over. */
+  function playBuzzer(context: AudioContext): number {
+    const start = context.currentTime + 0.01;
+    const master = beginSound(context, ALERT_GAIN, true);
+    const buzzSeconds = BUZZ_ON_MS / 1000;
+    for (let i = 0; i < BUZZ_COUNT; i++) {
+      const buzzStart = start + (i * (BUZZ_ON_MS + BUZZ_OFF_MS)) / 1000;
+      const osc = context.createOscillator();
+      const gainNode = context.createGain();
+      osc.type = "square";
+      osc.frequency.value = BUZZ_FREQUENCY_HZ;
+      gainNode.gain.setValueAtTime(0.0001, buzzStart);
+      gainNode.gain.exponentialRampToValueAtTime(1, buzzStart + 0.008);
+      gainNode.gain.setValueAtTime(1, buzzStart + buzzSeconds - 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, buzzStart + buzzSeconds);
+      osc.connect(gainNode);
+      gainNode.connect(master);
+      osc.start(buzzStart);
+      osc.stop(buzzStart + buzzSeconds);
+    }
+    return Date.now() + ALERT_MAX_MS;
   }
 
   function stopCurrentSound(): void {
@@ -166,7 +206,7 @@ export default function AttentionSounds({
           const context = contextRef.current;
           if (!context) return null;
           try {
-            chimeEndsAtRef.current = playChime(context, ALERT_GAIN, true);
+            chimeEndsAtRef.current = playBuzzer(context);
             return chimeEndsAtRef.current;
           } catch {
             // Playback failure must never break polling or interaction;
@@ -205,14 +245,12 @@ export default function AttentionSounds({
     queuedRef.current.clear();
     if (mutedRef.current) return; // muted since scheduling: stay silent
     try {
-      // The batch decides the volume (ticket 77): a cue whose batch
-      // contains a Needs-human escalation is that louder alert; ordinary
-      // attention keeps 44's softer gain even mid-alarm.
-      chimeEndsAtRef.current = playChime(
-        context,
-        queuedNeedsHumanRef.current ? ALERT_GAIN : CUE_GAIN,
-        queuedNeedsHumanRef.current,
-      );
+      // The batch decides the sound (ticket 77): a cue whose batch contains
+      // a Needs-human escalation is the buzzer alert; ordinary attention
+      // keeps 44's softer chime even mid-alarm.
+      chimeEndsAtRef.current = queuedNeedsHumanRef.current
+        ? playBuzzer(context)
+        : playChime(context);
     } catch {
       // Playback failure must never break polling or interaction.
     }
