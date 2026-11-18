@@ -37,6 +37,9 @@ The conversation desk's three-tier coloring (ticket 44, re-colored in ticket 66)
 **Notification sound**:
 The desk's alert (tickets 44, 77): a buzzer-like alert — one-second buzzes on and off across a 6-second window — when a conversation needs staff. While any live desk conversation sits in Needs human, the alert repeats every 30 seconds — measured from the start of one alert to the start of the next — and stops the moment the state clears or sounds are muted; unmuting with a conversation still waiting restarts the cycle. Ordinary new-message attention keeps 44's behavior: one soft chime cue per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
 
+**Needs-human bell**:
+The dashboard-wide visual indicator (ticket 79): a bell on the Conversations navigation item, shown exactly while at least one live desk conversation sits in Needs human and hidden the moment the state clears. It carries no count — presence is the message — wears the Needs-human green from the status treatment (the bright graphic variant, since the rail is dark), and the navigation item's accessible name says needs human while it shows. It is visible from every dashboard page, in the expanded rail, the compact icon rail, and the mobile drawer.
+
 **Take over**:
 The staff-facing label for claiming (ticket 45) — the atomic assignment of a waiting conversation to exactly one staff member. Product copy says Take over/Taking over; the domain keeps claim/claimed in state values, API paths, and audit action ids.
 

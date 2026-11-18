@@ -67,5 +67,15 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/auth/:path*", "/api/staff/:path*", "/widget/frame"],
+  matcher: [
+    "/dashboard/:path*",
+    "/api/auth/:path*",
+    "/api/staff/:path*",
+    // The needs-human bell's poll (ticket 79): the one authenticated route
+    // outside /api/staff, so staff idling on a page with no other requests
+    // still refresh their session cookie on each poll instead of letting it
+    // expire under the bell.
+    "/api/v1/needs-human",
+    "/widget/frame",
+  ],
 };
