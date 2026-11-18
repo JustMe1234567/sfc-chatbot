@@ -23,15 +23,17 @@ import styles from "../dashboard.module.css";
  * unlocks, stopping the moment the last waiting conversation is taken over
  * or otherwise leaves the state, and killed instantly by muting. Ordinary
  * new-message attention and contact requests keep 44's one-cue behavior at
- * the softer gain. The needs-human cycle is driven by the desk's state,
- * not by events, so every waiting conversation shares one cycle and no
- * waiting count can stack alerts. The event identities for the one-cue
- * path still arrive from the server on every poll (ticket 12's refresh
- * cycle); this component diffs them against the persisted seen-set, so
- * polling, re-rendering, navigation, and a second view can never re-queue
- * an episode. Playback is Web Audio — no asset, and every failure path is
- * caught, because a broken audio stack must never break inbox polling. The
- * visual indicators render server-side and are unaffected by muting.
+ * the softer gain, even while the alarm runs. The needs-human cycle is
+ * driven by the desk's state, not by events, so every waiting conversation
+ * shares one cycle and no waiting count can stack alerts; a cue whose
+ * batch contains an escalation is that alert. The event identities for the
+ * one-cue path still arrive from the server on every poll (ticket 12's
+ * refresh cycle); this component diffs them against the persisted
+ * seen-set, so polling, re-rendering, navigation, and a second view can
+ * never re-queue an episode. Playback is Web Audio — no asset, and every
+ * failure path is caught, because a broken audio stack must never break
+ * inbox polling. The visual indicators render server-side and are
+ * unaffected by muting.
  */
 
 /** Adjacent polls delivering different events coalesce into one cue. */
@@ -56,11 +58,15 @@ function safeStorage(): StorageLike {
 
 export default function AttentionSounds({
   events,
-  needsHuman,
+  needsHumanIds,
 }: {
   events: AttentionEvent[];
-  needsHuman: boolean;
+  /** The live desk conversations in Needs human (ticket 77): the repeating
+   *  alert runs while this list is non-empty, and an attention event whose
+   *  conversation is on it sounds as the louder alert. */
+  needsHumanIds: string[];
 }) {
+  const needsHuman = needsHumanIds.length > 0;
   const [muted, setMuted] = useState(false);
   const cuesRef = useRef<AttentionCues | null>(null);
   const mutedRef = useRef(false);
@@ -70,12 +76,16 @@ export default function AttentionSounds({
   const burstTimerRef = useRef<number | null>(null);
   const alertCycleRef = useRef<AlertCycle | null>(null);
   const chimeEndsAtRef = useRef(0);
-  const currentSoundRef = useRef<{ stop(): void } | null>(null);
+  const currentSoundRef = useRef<{ stop(): void; isAlert: boolean } | null>(null);
   const gestureHandlerRef = useRef<(() => void) | null>(null);
   // Events whose chime is scheduled but has not fired yet. They count as
   // seen only once the sound actually plays (or fails) — otherwise a view
   // unmounting inside the burst window would swallow its cue for good.
   const queuedRef = useRef<Set<string>>(new Set());
+  // Whether the pending burst's batch contains a Needs-human escalation
+  // (ticket 77): the coalesced cue is then that louder alert, and later
+  // arrivals joining the batch keep the flag ORed in.
+  const queuedNeedsHumanRef = useRef(false);
 
   function cues(): AttentionCues {
     if (!cuesRef.current) cuesRef.current = createAttentionCues(safeStorage());
@@ -97,15 +107,17 @@ export default function AttentionSounds({
     }
   }
 
-  function playChime(context: AudioContext, gain: number): number {
+  function playChime(context: AudioContext, gain: number, isAlert: boolean): number {
     const start = context.currentTime + 0.01;
     const master = context.createGain();
     master.gain.value = gain;
     master.connect(context.destination);
     // The handle muting and a cleared needs-human state use to stop the
     // sounding alert immediately (ticket 77): disconnecting kills every
-    // oscillator this cue scheduled at once.
+    // oscillator this cue scheduled at once. Only alerts carry it — an
+    // ordinary cue always rings out, as in ticket 44.
     currentSoundRef.current = {
+      isAlert,
       stop: () => {
         try {
           master.disconnect();
@@ -137,6 +149,13 @@ export default function AttentionSounds({
     currentSoundRef.current = null;
   }
 
+  /** Only needs-human alerts are ever stopped mid-flight (ticket 77); an
+   *  ordinary cue keeps 44's ring-out even when the desk state clears or
+   *  the staff member mutes mid-cue. */
+  function stopAlertSound(): void {
+    if (currentSoundRef.current?.isAlert) stopCurrentSound();
+  }
+
   /** The repeating needs-human alert (ticket 77): the domain cycle keeps
    *  the 30-second rhythm; playback resolves the live context so a
    *  recycled AudioContext cannot strand the cycle on a dead one. */
@@ -147,7 +166,7 @@ export default function AttentionSounds({
           const context = contextRef.current;
           if (!context) return null;
           try {
-            chimeEndsAtRef.current = playChime(context, ALERT_GAIN);
+            chimeEndsAtRef.current = playChime(context, ALERT_GAIN, true);
             return chimeEndsAtRef.current;
           } catch {
             // Playback failure must never break polling or interaction;
@@ -174,14 +193,38 @@ export default function AttentionSounds({
   }
 
   /** Stop the current alert and cancel the next repeat immediately
-   *  (ticket 77). An ordinary cue caught mid-flight goes quiet with it —
-   *  a sub-half-second edge treated as "silence now". */
+   *  (ticket 77). The instant stop covers only alerts: an ordinary cue
+   *  caught mid-flight rings out as in ticket 44. */
   function stopAlertCycle(): void {
     alertCycleRef.current?.stop();
-    stopCurrentSound();
+    stopAlertSound();
   }
 
-  function scheduleChime(context: AudioContext, ids: string[]): void {
+  function fireBurst(context: AudioContext): void {
+    burstTimerRef.current = null;
+    queuedRef.current.clear();
+    if (mutedRef.current) return; // muted since scheduling: stay silent
+    try {
+      // The batch decides the volume (ticket 77): a cue whose batch
+      // contains a Needs-human escalation is that louder alert; ordinary
+      // attention keeps 44's softer gain even mid-alarm.
+      chimeEndsAtRef.current = playChime(
+        context,
+        queuedNeedsHumanRef.current ? ALERT_GAIN : CUE_GAIN,
+        queuedNeedsHumanRef.current,
+      );
+    } catch {
+      // Playback failure must never break polling or interaction.
+    }
+    if (queuedNeedsHumanRef.current) {
+      // This louder alert is the cycle's current beat: the next repeat
+      // begins 30 seconds after it started (ticket 77).
+      alertCycle().adopt(chimeEndsAtRef.current);
+    }
+    queuedNeedsHumanRef.current = false;
+  }
+
+  function scheduleChime(context: AudioContext, ids: string[], anyNeedsHuman: boolean): void {
     // Seen at schedule time, not play time: another open view polling the
     // same event must find it taken before its own watcher fires. One
     // burst of events is one cue — later arrivals join the scheduled
@@ -189,28 +232,18 @@ export default function AttentionSounds({
     // overlapping it.
     cues().markSeen(ids);
     for (const id of ids) queuedRef.current.add(id);
+    if (anyNeedsHuman) queuedNeedsHumanRef.current = true;
     if (burstTimerRef.current !== null) return;
     const wait = Math.max(BURST_MS, chimeEndsAtRef.current - Date.now());
     burstTimerRef.current = window.setTimeout(() => {
-      burstTimerRef.current = null;
-      queuedRef.current.clear();
-      if (mutedRef.current) return; // muted since scheduling: stay silent
-      const startedAt = Date.now();
-      try {
-        // The desk's state decides the volume (ticket 77): while a
-        // conversation waits for a human, this cue is the louder alert.
-        chimeEndsAtRef.current = playChime(
-          context,
-          needsHumanRef.current ? ALERT_GAIN : CUE_GAIN,
-        );
-      } catch {
-        // Playback failure must never break polling or interaction.
+      // Re-check at fire time: a cycle beat or another cue may have
+      // started since this burst was scheduled — never overlap it.
+      const fireWait = Math.max(0, chimeEndsAtRef.current - Date.now());
+      if (fireWait > 0) {
+        burstTimerRef.current = window.setTimeout(() => fireBurst(context), fireWait);
+        return;
       }
-      if (needsHumanRef.current) {
-        // This louder alert is the cycle's current beat: the next repeat
-        // begins 30 seconds after it started (ticket 77).
-        alertCycle().adopt(chimeEndsAtRef.current);
-      }
+      fireBurst(context);
     }, wait);
   }
 
@@ -240,7 +273,7 @@ export default function AttentionSounds({
           const held = tracker.takeHeld();
           if (held.length === 0) return;
           if (held.some((event) => Date.now() - event.heldAt < CUE_FRESH_MS)) {
-            scheduleChime(context, held.map((event) => event.id));
+            scheduleChime(context, held.map((event) => event.id), false);
           } else {
             // A stale backlog is not news anymore: seen, silent, and the
             // visual indicators already carried it.
@@ -274,10 +307,11 @@ export default function AttentionSounds({
       if (burstTimerRef.current !== null) window.clearTimeout(burstTimerRef.current);
       burstTimerRef.current = null;
       // Leaving the desk cancels the repeating alert (ticket 77) and kills
-      // any sound still in flight — another view runs its own cycle.
+      // any alert still in flight — another view runs its own cycle. An
+      // ordinary cue rings out, as in ticket 44.
       alertCycleRef.current?.stop();
       alertCycleRef.current = null;
-      stopCurrentSound();
+      stopAlertSound();
       const handler = gestureHandlerRef.current;
       if (handler) {
         for (const type of GESTURES) window.removeEventListener(type, handler);
@@ -309,7 +343,16 @@ export default function AttentionSounds({
       return;
     }
     if (context.state === "running") {
-      scheduleChime(context, fresh);
+      // A fresh event whose conversation is in Needs human (ticket 77)
+      // makes this batch the louder alert; ordinary attention stays soft.
+      const waiting = new Set(needsHumanIds);
+      const conversationOf = new Map(
+        events.map((event) => [event.id, event.conversationId]),
+      );
+      const anyNeedsHuman = fresh.some((id) =>
+        waiting.has(conversationOf.get(id) ?? ""),
+      );
+      scheduleChime(context, fresh, anyNeedsHuman);
       return;
     }
     tracker.hold(fresh);
@@ -348,9 +391,16 @@ export default function AttentionSounds({
     tracker.setMuted(next);
     if (next) {
       // Muting stops the current alert and cancels repeats immediately
-      // (ticket 77), and consumes any autoplay-blocked backlog so it
-      // cannot blast the moment audio unlocks.
+      // (ticket 77), cancels any burst yet to fire, and consumes any
+      // autoplay-blocked backlog so it cannot blast the moment audio
+      // unlocks. Muted ears keep their marked events (ticket 44).
       stopAlertCycle();
+      if (burstTimerRef.current !== null) {
+        window.clearTimeout(burstTimerRef.current);
+        burstTimerRef.current = null;
+      }
+      queuedRef.current.clear();
+      queuedNeedsHumanRef.current = false;
       tracker.markSeen(tracker.takeHeld().map((event) => event.id));
     } else if (needsHumanRef.current) {
       // Unmuting while a conversation still needs a human restarts the
@@ -374,7 +424,7 @@ export default function AttentionSounds({
         const wait = Math.max(0, chimeEndsAtRef.current - Date.now());
         window.setTimeout(() => {
           try {
-            chimeEndsAtRef.current = playChime(context, ALERT_GAIN);
+            chimeEndsAtRef.current = playChime(context, ALERT_GAIN, true);
           } catch {
             // Browser or device audio refusal leaves visual alerts available.
           }

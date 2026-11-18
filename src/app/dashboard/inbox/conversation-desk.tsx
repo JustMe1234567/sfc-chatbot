@@ -120,9 +120,10 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // The repeating needs-human alert (ticket 77) follows the live desk's
   // state, not attention events: a viewed-but-unclaimed conversation still
   // needs a human, and Incoming is exactly the desk's awaiting_staff list —
-  // one boolean for the whole desk, so every waiting conversation shares a
-  // single alert cycle. History (no desk scan) never sounds.
-  const needsHuman = desk !== null && desk.incoming.length > 0;
+  // one shared cycle however many conversations wait, and an attention
+  // event whose conversation is on this list sounds as the louder alert.
+  // History (no desk scan) never sounds.
+  const needsHumanIds = desk ? desk.incoming.map((item) => item.id) : [];
   // The selected conversation's open email/phone request (ticket 69): the
   // pane shows the persistent Contact Me chip and the Mark contacted action
   // until staff complete it. Viewing the transcript never clears it.
@@ -193,7 +194,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 History
               </Link>
             </div>
-            <AttentionSounds events={attentionEvents} needsHuman={needsHuman} />
+            <AttentionSounds events={attentionEvents} needsHumanIds={needsHumanIds} />
             {desk ? (
               <>
                 <h2>

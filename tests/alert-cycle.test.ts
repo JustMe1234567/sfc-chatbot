@@ -222,25 +222,33 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
       path.join(repoRoot(), "src/app/dashboard/inbox/conversation-desk.tsx"),
       "utf8",
     );
-    // One boolean for the whole desk — Incoming is exactly the live
+    // One list for the whole desk — Incoming is exactly the live
     // awaiting_staff list — so two waiting conversations cannot create two
     // cycles, and a viewed-but-unclaimed conversation keeps it running.
-    expect(desk).toContain("const needsHuman = desk !== null && desk.incoming.length > 0;");
     expect(desk).toContain(
-      "<AttentionSounds events={attentionEvents} needsHuman={needsHuman} />",
+      "const needsHumanIds = desk ? desk.incoming.map((item) => item.id) : [];",
+    );
+    expect(desk).toContain(
+      "<AttentionSounds events={attentionEvents} needsHumanIds={needsHumanIds} />",
     );
   });
 
-  it("sounds beats at the alert gain, burst cues by desk state, and keeps the test button out of the cycle", async () => {
+  it("sounds escalation batches at the alert gain, keeps ordinary cues soft, and keeps the test button out of the cycle", async () => {
     const source = await readFile(
       path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
       "utf8",
     );
     // The cycle's own beats play the louder alert.
-    expect(source).toContain("playChime(context, ALERT_GAIN)");
-    // A burst cue's volume follows the desk's state: while a conversation
-    // waits, the coalesced cue is the louder alert.
-    expect(source).toContain("needsHumanRef.current ? ALERT_GAIN : CUE_GAIN");
+    expect(source).toContain("playChime(context, ALERT_GAIN, true)");
+    // A burst cue's volume follows its batch: a batch containing a
+    // Needs-human escalation is the louder alert, ordinary attention stays
+    // at 44's softer gain even mid-alarm.
+    expect(source).toContain(
+      "queuedNeedsHumanRef.current ? ALERT_GAIN : CUE_GAIN",
+    );
+    // The burst re-checks for a still-sounding cue at fire time — a beat
+    // that started since the burst was scheduled is never overlapped.
+    expect(source).toContain("fireBurst");
     // The test button plays one louder alert — no cycle start, no adoption.
     const testFn = between(source, "function testSound", "return (");
     expect(testFn).toContain("ALERT_GAIN");
@@ -248,7 +256,7 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     expect(testFn).not.toContain("adopt(");
   });
 
-  it("stops on mute and restarts on unmute while a conversation still needs a human", async () => {
+  it("stops alerts — never ordinary cues — on mute, and restarts on unmute while a conversation still needs a human", async () => {
     const source = await readFile(
       path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
       "utf8",
@@ -256,6 +264,9 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     const toggle = between(source, "function toggleMuted", "function testSound");
     expect(toggle).toContain("stopAlertCycle()");
     expect(toggle).toContain("startAlertCycle()");
+    // Only alert-typed sounds are stopped mid-flight; an ordinary cue
+    // keeps 44's ring-out.
+    expect(source).toContain("if (currentSoundRef.current?.isAlert) stopCurrentSound();");
     // The instant stop both paths rely on: disconnecting kills every
     // oscillator the sounding alert scheduled.
     expect(source).toContain("master.disconnect()");
@@ -268,7 +279,7 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     );
     const cleanup = between(source, "return () => {", "const handler = gestureHandlerRef.current;");
     expect(cleanup).toContain("alertCycleRef.current?.stop()");
-    expect(cleanup).toContain("stopCurrentSound()");
+    expect(cleanup).toContain("stopAlertSound()");
   });
 
   it("keeps 44's guarded audio construction and burst coalescing", async () => {
