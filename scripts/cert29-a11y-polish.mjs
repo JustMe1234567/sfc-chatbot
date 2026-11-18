@@ -14,7 +14,6 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { TOTP, URI } from "otpauth";
 import process from "node:process";
 
@@ -22,8 +21,7 @@ const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket29";
 mkdirSync(OUT, { recursive: true });
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3233"}`;
-const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/ticket29-cert.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -63,16 +61,9 @@ function assert(condition, message) {
   console.log(`ok: ${message}`);
 }
 
-// A clean enrollment slate (same as the other screenshot scripts).
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-}
-db.close();
+// No local enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
+// Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner and lets the username sign-in below enroll it fresh.
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -95,24 +86,26 @@ assert(
   "login page titles itself through the dashboard template",
 );
 
-// Owner sign-in with fresh TOTP enrollment (established flow). The first
+// Owner sign-in with fresh TOTP enrollment (username flow). The first
 // visit cold-compiles each route on a dev server, so waits key on URLs and
 // generous element timeouts rather than fixed sleeps.
-await page.fill("#email", EMAIL);
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await Promise.all([
   page.waitForURL("**/dashboard/enroll", { timeout: 60000 }),
   page.click("button[type=submit]"),
 ]);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
+await page.getByRole("button", { name: "Begin enrollment" }).click();
 await page.waitForSelector("code", { timeout: 60000 });
 const secret = (await page.textContent("code")).trim();
 const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
 await page.fill("#totp", totp.generate());
 await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
+// Full sign-in with the second factor: the credentials stage flips to the
+// TOTP stage on the same page.
+await page.waitForSelector("#username", { timeout: 15000 });
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
 await page.waitForSelector("#totp", { timeout: 15000 });

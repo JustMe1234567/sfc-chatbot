@@ -21,7 +21,7 @@ const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-h
 const PORT = process.argv[3] ?? "3215";
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/history51.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 const HISTORY_URL = `${BASE}/dashboard/inbox/history`;
 
@@ -35,19 +35,13 @@ for (let attempt = 0; ; attempt++) {
   }
 }
 
-// A clean slate in this ticket's dedicated scratch database: enrollment plus
-// every conversation (with the rows that reference them, removed in FK
-// order), so reruns always start from an empty archive.
+// A clean slate in this ticket's dedicated scratch database: every
+// conversation (with the rows that reference them, removed in FK
+// order), so reruns always start from an empty archive. No enrollment wipe
+// (ticket 80): TOTP factors live in hosted Supabase Auth, not a store
+// table, so the username sign-in below requires a freshly bootstrapped
+// owner and enrolls it fresh.
 const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-} else {
-  console.log("no prior enrollment to wipe");
-}
 db.prepare("DELETE FROM notifications").run();
 db.prepare("UPDATE audit_log SET conversation_id = NULL").run();
 db.prepare("DELETE FROM return_tokens").run();
@@ -73,21 +67,21 @@ await page.setViewportSize({ width: 1280, height: 900 });
 // --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
 await page.goto(`${BASE}/dashboard/login`);
 await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
+await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
+await page.getByRole("button", { name: "Begin enrollment" }).click();
+await page.waitForSelector("code", { timeout: 60000 });
 const secret = (await page.textContent("code")).trim();
 const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
 await page.fill("#totp", totp.generate());
 await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
+// Full sign-in with the second factor: the credentials stage flips to the
+// TOTP stage on the same page.
+await page.waitForSelector("#username", { timeout: 15000 });
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
 await page.waitForSelector("#totp", { timeout: 15000 });

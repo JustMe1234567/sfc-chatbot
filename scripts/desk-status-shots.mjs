@@ -16,7 +16,7 @@ import process from "node:process";
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-desk-status";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3211"}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/desk-demo.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -34,17 +34,9 @@ for (let attempt = 0; ; attempt++) {
 const topicsResponse = await fetch(`${BASE}/api/v1/topics`);
 if (!topicsResponse.ok) throw new Error(`topics fetch failed: ${topicsResponse.status}`);
 
-// A clean enrollment slate (same as analytics-shots): wipe any TOTP
-// enrollment left by an earlier partial run.
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-}
-db.close();
+// No enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
+// Auth, not a store table, so the username sign-in below requires a freshly
+// bootstrapped owner and enrolls it fresh.
 
 async function startChat() {
   const response = await fetch(`${BASE}/api/v1/conversations`, {
@@ -144,21 +136,21 @@ await page.setViewportSize({ width: 1280, height: 800 });
 // --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
 await page.goto(`${BASE}/dashboard/login`);
 await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
+await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
+await page.getByRole("button", { name: "Begin enrollment" }).click();
+await page.waitForSelector("code", { timeout: 60000 });
 const secret = (await page.textContent("code")).trim();
 const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
 await page.fill("#totp", totp.generate());
 await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
+// Full sign-in with the second factor: the credentials stage flips to the
+// TOTP stage on the same page.
+await page.waitForSelector("#username", { timeout: 15000 });
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
 await page.waitForSelector("#totp", { timeout: 15000 });
@@ -425,7 +417,7 @@ if ((await ask(heldChat, "Screenshot seed: autoplay check, let me speak to a hum
 // A fresh context means a fresh session: sign the owner in again with the
 // enrollment this run created.
 await blockedPage.goto(`${BASE}/dashboard/login`);
-await blockedPage.fill("#email", EMAIL);
+await blockedPage.fill("#username", USERNAME);
 await blockedPage.fill("#password", PASSWORD);
 await blockedPage.click("button[type=submit]");
 await blockedPage.waitForSelector("#totp", { timeout: 15000 });

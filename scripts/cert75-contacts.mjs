@@ -15,7 +15,7 @@ import process from "node:process";
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket75";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3239"}`;
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -89,24 +89,24 @@ function expectNone(value, label) {
 }
 
 // ===========================================================================
-// Owner sign-in with fresh TOTP enrollment (scratch db).
+// Owner sign-in with fresh TOTP enrollment (scratch db, username flow).
 // ===========================================================================
 await page.goto(`${BASE}/dashboard/login`);
 await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
+await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
+await page.getByRole("button", { name: "Begin enrollment" }).click();
+await page.waitForSelector("code", { timeout: 60000 });
 const totp = URI.parse(`otpauth://totp/x?secret=${(await page.textContent("code")).trim()}`);
 await page.fill("#totp", totp.generate());
 await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
+// Full sign-in with the second factor: the credentials stage flips to the
+// TOTP stage on the same page.
+await page.waitForSelector("#username", { timeout: 15000 });
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
 await page.waitForSelector("#totp", { timeout: 15000 });

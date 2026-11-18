@@ -22,7 +22,7 @@ const OUT =
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3222"}`;
 const DB_PATH =
   process.env.CHATBOT_DB ?? ".scratch/college-website-chat/ticket66.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -50,21 +50,13 @@ for (let attempt = 0; ; attempt++) {
 }
 
 // Any chatbot route initializes the service singleton (migrations + seed
-// rules); healthz alone does not — and the enrollment wipe below needs the
-// tables.
+// rules); healthz alone does not.
 const topicsResponse = await fetch(`${BASE}/api/v1/topics`);
 if (!topicsResponse.ok) throw new Error(`topics fetch failed: ${topicsResponse.status}`);
 
-// A clean enrollment slate (same as the other screenshot scripts).
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-}
-db.close();
+// No local enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
+// Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner and lets the username sign-in below enroll it fresh.
 
 const CONTACT = {
   fullName: "Jane Doe",
@@ -313,24 +305,25 @@ if ((await (await postMessage(claimedChat, { text: "Claim test: please let me sp
 }
 const legacyHistory = await seedLegacyConversation("closed", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
 
-// Sign the owner in through the real UI (fresh TOTP enrollment).
+// Sign the owner in through the real UI (fresh TOTP enrollment, username
+// flow).
 await page.goto(`${BASE}/dashboard/login`);
 await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
+await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
+await page.getByRole("button", { name: "Begin enrollment" }).click();
+await page.waitForSelector("code", { timeout: 60000 });
 const secret = (await page.textContent("code")).trim();
 const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
 await page.fill("#totp", totp.generate());
 await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
+// Full sign-in with the second factor: the credentials stage flips to the
+// TOTP stage on the same page.
+await page.waitForSelector("#username", { timeout: 15000 });
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
 await page.waitForSelector("#totp", { timeout: 15000 });

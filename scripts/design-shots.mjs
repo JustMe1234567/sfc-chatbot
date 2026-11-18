@@ -4,11 +4,11 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { enrollAndSignIn, freshTotpSlate, waitForServer } from "./lib/shot-driver.mjs";
+import { enrollAndSignIn, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3122"}`;
-const EMAIL = process.env.SHOT_EMAIL ?? "owner@example.edu";
+const USERNAME = process.env.SHOT_USERNAME ?? "owner";
 const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-design-check-83";
 const WIDTHS = [
   [1280, 800, "desktop"],
@@ -18,16 +18,12 @@ const WIDTHS = [
 
 await waitForServer(BASE);
 
-// The enrollment flow needs a clean slate: wipe any prior TOTP enrollment
-// for the screenshot owner (the script enrolls fresh each run).
-freshTotpSlate("chatbot.db", EMAIL);
-
 const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();
 await page.setViewportSize({ width: 1280, height: 800 });
 
-await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
+await enrollAndSignIn(page, BASE, USERNAME, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 async function shot(path, name) {

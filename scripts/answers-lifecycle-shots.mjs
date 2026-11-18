@@ -23,7 +23,7 @@ const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-a
 const PORT = process.argv[3] ?? "3217";
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/answers58.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -41,11 +41,11 @@ const warm = await fetch(`${BASE}/api/v1/topics`);
 if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
 
 const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (!owner?.id) throw new Error(`the certification DB has no ${EMAIL} row`);
-db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
+// No enrollment wipe and no owner-row lookup here (ticket 80): the store is
+// hosted Postgres (staff in staff_members, TOTP factors in hosted Supabase
+// Auth), which node:sqlite cannot reach — this script's SQLite seeding pass
+// is parked on the run-substrate decision, and the username sign-in below
+// enrolls the fresh owner through the real UI.
 // A clean rule set: re-runs must not inherit earlier copies, archives, or
 // purges. Earlier runs' audit rows reference rule ids, so they detach first
 // — exactly the treatment the store's deleteAnswerRule gives them. The
@@ -58,8 +58,7 @@ db.prepare("DELETE FROM answer_rules").run();
 
 const at = new Date().toISOString();
 // Eight extras beside the service's three fixed-id seeds: the mockup's
-// subject matter plus a draft, all published rules credited to the owner so
-// the foot reads "Published by College Owner". The fixed-id seeds themselves
+// subject matter plus a draft. The fixed-id seeds themselves
 // are deleted and never counted on — a render worker re-seeding them mid-run
 // cannot disturb these counts (the ticket-55 lesson).
 const extras = [
@@ -137,7 +136,9 @@ for (const extra of extras) {
     extra.keywords ? JSON.stringify(extra.keywords) : null,
     extra.status,
     at,
-    extra.status === "published" ? owner.id : null,
+    // published_by placeholder: the owner's id lives in the hosted Postgres
+    // store, unreachable from this SQLite seeding pass (ticket 80 substrate).
+    null,
     extra.status === "published" ? at : null,
   );
 }
@@ -164,21 +165,21 @@ await page.setViewportSize({ width: 1280, height: 900 });
 // --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
 await page.goto(`${BASE}/dashboard/login`);
 await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
+await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
+await page.getByRole("button", { name: "Begin enrollment" }).click();
+await page.waitForSelector("code", { timeout: 60000 });
 const secret = (await page.textContent("code")).trim();
 const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
 await page.fill("#totp", totp.generate());
 await page.click("button[type=submit]");
 await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
+// Full sign-in with the second factor: the credentials stage flips to the
+// TOTP stage on the same page.
+await page.waitForSelector("#username", { timeout: 15000 });
+await page.fill("#username", USERNAME);
 await page.fill("#password", PASSWORD);
 await page.click("button[type=submit]");
 await page.waitForSelector("#totp", { timeout: 15000 });

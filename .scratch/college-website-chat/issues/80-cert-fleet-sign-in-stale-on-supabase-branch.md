@@ -1,7 +1,7 @@
 # 80: Cert/shot fleet's owner sign-in is stale on the Supabase auth branch
 
 **Category:** chore
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 ## Summary
 
@@ -62,8 +62,38 @@ wipes need a rethink (no-op, reframe, or removal) as part of the same pass.
 - [ ] `shot-driver.mjs` signs a freshly bootstrapped owner in through the
       current UI (username flow), and every script importing it works against
       a server whose auth substrate is provisioned.
-- [ ] The standalone certs' sign-in blocks match the current login/enroll
-      pages.
-- [ ] Enrollment wipes no longer reference dead Better-Auth-era tables, or
+      *(Implemented 2026-11-19 as an exact port of cert70's proven block —
+      `#username`/`#password` → `/dashboard/enroll` → "Begin enrollment" →
+      secret from `code` → same-page TOTP stage → `/dashboard/inbox` — but
+      the sign-in RUN itself stays parked on the out-of-scope substrate
+      decision below, so "works against a provisioned server" is unproven
+      end-to-end. `enrollAndSignIn` fails fast with instructions when it
+      meets an already-enrolled owner instead of the old silent wipe.)*
+- [x] The standalone certs' sign-in blocks match the current login/enroll
+      pages. *(cert28/29/66/67/74/75 + the eight shot scripts with their own
+      blocks ported to the username flow; verified by inspection against
+      `login/page.tsx`, `enroll/page.tsx`, and cert70's reference, not by a
+      RUN.)*
+- [x] Enrollment wipes no longer reference dead Better-Auth-era tables, or
       are explicitly reframed with a comment explaining what they wipe now.
-- [ ] No application source changes; scripts only.
+      *(Removal everywhere: `freshTotpSlate` deleted from the driver; the
+      inline `node:sqlite` wipes in cert29/66/67 and the shot scripts
+      dropped, each site carrying a comment that factors live in hosted
+      Supabase Auth and the owner must be freshly bootstrapped. The
+      SQLite-era *seeding* blocks stay untouched — parked on the same
+      substrate decision, and answers-shots/answers-lifecycle seed
+      attribution now passes a commented placeholder.)*
+- [x] No application source changes; scripts only.
+
+## Implementation notes (2026-11-19)
+
+- `SHOT_EMAIL` is renamed `SHOT_USERNAME` (default `owner`), and motion-shots
+  provisions via `bootstrap-owner.ts --username` — which is **one-shot per
+  owner**: it throws "differently provisioned staff account already exists"
+  against an owner it already linked, and a re-run would fail at sign-in
+  anyway (the driver cannot re-derive an earlier run's factor). The fleet's
+  posture is now uniformly fail-fast on reused owners, pending the substrate
+  decision.
+- Still parked (needs the maintainer's substrate yes, unchanged from the
+  out-of-scope section): actually running any owner-UI script, and porting
+  each script's SQLite-era seeding pass to the chosen store.

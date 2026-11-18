@@ -8,21 +8,18 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
 import {
   assertDemoOriginEmbeddable,
   enrollAndSignIn,
-  freshTotpSlate,
   signInWithTotp,
   waitForServer,
 } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3125"}`;
-const EMAIL = process.env.SHOT_EMAIL ?? "owner@example.edu";
+const USERNAME = process.env.SHOT_USERNAME ?? "owner";
 const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-motion-check-31";
-const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/motion-demo.db";
 
 await waitForServer(BASE);
 // The widget steps drive the demo page, so the origin must be an allowed
@@ -33,22 +30,20 @@ await assertDemoOriginEmbeddable(BASE);
 // A service route initializes migrations + seeds; healthz alone does not.
 await fetch(`${BASE}/api/v1/topics`);
 
-// Clean enrollment slate (same as the other screenshot drivers).
-freshTotpSlate(DB_PATH, EMAIL);
-
-// Provision the screenshot owner if this scratch DB is fresh.
-const seedDb = new DatabaseSync(DB_PATH);
-const exists = seedDb.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-seedDb.close();
-if (!exists) {
-  const { execFileSync } = await import("node:child_process");
-  execFileSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/bootstrap-owner.ts",
-    "--email", EMAIL, "--password", PASSWORD, "--name", "Olive Owner"], {
-    cwd: process.cwd(),
-    env: { ...process.env },
-    stdio: "inherit",
-  });
-}
+// Provision the screenshot owner: one-shot per owner (bootstrap throws
+// "differently provisioned staff account already exists" against an owner it
+// already linked to Supabase Auth, and re-runs fail at sign-in anyway — the
+// driver cannot re-derive an earlier run's factor). There is no local table
+// to probe first: staff lives in the Postgres store and hosted Supabase
+// Auth, so the SQLite-era enrollment wipe and "user" existence check are
+// gone (ticket 80).
+const { execFileSync } = await import("node:child_process");
+execFileSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/bootstrap-owner.ts",
+  "--username", USERNAME, "--password", PASSWORD, "--name", "Olive Owner"], {
+  cwd: process.cwd(),
+  env: { ...process.env },
+  stdio: "inherit",
+});
 
 const browser = await chromium.launch();
 mkdirSync(OUT, { recursive: true });
@@ -174,7 +169,7 @@ mkdirSync(OUT, { recursive: true });
   const page = await context.newPage();
   page.on("pageerror", (error) => console.log("PAGE ERROR:", String(error).slice(0, 200)));
   await page.setViewportSize({ width: 1280, height: 800 });
-  const totp = await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
+  const totp = await enrollAndSignIn(page, BASE, USERNAME, PASSWORD);
   console.log("signed in");
 
   const buttonDuration = await page
@@ -196,7 +191,7 @@ mkdirSync(OUT, { recursive: true });
   const reduceContext = await browser.newContext({ reducedMotion: "reduce" });
   const reducePage = await reduceContext.newPage();
   await reducePage.setViewportSize({ width: 1280, height: 800 });
-  await signInWithTotp(reducePage, BASE, EMAIL, PASSWORD, totp);
+  await signInWithTotp(reducePage, BASE, USERNAME, PASSWORD, totp);
   const reduceButton = await reducePage
     .locator("button")
     .first()
