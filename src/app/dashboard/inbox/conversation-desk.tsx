@@ -117,6 +117,12 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
         (event) => event.conversationId !== selectedId,
       )
     : [];
+  // The repeating needs-human alert (ticket 77) follows the live desk's
+  // state, not attention events: a viewed-but-unclaimed conversation still
+  // needs a human, and Incoming is exactly the desk's awaiting_staff list —
+  // one boolean for the whole desk, so every waiting conversation shares a
+  // single alert cycle. History (no desk scan) never sounds.
+  const needsHuman = desk !== null && desk.incoming.length > 0;
   // The selected conversation's open email/phone request (ticket 69): the
   // pane shows the persistent Contact Me chip and the Mark contacted action
   // until staff complete it. Viewing the transcript never clears it.
@@ -187,7 +193,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 History
               </Link>
             </div>
-            <AttentionSounds events={attentionEvents} />
+            <AttentionSounds events={attentionEvents} needsHuman={needsHuman} />
             {desk ? (
               <>
                 <h2>
