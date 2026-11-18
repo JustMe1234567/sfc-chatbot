@@ -22,8 +22,8 @@ import { repoRoot } from "../src/paths";
  * stops — current alert and future repeats — the moment the state clears
  * or sounds are muted. Unmuting with a conversation still waiting starts a
  * new cycle without waiting for another event. Ordinary new-message
- * attention keeps 44's one-cue behavior, and the test button plays one
- * louder alert without starting a cycle.
+ * attention keeps 44's one-cue behavior. The ticket's original
+ * test-notification control was removed at the user's 2026-11-19 review.
  */
 
 /** A manual clock: handlers fire in time order as the test advances, so
@@ -233,7 +233,7 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     );
   });
 
-  it("sounds escalation batches at the alert gain, keeps ordinary cues soft, and keeps the test button out of the cycle", async () => {
+  it("sounds escalation batches at the alert gain and keeps ordinary cues soft", async () => {
     const source = await readFile(
       path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
       "utf8",
@@ -249,11 +249,10 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     // The burst re-checks for a still-sounding cue at fire time — a beat
     // that started since the burst was scheduled is never overlapped.
     expect(source).toContain("fireBurst");
-    // The test button plays one louder alert — no cycle start, no adoption.
-    const testFn = between(source, "function testSound", "return (");
-    expect(testFn).toContain("ALERT_GAIN");
-    expect(testFn).not.toContain("startAlertCycle");
-    expect(testFn).not.toContain("adopt(");
+    // The user's 2026-11-19 review amendment removed the test-sound
+    // control entirely (77's original test-button requirement is moot).
+    expect(source).not.toContain("Test notification sound");
+    expect(source).not.toContain("testSound");
   });
 
   it("stops alerts — never ordinary cues — on mute, and restarts on unmute while a conversation still needs a human", async () => {
@@ -261,7 +260,7 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
       path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
       "utf8",
     );
-    const toggle = between(source, "function toggleMuted", "function testSound");
+    const toggle = between(source, "function toggleMuted", "return (");
     expect(toggle).toContain("stopAlertCycle()");
     expect(toggle).toContain("startAlertCycle()");
     // Only alert-typed sounds are stopped mid-flight; an ordinary cue

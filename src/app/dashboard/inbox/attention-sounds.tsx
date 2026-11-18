@@ -413,28 +413,6 @@ export default function AttentionSounds({
     }
   }
 
-  function testSound(): void {
-    const context = ensureContext();
-    if (!context) return;
-    context
-      .resume()
-      .then(() => {
-        // One louder alert for the preview (ticket 77) — never a repeating
-        // cycle — and never overlapping a sound already in flight.
-        const wait = Math.max(0, chimeEndsAtRef.current - Date.now());
-        window.setTimeout(() => {
-          try {
-            chimeEndsAtRef.current = playChime(context, ALERT_GAIN, true);
-          } catch {
-            // Browser or device audio refusal leaves visual alerts available.
-          }
-        }, wait);
-      })
-      .catch(() => {
-        // Browser or device audio refusal leaves visual alerts available.
-      });
-  }
-
   return (
     <div>
       <button
@@ -446,14 +424,6 @@ export default function AttentionSounds({
       >
         <span aria-hidden="true">{muted ? "🔇" : "🔔"}</span>
         Notification sounds {muted ? "off" : "on"}
-      </button>
-      <button
-        type="button"
-        className={styles.soundToggle}
-        onClick={testSound}
-        title="Play the notification cue now"
-      >
-        Test notification sound
       </button>
     </div>
   );
