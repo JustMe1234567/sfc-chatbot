@@ -35,7 +35,7 @@ The in-dashboard signal that a conversation has something new for staff — a fr
 The conversation desk's three-tier coloring (ticket 44, re-colored in ticket 66): Needs human (an escalation waiting for a claim, green) outranks New message (standing attention, red) outranks Active (a live bot or claimed chat with nothing unread, yellow). Every tier pairs its color with visible text or a dot carrying an accessible name, applied consistently to list rows, badges, counts, and the selected conversation's header. History rows are the archive and carry no treatment.
 
 **Notification sound**:
-The desk's optional cue (ticket 44): one short tone when a conversation newly needs staff — at most once per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
+The desk's alert (tickets 44, 77): a louder cue when a conversation needs staff. While any live desk conversation sits in Needs human, the alert repeats every 30 seconds — measured from the start of one alert to the start of the next, each alert sounding 6 seconds at most — and stops the moment the state clears or sounds are muted; unmuting with a conversation still waiting restarts the cycle. Ordinary new-message attention keeps 44's behavior: one soft cue per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
 
 **Take over**:
 The staff-facing label for claiming (ticket 45) — the atomic assignment of a waiting conversation to exactly one staff member. Product copy says Take over/Taking over; the domain keeps claim/claimed in state values, API paths, and audit action ids.
@@ -58,6 +58,10 @@ The message history shared by a visitor, the bot, and any administrator who take
 **Staff account**:
 The named dashboard membership of a college employee. An owner assigns its username, initial password, and owner/staff/editor role; dashboard access begins only after the employee enrolls an authenticator.
 
+**Owner**:
+The highest-privilege staff role, responsible for security-sensitive dashboard configuration and staff administration.
+_Avoid_: Superadmin, administrator
+
 **Staff credential reset**:
 An owner-issued password or authenticator reset for an existing staff account. Password resets revoke every session but preserve the authenticator; authenticator resets revoke every session and require enrollment of a new factor.
 
@@ -66,6 +70,10 @@ The controlled process for a staff member who has lost their authenticator. An o
 
 **Visitor session**:
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.
+
+**Embed allowlist**:
+The owner-managed set of website origins whose every page may host the chatbot widget. Production chat is available only inside an allowed website; local development origins and standalone testing are permitted separately and never become production entries.
+_Avoid_: Script API key, domain whitelist
 
 **Presence**:
 Whether a visitor is still on the page, judged from how recently their credential made an authorized request. Distinct from **analytics presence**, which needs no credential.

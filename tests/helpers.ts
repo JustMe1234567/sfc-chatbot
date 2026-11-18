@@ -55,12 +55,20 @@ export function useTempDatabase(): string {
 /**
  * Postgres mode: creates the per-file database (dropping any leftover) before
  * the service singleton migrates it. No-op on SQLite. Called from
- * warmChatbotService so every file gets it for free.
+ * warmChatbotService so every file gets it for free — and safe to call
+ * again in the same process (a second warm call must not wipe the database
+ * the cached service singleton is already serving, which is exactly what a
+ * second DROP+CREATE did to ticket 74's describe-level re-warm).
  */
+let provisionedDbName: string | null = null;
+
 export async function provisionTestDatabase(): Promise<void> {
   const adminUrl = testPostgresUrl();
   const dbName = process.env.CHATBOT_TEST_PG_DBNAME;
   if (!adminUrl || !dbName) {
+    return;
+  }
+  if (provisionedDbName === dbName) {
     return;
   }
   const { withPostgres } = await import("../src/db/postgres");
@@ -69,6 +77,7 @@ export async function provisionTestDatabase(): Promise<void> {
     await sql.unsafe(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
     await sql.unsafe(`CREATE DATABASE ${dbName}`);
   });
+  provisionedDbName = dbName;
 }
 
 /**

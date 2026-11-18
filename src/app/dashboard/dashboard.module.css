@@ -3307,3 +3307,31 @@ a:focus-visible {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* The owner-managed embed allowlist (ticket 76): one removable origin per
+   row, with the normalized origin named plainly and its Remove action. */
+.allowlistList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.allowlistRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.allowlistRow button {
+  margin-top: 0;
+}
+
+.allowlistOrigin {
+  font: 13px/1.4 system-ui, sans-serif;
+  color: var(--ink);
+  word-break: break-all;
+}

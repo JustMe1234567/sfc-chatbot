@@ -1,18 +1,4 @@
 import type { NextConfig } from "next";
-import { trustedOrigins } from "./src/config";
-
-/**
- * The frame-ancestors list for /widget/frame (ticket 21): the CORS trust
- * list from src/config — the configured chatbot origin itself plus, outside
- * production, both loopback spellings the local embed checks use. The
- * widget must stay embeddable from those origins, so it names them
- * explicitly instead of locking to 'self' and never gets X-Frame-Options.
- */
-function widgetFrameAncestors(): string {
-  return trustedOrigins()
-    .map((origin) => new URL(origin).origin)
-    .join(" ");
-}
 
 const nextConfig: NextConfig = {
   // The widget iframe is embedded cross-origin from a college-site origin,
@@ -23,8 +9,12 @@ const nextConfig: NextConfig = {
 
   // Clickjacking guards (ticket 21): staff dashboard and visitor return
   // pages have no reason to be framed, so they lock to 'self' (plus
-  // X-Frame-Options DENY for older browsers). The widget frame is the one
-  // surface that must remain cross-origin embeddable.
+  // X-Frame-Options DENY for older browsers).
+  //
+  // The widget frame is NOT listed here (ticket 76): its frame-ancestors
+  // policy is the owner-managed embed allowlist, which must track saves
+  // immediately, so src/proxy.ts computes it per request from the stored
+  // setting instead of a build-time header.
   async headers() {
     const selfOnly = [
       { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
@@ -38,15 +28,6 @@ const nextConfig: NextConfig = {
       {
         source: "/return",
         headers: selfOnly,
-      },
-      {
-        source: "/widget/frame",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: `frame-ancestors ${widgetFrameAncestors()}`,
-          },
-        ],
       },
     ];
   },

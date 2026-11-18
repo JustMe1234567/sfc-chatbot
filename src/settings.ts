@@ -7,6 +7,10 @@ import {
   type ResolvedChatheadConfig,
 } from "./domain/branding";
 import { normalizeText } from "./domain/matcher";
+import {
+  DEFAULT_EMBED_ALLOWLIST_ORIGIN,
+  normalizeEmbedOrigin,
+} from "./domain/embedAllowlist";
 import type { SupportHours } from "./domain/types";
 import { DEFAULT_WELCOME_MESSAGE, isValidWelcomeMessage } from "./domain/welcome";
 
@@ -124,6 +128,78 @@ export function isValidHandoffOptionList(options: unknown): options is string[] 
 export async function seedHandoffOptions(db: AppDatabase): Promise<void> {
   if ((await getSetting(db, HANDOFF_OPTIONS_KEY)) === null) {
     await setHandoffOptions(db, [...DEFAULT_HANDOFF_OPTIONS]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Embed allowlist (ticket 76): the owner-managed set of exact website origins
+// whose pages may host the chatbot widget. One JSON row distinguishes
+// never-configured from explicitly empty: an absent row seeds the Springfield
+// College origin on boot, while a saved "[]" stays empty across restarts and
+// upgrades. Enforcement reads fail closed — a corrupt row allows nothing.
+
+const EMBED_ALLOWLIST_KEY = "embed_allowlist";
+
+export type EmbedAllowlistSetting =
+  | { kind: "unconfigured" }
+  | { kind: "invalid" }
+  | { kind: "set"; origins: string[] };
+
+export async function readEmbedAllowlist(db: AppDatabase): Promise<EmbedAllowlistSetting> {
+  const raw = await getSetting(db, EMBED_ALLOWLIST_KEY);
+  if (raw === null) {
+    return { kind: "unconfigured" };
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return { kind: "invalid" };
+    }
+    const origins: string[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== "string") {
+        return { kind: "invalid" };
+      }
+      // Entries were validated at write time; a hand-edited row must never
+      // smuggle a non-HTTPS or wildcard origin into enforcement, so any
+      // entry that fails the rules disqualifies the whole row.
+      const normalized = normalizeEmbedOrigin(entry);
+      if (!normalized.ok) {
+        return { kind: "invalid" };
+      }
+      if (!origins.includes(normalized.origin)) {
+        origins.push(normalized.origin);
+      }
+    }
+    return { kind: "set", origins };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+/**
+ * The origins enforcement sees right now: the stored list when one was
+ * saved, the Springfield College seed while genuinely unconfigured, and
+ * nothing when the row is corrupt — fail closed, never accidental access.
+ */
+export async function getEmbedAllowlistOrigins(db: AppDatabase): Promise<string[]> {
+  const setting = await readEmbedAllowlist(db);
+  if (setting.kind === "unconfigured") {
+    return [DEFAULT_EMBED_ALLOWLIST_ORIGIN];
+  }
+  return setting.kind === "set" ? setting.origins : [];
+}
+
+/** Writes the full list; an empty list is a deliberate save and persists. */
+export async function setEmbedAllowlist(db: AppDatabase, origins: string[]): Promise<void> {
+  await setSetting(db, EMBED_ALLOWLIST_KEY, JSON.stringify(origins));
+}
+
+/** Insert-if-absent, mirroring the other seeds: the owner owns the value
+ *  from the first boot, so restarts never reseed a deliberately empty list. */
+export async function seedEmbedAllowlist(db: AppDatabase): Promise<void> {
+  if ((await getSetting(db, EMBED_ALLOWLIST_KEY)) === null) {
+    await setEmbedAllowlist(db, [DEFAULT_EMBED_ALLOWLIST_ORIGIN]);
   }
 }
 

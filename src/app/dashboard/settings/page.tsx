@@ -6,10 +6,12 @@ import {
   getChatbotIconVersion,
   getChatheadConfig,
   getDashboardFaviconVersion,
+  getEmbedAllowlistOrigins,
 } from "@/settings";
 import { getChatbotService } from "@/db/service";
 import { chatheadForeground } from "@/domain/branding";
 import BrandingSettings from "./branding-settings";
+import EmbedAllowlistSettings from "./embed-allowlist-settings";
 import PasswordSettings from "./password-settings";
 import SupportHoursForm from "../notifications/support-hours-form";
 import RetentionForm from "../notifications/retention-form";
@@ -39,13 +41,14 @@ export default async function SettingsPage() {
   }
 
   const { db, store } = await getChatbotService();
-  const [iconVersion, faviconVersion, chathead, supportHours, retentionDays, lastRun] = await Promise.all([
+  const [iconVersion, faviconVersion, chathead, supportHours, retentionDays, lastRun, embedOrigins] = await Promise.all([
     getChatbotIconVersion(db),
     getDashboardFaviconVersion(db),
     getChatheadConfig(db),
     getSupportHours(db),
     getTranscriptRetentionDays(db),
     latestRetentionRun(store),
+    getEmbedAllowlistOrigins(db),
   ]);
 
   return (
@@ -59,10 +62,16 @@ export default async function SettingsPage() {
       <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <PasswordSettings />
         {guard.staff.role === "owner" ? (
-          <div className={styles.alertSettingsGrid}>
-            <SupportHoursForm initialHours={supportHours} />
-            <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
-          </div>
+          <>
+            <div className={styles.alertSettingsGrid}>
+              <SupportHoursForm initialHours={supportHours} />
+              <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
+            </div>
+            {/* Security-sensitive owner configuration (ticket 76): which
+                websites may host the widget. Staff and editors never see
+                the card and their API requests are refused. */}
+            <EmbedAllowlistSettings initialOrigins={embedOrigins} />
+          </>
         ) : null}
         <BrandingSettings
           initial={{

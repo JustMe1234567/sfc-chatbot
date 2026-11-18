@@ -495,12 +495,16 @@ describe("branding settings API (ticket 70)", () => {
     expect(content).toContain('chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png"');
     expect(content).toContain('postMessage({ type: "sfcw:branding", config }, "*")');
     // The loader applies branding only from the frame's forwarded message —
-    // it never calls the API from the college page context — and sizes the
-    // launcher from the resolved width and height, with the corner radius
-    // at 25% of the smaller dimension (ticket 71) and the frame hanging
-    // above the configured height.
+    // branding itself never calls the API from the college page context —
+    // and sizes the launcher from the resolved width and height, with the
+    // corner radius at 25% of the smaller dimension (ticket 71) and the
+    // frame hanging above the configured height. (Ticket 76 narrows the
+    // loader's "no API calls" property to exactly one credential-free
+    // pre-render ask — the eligibility check — so the pin counts that one
+    // path instead of forbidding the prefix.)
     const loader = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
-    expect(loader).not.toContain("/api/v1/");
+    expect(loader).toContain("/api/v1/embed-eligibility");
+    expect(loader.match(/api\/v1\//g)).toHaveLength(1);
     expect(loader).toContain('type === "sfcw:branding"');
     expect(loader).toContain("width:var(--sfcw-w,64px);height:var(--sfcw-h,64px)");
     expect(loader).toContain("border-radius:calc(min(var(--sfcw-w,64px),var(--sfcw-h,64px)) * .25)");

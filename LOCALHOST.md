@@ -4,15 +4,15 @@ This file is the shared localhost handoff for Codex, Zcode, and other repository
 
 ## Current state
 
-- Status: running
+- Status: running (listener confirmed on port 3000, owner unknown — not started by the ticket-76 session)
 - Base URL: http://localhost:3000
 - Chatbot demo: http://localhost:3000/demo/wordpress-test-page.html
 - Admin dashboard: http://localhost:3000/dashboard
-- Started with: scheduled task `SFCChatbotLocalhost-Codex` running `next dev`
-- Persistent launcher: Windows scheduled task; prior diagnostic stdout/stderr remain in `.scratch/localhost-dev.out.log` and `.scratch/localhost-dev.err.log`
-- Process ID: 30060 (Next.js listener)
-- Verified: port 3000 is listening after loading the database-backed session validation fix
-- Last checked: 2026-11-18 22:46:46 +08:00 (Asia/Singapore)
+- Started with: unknown (pre-existing listener, PID 27132 at time of check — possibly the `SFCChatbotLocalhost-Codex` scheduled task or a concurrent session's `npm run dev`)
+- Process ID: 27132 (Next.js listener on 3000)
+- Verified: 2026-11-19 02:06 +08:00, listener only — no HTTP checks by this session (it runs with its own environment; do not assume the scratch cert database)
+- Ticket-76 cert server: STOPPED again — ran `next start` on port 4376 against scratch Postgres `sfc_cert76` (dropped) for the embed-allowlist certification; orphans on 4376 killed, nothing left listening there
+- Last checked: 2026-11-19 02:06:09 +08:00 (Asia/Singapore)
 
 ## Check before visiting or starting
 
