@@ -130,20 +130,47 @@ describe("staff authentication gate", () => {
     expect(JSON.stringify(body)).not.toContain(STAFF_PASSWORD);
   });
 
-  it("rate limits repeated failed sign-ins from one address", async () => {
+  it("blocks an IP after ten unknown-username failures and still admits valid staff (ticket 81)", { timeout: 120_000 }, async () => {
     const ip = "10.77.7.7";
-    let throttled = false;
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 10; i++) {
       const response = await authRequest(null, "/api/auth/sign-in/username", {
-        body: { username: "registrar", password: "not-the-password" },
+        body: { username: "no-such-staff", password: "not-the-password" },
         ip,
       });
-      if (response.status === 429) {
-        throttled = true;
-        break;
-      }
+      expect(response.status).toBe(401);
     }
-    expect(throttled).toBe(true);
+    // The eleventh attempt is rejected by the block — with the same generic
+    // body as any failure, so the status tells the attacker nothing new.
+    const blocked = await authRequest(null, "/api/auth/sign-in/username", {
+      body: { username: "no-such-staff", password: "not-the-password" },
+      ip,
+    });
+    expect(blocked.status).toBe(401);
+    const blockedBody = (await blocked.json()) as { error?: { message?: string } };
+    expect(blockedBody.error?.message).toBe("Username or password is incorrect.");
+
+    const { getChatbotService } = await import("../src/db/service");
+    const { db } = await getChatbotService();
+    const events = await db.all<{ outcome: string; reason: string }>(
+      "SELECT outcome, reason FROM login_events WHERE ip = ? ORDER BY created_at, id",
+      ip,
+    );
+    // Ten ordinary failures, then the eleventh attempt rejected by the
+    // block (same-millisecond rows make row order unstable, so the blocked
+    // attempt is asserted as its own subset).
+    expect(events.filter((event) => event.outcome === "failure")).toHaveLength(10);
+    const blockedEvents = events.filter((event) => event.outcome === "blocked");
+    expect(blockedEvents).toHaveLength(1);
+    expect(blockedEvents[0]?.reason).toBe("ip_blocked");
+
+    // The carve-out: a valid username with the correct password signs in
+    // from the blocked IP mid-block.
+    const jar = new CookieJar();
+    const success = await authRequest(jar, "/api/auth/sign-in/username", {
+      body: { username: "registrar", password: STAFF_PASSWORD },
+      ip,
+    });
+    expect(success.ok).toBe(true);
   });
 });
 

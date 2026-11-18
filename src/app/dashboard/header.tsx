@@ -11,7 +11,7 @@ import {
 } from "./sidebar-preference";
 import styles from "./dashboard.module.css";
 
-export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "analytics" | "settings";
+export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "analytics" | "settings" | "logs";
 
 const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] = [
   { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] },
@@ -21,6 +21,9 @@ const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] 
   { area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] },
   { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] },
   { area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] },
+  // Login observability (ticket 81): every dashboard sign-in attempt, its
+  // suspicious flags, and the deletion controls — owners alone.
+  { area: "logs", href: "/dashboard/logs", label: "Logs", roles: ["owner"] },
   // Branding settings (ticket 70): every dashboard role may configure the
   // chatbot icon, the dashboard favicon, and the chathead appearance.
   { area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["owner", "staff", "editor"] },
@@ -106,6 +109,18 @@ const ICONS: Record<HeaderArea, ReactNode> = {
     <Mark>
       <path d="M20.5 10.5L20.5 13.5L18.2 13.8L17.6 15.1L19.0 16.9L16.9 19.0L15.1 17.6L13.8 18.2L13.5 20.5L10.5 20.5L10.2 18.2L8.9 17.6L7.1 19.0L5.0 16.9L6.4 15.1L5.8 13.8L3.5 13.5L3.5 10.5L5.8 10.2L6.4 8.9L5.0 7.1L7.1 5.0L8.9 6.4L10.2 5.8L10.5 3.5L13.5 3.5L13.8 5.8L15.1 6.4L16.9 5.0L19.0 7.1L17.6 8.9L18.2 10.2Z" />
       <circle cx="12" cy="12" r="3.1" />
+    </Mark>
+  ),
+  logs: (
+    // A hand-plotted scroll (ticket 81): two rolled ends with the unrolled
+    // paper between them and one short line suggesting writing — the
+    // sign-in record — on the same 24-grid as every other mark.
+    <Mark>
+      <rect x="3.5" y="4.5" width="4" height="15" rx="2" />
+      <rect x="16.5" y="4.5" width="4" height="15" rx="2" />
+      <path d="M7.5 7.5h9" />
+      <path d="M7.5 16.5h9" />
+      <path d="M10.5 12h3" />
     </Mark>
   ),
 };

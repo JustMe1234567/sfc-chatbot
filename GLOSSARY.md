@@ -68,6 +68,15 @@ An owner-issued password or authenticator reset for an existing staff account. P
 **Authenticator recovery**:
 The controlled process for a staff member who has lost their authenticator. An owner or trusted operator verifies the person, revokes their sessions and old factor, then requires enrollment of a new authenticator before dashboard access resumes.
 
+**Login log**:
+The complete owner-held record of dashboard sign-in attempts (ticket 81): every success, failure, and blocked attempt, each with the attempted username, outcome, reason, client IP, browser user agent, and time. Owners may delete entries individually, in checkbox-selected ranges, or all at once; the login retention period removes the rest.
+
+**Suspicious login**:
+A login event flagged for owner review because it matches a suspicious pattern — repeated password failures against one staff account from one IP, a successful sign-in from an IP that account has never used before, or repeated attempts against usernames that don't exist or belong to disabled accounts. Flagging is detection only: it never blocks, sounds, or locks anything; flagged events surface in the Logs tab's suspicious view.
+
+**IP block**:
+The temporary rejection of sign-in attempts that use a non-staff username from one client IP (ticket 81): ten such failures within a rolling ten minutes block that IP's non-staff-username attempts (unknown or disabled accounts) for one hour, with no manual release. Attempts with a valid staff username are never blocked — a correct password still signs in from a blocked IP.
+
 **Visitor session**:
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.
 

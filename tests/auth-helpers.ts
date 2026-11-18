@@ -37,7 +37,7 @@ let requestCounter = 0;
 export async function authRequest(
   jar: CookieJar | null,
   path: string,
-  options: { method?: "GET" | "POST"; body?: unknown; ip?: string } = {},
+  options: { method?: "GET" | "POST"; body?: unknown; ip?: string; userAgent?: string } = {},
 ): Promise<Response> {
   const { POST, GET } = await import("../src/app/api/auth/[...all]/route");
   const method = options.method ?? "POST";
@@ -48,6 +48,10 @@ export async function authRequest(
     "Content-Type": "application/json",
     "x-forwarded-for": ip,
     origin: TEST_ORIGIN,
+    // The login log captures the browser's user agent (ticket 81); a fixed
+    // synthetic value keeps those assertions deterministic, overridable per
+    // request when a test proves the pass-through.
+    "user-agent": options.userAgent ?? "sfc-test-suite/1",
   };
   const cookie = jar?.header();
   if (cookie) {

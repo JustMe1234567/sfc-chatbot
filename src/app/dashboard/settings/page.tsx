@@ -12,10 +12,11 @@ import { getChatbotService } from "@/db/service";
 import { chatheadForeground } from "@/domain/branding";
 import BrandingSettings from "./branding-settings";
 import EmbedAllowlistSettings from "./embed-allowlist-settings";
+import LoginRetentionForm from "./login-retention-form";
 import PasswordSettings from "./password-settings";
 import SupportHoursForm from "../notifications/support-hours-form";
 import RetentionForm from "../notifications/retention-form";
-import { getSupportHours, getTranscriptRetentionDays } from "@/settings";
+import { getSupportHours, getLoginRetentionDays, getTranscriptRetentionDays } from "@/settings";
 import { latestRetentionRun } from "@/domain/retention";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
@@ -41,7 +42,16 @@ export default async function SettingsPage() {
   }
 
   const { db, store } = await getChatbotService();
-  const [iconVersion, faviconVersion, chathead, supportHours, retentionDays, lastRun, embedOrigins] = await Promise.all([
+  const [
+    iconVersion,
+    faviconVersion,
+    chathead,
+    supportHours,
+    retentionDays,
+    lastRun,
+    embedOrigins,
+    loginRetentionDays,
+  ] = await Promise.all([
     getChatbotIconVersion(db),
     getDashboardFaviconVersion(db),
     getChatheadConfig(db),
@@ -49,6 +59,7 @@ export default async function SettingsPage() {
     getTranscriptRetentionDays(db),
     latestRetentionRun(store),
     getEmbedAllowlistOrigins(db),
+    getLoginRetentionDays(db),
   ]);
 
   return (
@@ -66,6 +77,9 @@ export default async function SettingsPage() {
             <div className={styles.alertSettingsGrid}>
               <SupportHoursForm initialHours={supportHours} />
               <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
+              {/* Login retention (ticket 81): how long sign-in attempts
+                  live in the owner-only Logs tab. */}
+              <LoginRetentionForm initialDays={loginRetentionDays} />
             </div>
             {/* Security-sensitive owner configuration (ticket 76): which
                 websites may host the widget. Staff and editors never see

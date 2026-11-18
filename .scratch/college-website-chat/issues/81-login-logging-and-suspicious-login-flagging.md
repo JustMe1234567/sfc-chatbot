@@ -1,0 +1,45 @@
+# 81: Login logging, suspicious-login flagging, and an owner-only Logs tab
+
+Status: ready-for-human
+
+## What to build
+
+Make dashboard sign-ins observable: every attempt is logged, patterns are flagged as suspicious, and unknown-username hammering earns a temporary IP block. All of it is visible only to the owner. This is the replacement control for ticket 82's MFA removal, and it lands first — there is never a window with neither control.
+
+- **Log every sign-in attempt** (success, failure, blocked) at the one credential path (`sign-in/username` in `src/auth/supabase-provider.ts`): attempted username, outcome, failure reason (unknown username, bad password, disabled account, blocked, …), client IP (the ticket-20 trusted-header derivation — `x-vercel-forwarded-for`/`x-real-ip` in prod, first `x-forwarded-for` entry in dev), user agent (captured nowhere today), and timestamp. New `login_events` table with SQLite + Postgres migrations in both dialects.
+- **IP block**: failed attempts with a **non-staff username** from one IP, counted in a rolling 10-minute window; the 10th blocks that IP for **1 hour**. While blocked, non-staff-username attempts from that IP are rejected and logged with outcome "blocked". Attempts with a **valid** username are processed normally even from a blocked IP — correct password signs in, wrong password is an ordinary logged failure. Valid-username failures never trigger or extend a block. No manual unblock: the 1-hour auto-expiry is the only release. Blocked attempts still land in the log.
+- **Suspicious flagging** — detection only (never blocks, no sound, no auto-lock), evaluated as each event is written. Defaults, adjustable at review:
+  - (a) ≥ 5 failed attempts against one **valid** username from one IP within 10 minutes — the 5th and later events are flagged;
+  - (b) a **successful** sign-in from an IP that account has never successfully signed in from before — flagged (baseline = prior successful events, so owners clearing logs reset the baseline; accepted at grilling);
+  - (c) ≥ 3 failed attempts against **unknown or disabled** usernames from one IP within 10 minutes — the 3rd and later events are flagged (the IP block takes over at 10).
+- **Owner-only Logs tab**: a new dashboard nav item named **Logs** with a hand-plotted scroll-or-paper SVG in the `Mark` idiom (ticket-72 precedent). Owners only — the app's single elevated role; staff and editors get no nav item, the page refuses them, and the API refuses them (the ticket-76 owner double gate: role check on the page, `requireStaff(request.headers, { roles: ["owner"] })` on every route). Second and third owners need nothing new: `bootstrap-owner` already creates multiple owners, and no "admin" role is added.
+- **Two views** on the tab: **Log in logs** (the complete attempt log, flagged rows visually marked) and **Suspicious logs** (the flagged subset).
+- **Deletion**: delete a single entry, delete checkbox-selected entries, and clear-all — each behind a confirm dialog (existing confirm patterns). Deletions themselves are not tracked anywhere.
+- **Retention**: owner-configurable setting, default 90 days, mirroring the transcript-retention pattern (owner settings card + the daily maintenance cron prunes expired events and reports the count).
+- **Fake/provider parity**: the test fake has always simulated a per-IP 10-failure→429 sign-in limit the real provider never had (`tests/auth-helpers.ts:43-44`, `tests/fake-auth-provider.ts:147-154`). The real rule above replaces it; the fake is aligned to the real semantics.
+
+## Acceptance criteria
+
+- Every sign-in attempt — success, failure, blocked — appears in the log with attempted username, outcome, reason, IP, user agent, and timestamp.
+- After 10 non-staff-username failures from one IP within a rolling 10 minutes, that IP's non-staff-username sign-ins are rejected for 1 hour and logged as "blocked"; a valid username with the correct password still signs in from the blocked IP mid-block; the block expires automatically with no manual release.
+- Criteria (a), (b), (c) flag events at the stated defaults; flagged events appear in the Suspicious logs view and are marked in the complete log.
+- The Logs tab is reachable only by owners: no nav item for staff/editors, page and API requests refused by the owner gate on both layers.
+- Single-entry delete, checkbox multi-delete, and clear-all each work behind a confirm dialog; deleted entries are gone.
+- The retention setting (default 90 days) prunes old events in the daily maintenance pass.
+- Tests cover store parity (both dialects), each flag criterion and its boundary, the block rule (threshold, window, expiry, valid-username carve-out), owner-only API gating, and the deletion actions; a cert script screenshots the Logs tab's two views, flag marking, and delete confirmations. Owner-UI cert RUNS need the hosted test project substrate (ticket 80's open decision gates the run, not the script).
+- `GLOSSARY.md` gains **Login log**, **Suspicious login**, and **IP block** entries (written at filing time; land with this ticket's commit).
+
+## Comments
+
+2026-11-19: Filed from the user's request ("remove the mfa on every accounts or users. and do logs instead and flagging for suspicious logins and will only be visible on admin sides like the owner"), sharpened through grill-with-docs. Settled decisions: the block triggers only on non-staff usernames — the user refined it mid-grill so a correct username + password always signs in even from a blocked IP, which also dissolves the campus shared-IP lockout worry; no manual unblock; three deletion actions each with confirms; two views on one tab named "Logs" with a scroll/paper icon; detection-only flagging (no sound, no lock, no ack workflow); owner-configurable 90-day retention; owners only (no new admin role). Flag defaults (5/10min per-account, first-seen IP, 3/10min unknown) are stated defaults the user can adjust at review. Ordering settled: this ticket lands before ticket 82.
+
+2026-11-19: Implemented and flipped ready-for-human. Every criterion is covered by `tests/login-log.test.ts` (22 tests, runs on SQLite and Postgres — store parity is the whole file passing on both dialects; full suites green on both: 565/570 SQLite, 567/570 Postgres, the skips being the unrelated restart-persistence file) plus a rewritten `tests/staff-auth-inbox.test.ts` block test replacing the fake's 10-failure→429 pin. Boundary decisions worth the review pass:
+
+- The pre-credential 400 (missing username or password) is **not** logged: the log's rows are credential attempts, and an empty username has nothing to show. Everything that reaches the credential path — success, any failure, blocked — lands in `login_events`.
+- Blocked attempts return the **identical generic 401 body** as ordinary failures (no 429 anywhere): a blocked attacker must not learn which usernames are real from the status code. The outcome is visible in the log only.
+- `username_known` is stored per event (the staff-username classification the criteria pivot on), so criterion (a) counts valid-username failures and (c) counts unknown-or-disabled ones even when an account's state changed between attempts.
+- `login_ip_blocks` is a separate table precisely so Clear log can never release a block — auto-expiry is the only release, as specified.
+- The two views render the **complete** log (no page cap — flagged in review and removed; the retention period bounds the table).
+- Success is recorded once the credential path has succeeded (username, password, account state all verified) even if the follow-up factor listing then errors: the session exists at that point, and the alternative would leave an attempt missing from the log entirely.
+- The cert script (`scripts/cert81-login-logs.mjs`) is written but **not run** — owner-UI cert runs stay gated by ticket 80's substrate decision, exactly as the ticket anticipates.
+- Code review findings fixed: the IP-block glossary entry now names the non-staff population precisely (unknown or disabled), and a speculative `limit` option was removed from the log list. Declined with reasons: the migrations README mapping table stays as-is (its rows already stop at 0018/0008 — 0019/0020 were never added either), and the twin (c)/block count queries stay separate (distinct concepts with independently adjustable constants).

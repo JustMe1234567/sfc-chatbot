@@ -5,6 +5,13 @@ import {
 } from "@supabase/ssr";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { trustedOrigins } from "../config";
+import { publicClientKey } from "../api/clientKey";
+import {
+  isIpBlocked,
+  recordBlockedLoginAttempt,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "../domain/loginLog";
 import type { AuthDependencies, AuthIdentity, AuthProvider } from "./provider";
 
 export interface SupabaseConfiguration {
@@ -224,23 +231,63 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
       const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
       const password = typeof body?.password === "string" ? body.password : "";
       if (!username || !password) return finish(authError("Username and password are required."));
+      // Ticket 81: every credential attempt is logged with the ticket-20
+      // client identity and the browser's user agent.
+      const ip = publicClientKey(request);
+      const userAgent = request.headers.get("user-agent");
       const member = await dependencies.db.get<{ id: string; supabaseUserId: string | null; banned: unknown }>(
         `SELECT "id", "supabaseUserId", "banned" FROM staff_members WHERE lower("username") = lower(?)`,
         username,
       );
+      // The classification the log's criteria pivot on: whether the
+      // attempted username belongs to a live staff account. Unknown or
+      // disabled names take the block path below; valid names never do.
+      const usernameIsStaff = Boolean(member?.supabaseUserId) && !enabled(member?.banned);
+      if (!usernameIsStaff && (await isIpBlocked(dependencies.db, ip))) {
+        // While the IP is blocked, attempts that name no live staff account
+        // are rejected outright and logged as blocked. The response is the
+        // identical generic failure — a blocked attacker must not learn
+        // which usernames are real from the status code.
+        await recordBlockedLoginAttempt(dependencies.db, { username, ip, userAgent });
+        return finish(authError("Username or password is incorrect.", 401));
+      }
       if (!member?.supabaseUserId || enabled(member.banned)) {
+        await recordLoginFailure(dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: member ? "disabled_account" : "unknown_username",
+          usernameIsStaff: false,
+        });
         return finish(authError("Username or password is incorrect.", 401));
       }
       const email = `${member.id}@staff.invalid`;
       const { data, error } = await client.auth.signInWithPassword({ email, password });
       if (error || !data.user || data.user.id !== member.supabaseUserId) {
+        await recordLoginFailure(dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "invalid_password",
+          usernameIsStaff: true,
+        });
         return finish(authError("Username or password is incorrect.", 401));
       }
       const staff = await staffForUser(data.user.id);
       if (!staff || enabled(staff.banned) || !enabled(staff.emailVerified)) {
         await client.auth.signOut({ scope: "global" });
+        await recordLoginFailure(dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "disabled_account",
+          usernameIsStaff: true,
+        });
         return finish(authError("Username or password is incorrect.", 401));
       }
+      // The credential path succeeded — this is the attempt's outcome even
+      // if the follow-up factor listing fails below.
+      await recordLoginSuccess(dependencies.db, { username, ip, userAgent });
       const factors = await client.auth.mfa.listFactors();
       if (factors.error) return finish(authError());
       return finish(

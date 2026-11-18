@@ -5,6 +5,13 @@ import type {
   AuthIdentity,
   AuthProvider,
 } from "../src/auth/provider";
+import { publicClientKey } from "../src/api/clientKey";
+import {
+  isIpBlocked,
+  recordBlockedLoginAttempt,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "../src/domain/loginLog";
 
 const COOKIE = "sfc_test_auth";
 
@@ -37,7 +44,6 @@ export interface FakeStaffRegistration {
 class FakeAuthProvider implements AuthProvider {
   readonly users = new Map<string, FakeUser>();
   readonly sessions = new Map<string, FakeSession>();
-  readonly failedSignIns = new Map<string, number>();
 
   constructor(private readonly dependencies: AuthDependencies) {}
 
@@ -137,8 +143,9 @@ class FakeAuthProvider implements AuthProvider {
       : null;
 
     if (request.method === "POST" && path === "sign-in/username") {
-      const username = typeof body?.username === "string" ? body.username.toLowerCase() : "";
+      const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
       const password = typeof body?.password === "string" ? body.password : "";
+      if (!username || !password) return this.error("Username and password are required.");
       const staff = await this.dependencies.db.get<{ banned: unknown; emailVerified: unknown; supabaseUserId: string | null }>(
         `SELECT banned, "emailVerified", "supabaseUserId" FROM staff_members WHERE lower("username") = lower(?)`,
         username,
@@ -146,13 +153,64 @@ class FakeAuthProvider implements AuthProvider {
       const user = staff?.supabaseUserId ? this.users.get(staff.supabaseUserId) : null;
       const verified = staff?.emailVerified === true || staff?.emailVerified === 1;
       const banned = staff?.banned === true || staff?.banned === 1;
-      if (!user || user.password !== password || user.banned || banned || !user.confirmed || !verified) {
-        const client = request.headers.get("x-forwarded-for") ?? "unknown";
-        const failures = (this.failedSignIns.get(client) ?? 0) + 1;
-        this.failedSignIns.set(client, failures);
-        if (failures > 10) return this.error("Too many attempts. Try again later.", 429);
+      const ip = publicClientKey(request);
+      const userAgent = request.headers.get("user-agent");
+      // The identical generic failure: a blocked attacker must not learn
+      // which usernames are real from the status code.
+      const rejectBlocked = async (): Promise<Response> => {
+        await recordBlockedLoginAttempt(this.dependencies.db, { username, ip, userAgent });
+        return this.error("Username or password is incorrect.", 401);
+      };
+      // The real provider's classification, mirrored branch for branch
+      // (ticket 81 parity): whether the attempted username belongs to a live
+      // staff account decides which criteria feed and who may be blocked.
+      if (!user) {
+        if (await isIpBlocked(this.dependencies.db, ip)) {
+          return rejectBlocked();
+        }
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "unknown_username",
+          usernameIsStaff: false,
+        });
         return this.error("Username or password is incorrect.", 401);
       }
+      if (banned || user.banned) {
+        if (await isIpBlocked(this.dependencies.db, ip)) {
+          return rejectBlocked();
+        }
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "disabled_account",
+          usernameIsStaff: false,
+        });
+        return this.error("Username or password is incorrect.", 401);
+      }
+      if (user.password !== password) {
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "invalid_password",
+          usernameIsStaff: true,
+        });
+        return this.error("Username or password is incorrect.", 401);
+      }
+      if (!user.confirmed || !verified) {
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "disabled_account",
+          usernameIsStaff: true,
+        });
+        return this.error("Username or password is incorrect.", 401);
+      }
+      await recordLoginSuccess(this.dependencies.db, { username, ip, userAgent });
       const token = randomUUID();
       this.sessions.set(token, {
         id: randomUUID(),

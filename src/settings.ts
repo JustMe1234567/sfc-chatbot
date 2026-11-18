@@ -269,6 +269,46 @@ export function isValidRetentionDays(input: unknown): input is number {
   );
 }
 
+const LOGIN_RETENTION_KEY = "login_retention_days";
+
+/**
+ * How many days of login events (ticket 81) are kept before the daily
+ * maintenance pass removes them. The default matches analytics: a generous
+ * review window for the owner, still bounded. The transcript pattern is
+ * mirrored in full — three read states, with a corrupt value refusing the
+ * sweep rather than deleting on a bad value.
+ */
+export const DEFAULT_LOGIN_RETENTION_DAYS = 90;
+
+export type LoginRetentionSetting =
+  | { kind: "absent" }
+  | { kind: "invalid"; raw: string }
+  | { kind: "set"; days: number };
+
+export async function readLoginRetention(db: AppDatabase): Promise<LoginRetentionSetting> {
+  const raw = await getSetting(db, LOGIN_RETENTION_KEY);
+  if (raw === null) {
+    return { kind: "absent" };
+  }
+  const parsed = Number(raw);
+  return isValidRetentionDays(parsed) ? { kind: "set", days: parsed } : { kind: "invalid", raw };
+}
+
+/** The configured login retention period in days, or null while unset. */
+export async function getLoginRetentionDays(db: AppDatabase): Promise<number | null> {
+  const setting = await readLoginRetention(db);
+  return setting.kind === "set" ? setting.days : null;
+}
+
+/** Sets the period; null resets it to the 90-day default. */
+export async function setLoginRetentionDays(db: AppDatabase, days: number | null): Promise<void> {
+  if (days === null) {
+    await db.run("DELETE FROM settings WHERE key = ?", LOGIN_RETENTION_KEY);
+    return;
+  }
+  await setSetting(db, LOGIN_RETENTION_KEY, String(days));
+}
+
 const SUPPORT_HOURS_KEY = "support_hours";
 
 export async function getSupportHours(db: AppDatabase): Promise<SupportHours | null> {
