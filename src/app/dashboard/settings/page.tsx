@@ -10,6 +10,11 @@ import {
 import { getChatbotService } from "@/db/service";
 import { chatheadForeground } from "@/domain/branding";
 import BrandingSettings from "./branding-settings";
+import PasswordSettings from "./password-settings";
+import SupportHoursForm from "../notifications/support-hours-form";
+import RetentionForm from "../notifications/retention-form";
+import { getSupportHours, getTranscriptRetentionDays } from "@/settings";
+import { latestRetentionRun } from "@/domain/retention";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
 
@@ -33,11 +38,14 @@ export default async function SettingsPage() {
     );
   }
 
-  const { db } = await getChatbotService();
-  const [iconVersion, faviconVersion, chathead] = await Promise.all([
+  const { db, store } = await getChatbotService();
+  const [iconVersion, faviconVersion, chathead, supportHours, retentionDays, lastRun] = await Promise.all([
     getChatbotIconVersion(db),
     getDashboardFaviconVersion(db),
     getChatheadConfig(db),
+    getSupportHours(db),
+    getTranscriptRetentionDays(db),
+    latestRetentionRun(store),
   ]);
 
   return (
@@ -49,6 +57,13 @@ export default async function SettingsPage() {
         role={guard.staff.role}
       />
       <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
+        <PasswordSettings />
+        {guard.staff.role === "owner" ? (
+          <div className={styles.alertSettingsGrid}>
+            <SupportHoursForm initialHours={supportHours} />
+            <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
+          </div>
+        ) : null}
         <BrandingSettings
           initial={{
             chatbotIconUrl: `/api/branding/chatbot-icon?v=${encodeURIComponent(iconVersion)}`,

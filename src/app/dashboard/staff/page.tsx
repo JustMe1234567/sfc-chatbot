@@ -3,7 +3,8 @@ import { requireStaff } from "@/api/staff";
 import DashboardHeader from "../header";
 import { listStaffMembers } from "@/api/staffMembers";
 import { getChatbotService } from "@/db/service";
-import InviteForm from "./invite-form";
+import AccountForm from "./account-form";
+import CredentialActions from "./credential-actions";
 import DisableButton from "./disable-button";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
@@ -33,7 +34,7 @@ export default async function StaffPage() {
 
       <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
         <div className={styles.inbox}>
-          <InviteForm />
+          <AccountForm />
         </div>
 
         <div className={styles.inbox}>
@@ -47,12 +48,15 @@ export default async function StaffPage() {
                   <span className={styles.publishedBadge}>active</span>
                 )}
               </div>
-              <div className={styles.preview}>{member.email}</div>
+              <div className={styles.preview}>@{member.username}</div>
               <div className={styles.meta}>
-                Invitation: {member.invitationStatus} · {member.twoFactorEnabled ? "second factor enrolled" : "second factor not enrolled"}
+                {member.twoFactorEnabled ? "Second factor enrolled" : "Second factor not enrolled"}
               </div>
               {!member.banned && member.role !== "owner" && member.id !== guard.staff.userId ? (
-                <DisableButton memberId={member.id} name={member.name} />
+                <>
+                  <CredentialActions memberId={member.id} name={member.name} />
+                  <DisableButton memberId={member.id} name={member.name} />
+                </>
               ) : null}
             </div>
           ))}

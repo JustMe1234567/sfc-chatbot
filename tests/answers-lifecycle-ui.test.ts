@@ -154,11 +154,11 @@ describe("the reference rail (ticket 58)", () => {
     expect(header).toContain('calloutProps("Sign out")');
   });
 
-  it("keeps both email destinations and no Home entry", async () => {
+  it("keeps visitor contacts and no Home entry", async () => {
     const header = await read(HEADER);
 
     expect(header).toContain('href: "/dashboard/contacts", label: "Visitor contacts"');
-    expect(header).toContain('area: "alerts", href: "/dashboard/notifications", label: "Email alerts"');
+    expect(header).not.toContain('/dashboard/notifications');
     expect(header).not.toMatch(/label: "Home"/);
     expect(header).not.toContain('href: "/dashboard"');
   });

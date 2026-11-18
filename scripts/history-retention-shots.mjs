@@ -172,7 +172,7 @@ if (BEFORE) {
   // Pre-change documentation only: the old history page and the old
   // retention card ("kept indefinitely") before the ticket's changes.
   await page.screenshot({ path: join(OUT, "before-history-1280.png"), fullPage: true });
-  await page.goto(`${BASE}/dashboard/notifications`);
+  await page.goto(`${BASE}/dashboard/settings`);
   await page.waitForLoadState("domcontentloaded");
   await page.getByRole("heading", { name: "Transcript retention" }).waitFor({ timeout: 10000 });
   await page.screenshot({ path: join(OUT, "before-retention-card-1280.png"), fullPage: true });
@@ -263,7 +263,7 @@ if ((await nav.locator('[aria-current="true"]').count()) !== 1) {
 console.log("ok: keyboard navigation selects a row with visible focus semantics");
 
 // --- The retention form states the default and warns about permanence. -----
-await page.goto(`${BASE}/dashboard/notifications`);
+await page.goto(`${BASE}/dashboard/settings`);
 await page.getByRole("heading", { name: "Transcript retention" }).waitFor({ timeout: 10000 });
 const form = page.locator("form", { has: page.getByRole("heading", { name: "Transcript retention" }) });
 const placeholder = await page.locator("#retention-days").getAttribute("placeholder");
@@ -309,7 +309,7 @@ if (rowsAfter >= rowsBefore) {
 console.log("ok: the period save swept the expired transcript through the real endpoint");
 
 // --- Resetting to the default is honest and takes effect. ------------------
-await page.goto(`${BASE}/dashboard/notifications`);
+await page.goto(`${BASE}/dashboard/settings`);
 await page.getByRole("heading", { name: "Transcript retention" }).waitFor({ timeout: 10000 });
 await page.locator("form", { has: page.getByRole("heading", { name: "Transcript retention" }) })
   .getByRole("button", { name: "Reset to default" })
@@ -364,7 +364,7 @@ await shotAt(360, 800, historyUrl, "after-history-360");
 await shotAt(
   1280,
   900,
-  `${BASE}/dashboard/notifications`,
+  `${BASE}/dashboard/settings`,
   "after-retention-card-1280",
 );
 

@@ -9,7 +9,7 @@ interface RouteContext {
 
 interface TargetRow {
   id: string;
-  email: string;
+  username: string;
   role: string;
   supabaseUserId: string | null;
 }
@@ -40,7 +40,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   const service = await getChatbotService();
   const target = await service.db
-    .get<TargetRow>('SELECT "id", "email", "role", "supabaseUserId" FROM staff_members WHERE "id" = ?', id);
+    .get<TargetRow>('SELECT "id", "username", "role", "supabaseUserId" FROM staff_members WHERE "id" = ?', id);
   if (!target) {
     return NextResponse.json(
       { error: { code: "not_found", message: "Staff account not found." } },
@@ -67,7 +67,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (target.supabaseUserId) {
     await service.auth.disable(target.supabaseUserId);
   }
-  await audit(service.store, guard.staff.userId, "staff_disabled", {}, target.email);
+  await audit(service.store, guard.staff.userId, "staff_disabled", {}, target.username);
 
   // Their claims cannot survive them: release each conversation back to the
   // shared inbox so another staff member can pick it up, with the sweep
@@ -84,9 +84,9 @@ export async function POST(request: Request, context: RouteContext) {
         guard.staff.userId,
         "conversation_released",
         { conversationId: conversation.id },
-        `released from the disabled account of ${target.email}`,
+        `released from the disabled account of ${target.username}`,
       );
     }
   }
-  return NextResponse.json({ member: { id: target.id, email: target.email, disabled: true } });
+  return NextResponse.json({ member: { id: target.id, username: target.username, disabled: true } });
 }

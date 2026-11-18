@@ -47,7 +47,7 @@ export default function EnrollPage() {
     const result = await authClient.twoFactor.verifyTotp({ code, ...(factorId ? { factorId } : {}) });
     if (result.error) {
       setBusy(false);
-      setError("That code was not accepted. Try the current code from your authenticator.");
+      setError(result.error.message || "That code was not accepted. Try the current code from your authenticator.");
       return;
     }
     // Force a fresh sign-in that exercises the second factor.

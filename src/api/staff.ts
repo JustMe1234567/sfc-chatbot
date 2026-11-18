@@ -11,15 +11,15 @@ const CROSS_ORIGIN_BLOCKED = {
 export interface StaffContext {
   userId: string;
   authUserId: string;
-  email: string;
+  username: string;
   name: string;
   role: StaffRole;
 }
 
 /**
  * Resolves the current staff context from the session cookie on every
- * dashboard and staff API request: a valid server-side session, an email
- * verified account, an active (not banned) account, the second factor
+ * dashboard and staff API request: a valid server-side session, a verified
+ * account, an active (not banned) account, the second factor
  * enabled, and an allowed role. Any failure returns a Response the caller
  * should send unchanged. Route handlers pass request.headers; server
  * components pass (await headers()).
@@ -42,13 +42,13 @@ export async function requireStaff(
   const user = await db.get<{
     id: string;
     name: string;
-    email: string;
+    username: string;
     role: string;
     banned: unknown;
     emailVerified: unknown;
     twoFactorEnabled: unknown;
   }>(
-    `SELECT "id", "name", "email", "role", "banned", "emailVerified", "twoFactorEnabled"
+    `SELECT "id", "name", "username", "role", "banned", "emailVerified", "twoFactorEnabled"
      FROM staff_members WHERE "supabaseUserId" = ?`,
     identity.userId,
   );
@@ -91,7 +91,7 @@ export async function requireStaff(
     staff: {
       userId: String(user.id),
       authUserId: identity.userId,
-      email: user.email,
+      username: user.username,
       name: user.name,
       role: role as StaffRole,
     },

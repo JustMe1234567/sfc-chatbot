@@ -46,6 +46,9 @@ const ACTION_LABELS: Record<AuditView["action"], string> = {
   rule_restored: "restored an answer rule",
   rule_purged: "permanently deleted an answer rule",
   staff_invited: "invited a staff member",
+  staff_created: "created a staff account",
+  staff_password_reset: "reset a staff password",
+  staff_mfa_reset: "reset a staff authenticator",
   staff_disabled: "disabled a staff account",
 };
 

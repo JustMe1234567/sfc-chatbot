@@ -165,6 +165,14 @@ export default function AttentionSounds({ events }: { events: AttentionEvent[] }
     const tracker = cues();
     mutedRef.current = tracker.isMuted();
     setMuted(mutedRef.current);
+    // Unlock Web Audio on the first ordinary dashboard gesture, before an
+    // alert arrives. Creating the context only after an event leaves Brave
+    // waiting for a second gesture while the new conversation appears
+    // silently even though the control says sounds are on.
+    if (!mutedRef.current) {
+      const context = ensureContext();
+      if (context && context.state !== "running") armFirstGesture(context);
+    }
     return () => {
       if (burstTimerRef.current !== null) window.clearTimeout(burstTimerRef.current);
       burstTimerRef.current = null;
@@ -220,16 +228,39 @@ export default function AttentionSounds({ events }: { events: AttentionEvent[] }
     }
   }
 
+  function testSound(): void {
+    const context = ensureContext();
+    if (!context) return;
+    context
+      .resume()
+      .then(() => {
+        chimeEndsAtRef.current = playChime(context);
+      })
+      .catch(() => {
+        // Browser or device audio refusal leaves visual alerts available.
+      });
+  }
+
   return (
-    <button
-      type="button"
-      className={styles.soundToggle}
-      aria-pressed={!muted}
-      onClick={toggleMuted}
-      title="Plays one short cue when a chat needs staff attention"
-    >
-      <span aria-hidden="true">{muted ? "🔇" : "🔔"}</span>
-      Notification sounds {muted ? "off" : "on"}
-    </button>
+    <div>
+      <button
+        type="button"
+        className={styles.soundToggle}
+        aria-pressed={!muted}
+        onClick={toggleMuted}
+        title="Plays one short cue when a chat needs staff attention"
+      >
+        <span aria-hidden="true">{muted ? "🔇" : "🔔"}</span>
+        Notification sounds {muted ? "off" : "on"}
+      </button>
+      <button
+        type="button"
+        className={styles.soundToggle}
+        onClick={testSound}
+        title="Play the notification cue now"
+      >
+        Test notification sound
+      </button>
+    </div>
   );
 }

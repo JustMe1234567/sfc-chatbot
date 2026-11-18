@@ -76,7 +76,7 @@ type PendingCookie = { name: string; value: string; options: CookieOptions };
 interface StaffAuthRow {
   id: string;
   name: string;
-  email: string;
+  username: string;
   banned: unknown;
   emailVerified: unknown;
   supabaseUserId: string | null;
@@ -160,7 +160,7 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
   async function staffForUser(userId: string): Promise<StaffAuthRow | null> {
     return (
       (await dependencies.db.get<StaffAuthRow>(
-        `SELECT "id", "name", "email", "banned", "emailVerified", "supabaseUserId"
+        `SELECT "id", "name", "username", "banned", "emailVerified", "supabaseUserId"
          FROM staff_members WHERE "supabaseUserId" = ?`,
         userId,
       )) ?? null
@@ -169,31 +169,42 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
 
   async function authenticate(headers: Headers): Promise<AuthIdentity | null> {
     const { client } = requestClient(configuration, headers);
-    const [{ data: userData, error: userError }, { data: claimsData, error: claimsError }] =
-      await Promise.all([client.auth.getUser(), client.auth.getClaims()]);
-    const user = userData.user;
+    const { data: claimsData, error: claimsError } = await client.auth.getClaims();
     const claims = claimsData?.claims;
-    if (userError || claimsError || !user || !claims?.session_id || claims.sub !== user.id) return null;
+    if (claimsError || !claims?.session_id || !claims.sub) return null;
 
-    // The Auth server may accept a signed access token until its short expiry.
-    // Requiring its backing session row makes disable/reset/global logout
-    // effective immediately instead of waiting for that expiry.
-    const currentSession = await dependencies.db.get<{ id: string }>(
-      "SELECT id FROM auth.sessions WHERE id = ? AND user_id = ?",
+    // Claims prove the token; the live Auth rows prove that its session has
+    // not been revoked and that the linked user and MFA factor remain valid.
+    // Keeping this in one database round trip avoids an Auth network request
+    // on every one-second inbox refresh while preserving immediate revocation.
+    const currentSession = await dependencies.db.get<{
+      email: string | null;
+      emailConfirmedAt: string | null;
+      mfaEnrolled: unknown;
+    }>(
+      `SELECT u.email,
+              u.email_confirmed_at AS "emailConfirmedAt",
+              EXISTS (
+                SELECT 1 FROM auth.mfa_factors f
+                WHERE f.user_id = u.id AND f.factor_type = 'totp' AND f.status = 'verified'
+              ) AS "mfaEnrolled"
+       FROM auth.sessions s
+       JOIN auth.users u ON u.id = s.user_id
+       WHERE s.id = ? AND s.user_id = ?
+         AND (s.not_after IS NULL OR s.not_after > CURRENT_TIMESTAMP)
+         AND u.deleted_at IS NULL
+         AND (u.banned_until IS NULL OR u.banned_until < CURRENT_TIMESTAMP)`,
       claims.session_id,
-      user.id,
+      claims.sub,
     );
     if (!currentSession) return null;
-
-    const { data: factors, error: factorsError } = await client.auth.mfa.listFactors();
-    if (factorsError) return null;
     return {
-      userId: user.id,
+      userId: claims.sub,
       sessionId: claims.session_id,
-      email: user.email ?? "",
-      emailVerified: Boolean(user.email_confirmed_at),
+      email: currentSession.email ?? "",
+      emailVerified: Boolean(currentSession.emailConfirmedAt),
       aal: claims.aal === "aal2" ? "aal2" : "aal1",
-      mfaEnrolled: factors.totp.some((factor) => factor.status === "verified"),
+      mfaEnrolled: enabled(currentSession.mfaEnrolled),
     };
   }
 
@@ -209,16 +220,26 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
     const path = new URL(request.url).pathname.replace(/^\/api\/auth\/?/, "");
     const body = request.method === "POST" ? await bodyOf(request) : null;
 
-    if (request.method === "POST" && path === "sign-in/email") {
-      const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (request.method === "POST" && path === "sign-in/username") {
+      const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
       const password = typeof body?.password === "string" ? body.password : "";
-      if (!email || !password) return finish(authError("Email and password are required."));
+      if (!username || !password) return finish(authError("Username and password are required."));
+      const member = await dependencies.db.get<{ id: string; supabaseUserId: string | null; banned: unknown }>(
+        `SELECT "id", "supabaseUserId", "banned" FROM staff_members WHERE lower("username") = lower(?)`,
+        username,
+      );
+      if (!member?.supabaseUserId || enabled(member.banned)) {
+        return finish(authError("Username or password is incorrect.", 401));
+      }
+      const email = `${member.id}@staff.invalid`;
       const { data, error } = await client.auth.signInWithPassword({ email, password });
-      if (error || !data.user) return finish(authError("Email or password is incorrect.", 401));
+      if (error || !data.user || data.user.id !== member.supabaseUserId) {
+        return finish(authError("Username or password is incorrect.", 401));
+      }
       const staff = await staffForUser(data.user.id);
       if (!staff || enabled(staff.banned) || !enabled(staff.emailVerified)) {
         await client.auth.signOut({ scope: "global" });
-        return finish(authError("Email or password is incorrect.", 401));
+        return finish(authError("Username or password is incorrect.", 401));
       }
       const factors = await client.auth.mfa.listFactors();
       if (factors.error) return finish(authError());
@@ -238,7 +259,7 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
         json({
           user: {
             id: staff.id,
-            email: staff.email,
+            username: staff.username,
             name: staff.name,
             twoFactorEnabled: identity.mfaEnrolled,
           },
@@ -248,14 +269,14 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
     }
 
     if (request.method === "POST" && path === "two-factor/enable") {
-      const { data: userData, error: userError } = await client.auth.getUser();
-      const staff = userData.user ? await staffForUser(userData.user.id) : null;
-      if (userError || !userData.user || !staff || enabled(staff.banned)) {
+      const identity = await authenticate(request.headers);
+      const staff = identity ? await staffForUser(identity.userId) : null;
+      if (!identity || !staff || enabled(staff.banned)) {
         return finish(authError("Sign in required.", 401));
       }
       const listed = await client.auth.mfa.listFactors();
       if (listed.error) return finish(authError());
-      if (listed.data.totp.length > 0) {
+      if (listed.data.all.some((factor) => factor.factor_type === "totp")) {
         return finish(authError("An authenticator is already enrolled.", 409));
       }
       const enrolled = await client.auth.mfa.enroll({
@@ -277,14 +298,15 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
       const code = typeof body?.code === "string" ? body.code.trim() : "";
       const requestedFactor = typeof body?.factorId === "string" ? body.factorId : null;
       if (!/^\d{6}$/.test(code)) return finish(authError("Enter the six-digit authenticator code."));
-      const { data: userData, error: userError } = await client.auth.getUser();
-      const staff = userData.user ? await staffForUser(userData.user.id) : null;
-      if (userError || !userData.user || !staff || enabled(staff.banned)) {
+      const identity = await authenticate(request.headers);
+      const staff = identity ? await staffForUser(identity.userId) : null;
+      if (!identity || !staff || enabled(staff.banned)) {
         return finish(authError("Sign in required.", 401));
       }
       const listed = await client.auth.mfa.listFactors();
-      const factor = listed.data?.totp.find((candidate) =>
-        requestedFactor ? candidate.id === requestedFactor : true,
+      const factors = requestedFactor ? listed.data?.all : listed.data?.totp;
+      const factor = factors?.find(
+        (candidate) => candidate.factor_type === "totp" && (!requestedFactor || candidate.id === requestedFactor),
       );
       if (listed.error || !factor) return finish(authError("No authenticator is available."));
       const verified = await client.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
@@ -296,7 +318,7 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
         true,
         true,
         new Date().toISOString(),
-        userData.user.id,
+        identity.userId,
       );
       return finish(json({ success: true }));
     }
@@ -306,79 +328,18 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
       return finish(error ? authError() : json({ success: true }));
     }
 
-    if (request.method === "POST" && path === "forget-password") {
-      const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
-      const member = email
-        ? await dependencies.db.get<{ id: string; banned: unknown }>(
-            `SELECT id, banned FROM staff_members WHERE lower(email) = lower(?)`,
-            email,
-          )
-        : null;
-      if (member && !enabled(member.banned)) {
-        await client.auth.resetPasswordForEmail(email, {
-          redirectTo: dependencies.baseUrl,
-        });
-      }
-      return finish(json({ success: true }));
-    }
-
-    if (request.method === "POST" && (path === "reset-password" || path === "set-password")) {
+    if (request.method === "POST" && path === "change-password") {
       const newPassword = typeof body?.newPassword === "string" ? body.newPassword : "";
       if (newPassword.length < 10) return finish(authError("Password must be at least 10 characters."));
-      const { data: userData, error: userError } = await client.auth.getUser();
-      if (userError || !userData.user) return finish(authError("Sign in required.", 401));
-      if (path === "reset-password") {
-        const assurance = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-        const staff = await dependencies.db.get<{ mfaRecoveryApprovedAt: string | null }>(
-          `SELECT "mfaRecoveryApprovedAt" FROM staff_members WHERE "supabaseUserId" = ?`,
-          userData.user.id,
-        );
-        const approvedAt = staff?.mfaRecoveryApprovedAt
-          ? Date.parse(staff.mfaRecoveryApprovedAt)
-          : Number.NaN;
-        const operatorApproved =
-          Number.isFinite(approvedAt) && Date.now() - approvedAt <= 30 * 60 * 1000;
-        if (assurance.error || (assurance.data.currentLevel !== "aal2" && !operatorApproved)) {
-          return finish(authError("Verify your authenticator before changing the password.", 403));
-        }
+      const identity = await authenticate(request.headers);
+      const staff = identity ? await staffForUser(identity.userId) : null;
+      if (!identity || identity.aal !== "aal2" || !staff || enabled(staff.banned)) {
+        return finish(authError("Verify your authenticator before changing the password.", 403));
       }
       const updated = await client.auth.updateUser({ password: newPassword });
       if (updated.error) return finish(authError(updated.error.message));
-      await dependencies.db.run(
-        `UPDATE staff_members
-         SET "emailVerified" = ?, "invitationStatus" = 'accepted',
-             "mfaRecoveryApprovedAt" = NULL, "updatedAt" = ?
-         WHERE "supabaseUserId" = ?`,
-        true,
-        new Date().toISOString(),
-        userData.user.id,
-      );
-      if (path === "reset-password") {
-        await client.auth.signOut({ scope: "local" });
-        await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", userData.user.id);
-      }
+      await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", identity.userId);
       return finish(json({ success: true }));
-    }
-
-    if (request.method === "GET" && path === "confirm") {
-      const url = new URL(request.url);
-      const tokenHash = url.searchParams.get("token_hash");
-      const type = url.searchParams.get("type");
-      if (!tokenHash || (type !== "invite" && type !== "recovery")) {
-        return finish(authError("This authentication link is invalid or expired.", 400));
-      }
-      const verified = await client.auth.verifyOtp({ token_hash: tokenHash, type });
-      if (verified.error || !verified.data.user) {
-        return finish(authError("This authentication link is invalid or expired.", 400));
-      }
-      await dependencies.db.run(
-        `UPDATE staff_members SET "emailVerified" = ?, "updatedAt" = ? WHERE "supabaseUserId" = ?`,
-        true,
-        new Date().toISOString(),
-        verified.data.user.id,
-      );
-      const destination = type === "invite" ? "/dashboard/accept-invitation" : "/dashboard/reset-password";
-      return finish(Response.redirect(new URL(destination, dependencies.baseUrl), 303));
     }
 
     return finish(json({ error: { code: "not_found", message: "Authentication route not found." } }, 404));
@@ -387,21 +348,34 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
   return {
     authenticate,
     handle,
-    async invite(email: string, name: string): Promise<{ userId: string }> {
+    async createAccount(staffId: string, name: string, password: string): Promise<{ userId: string }> {
+      const email = `${staffId}@staff.invalid`;
       const existing = await findAuthUserByEmail(admin, email);
-      if (existing?.email_confirmed_at) {
-        throw new Error("An accepted Supabase Auth user already exists for this email.");
-      }
       if (existing) {
-        const removed = await admin.auth.admin.deleteUser(existing.id);
+        return { userId: existing.id };
+      }
+      const created = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name },
+      });
+      if (created.error || !created.data.user) throw created.error ?? new Error("Account creation failed.");
+      return { userId: created.data.user.id };
+    },
+    async resetPassword(userId: string, password: string): Promise<void> {
+      const updated = await admin.auth.admin.updateUserById(userId, { password });
+      if (updated.error) throw updated.error;
+      await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", userId);
+    },
+    async resetMfa(userId: string): Promise<void> {
+      const listed = await admin.auth.admin.mfa.listFactors({ userId });
+      if (listed.error) throw listed.error;
+      for (const factor of listed.data.factors) {
+        const removed = await admin.auth.admin.mfa.deleteFactor({ userId, id: factor.id });
         if (removed.error) throw removed.error;
       }
-      const invited = await admin.auth.admin.inviteUserByEmail(email, {
-        data: { name },
-        redirectTo: dependencies.baseUrl,
-      });
-      if (invited.error || !invited.data.user) throw invited.error ?? new Error("Invitation failed.");
-      return { userId: invited.data.user.id };
+      await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", userId);
     },
     async revokeAll(userId: string): Promise<void> {
       await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", userId);

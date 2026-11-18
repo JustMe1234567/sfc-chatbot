@@ -99,7 +99,7 @@ await page.waitForTimeout(350);
 
 // --- The desktop rail: brand, five items, icons, active state. ------------
 const labels = await railNav.locator(".sideItem, [class*='sideItem']").allInnerTexts();
-const expected = ["Conversations", "Analytics", "Answers", "Staff", "Email alerts"];
+const expected = ["Conversations", "Visitor contacts", "Analytics", "Answers", "Staff", "Settings"];
 const flat = labels.map((text) => text.replace(/\s+/g, " ").trim());
 for (const item of expected) {
   if (!flat.some((text) => text.includes(item))) {

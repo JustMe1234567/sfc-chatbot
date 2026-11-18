@@ -11,7 +11,7 @@ import {
 } from "./sidebar-preference";
 import styles from "./dashboard.module.css";
 
-export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "alerts" | "analytics" | "settings";
+export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "analytics" | "settings";
 
 const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] = [
   { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] },
@@ -21,7 +21,6 @@ const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] 
   { area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] },
   { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] },
   { area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] },
-  { area: "alerts", href: "/dashboard/notifications", label: "Email alerts", roles: ["owner", "staff"] },
   // Branding settings (ticket 70): every dashboard role may configure the
   // chatbot icon, the dashboard favicon, and the chathead appearance.
   { area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["owner", "staff", "editor"] },
@@ -31,7 +30,7 @@ const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] 
  * The shared dashboard chrome (ticket 13, sidebar shell from ticket 52,
  * compact icon rail and one-at-a-time hover callouts from ticket 57).
  * Links respect the caller's role exactly as the per-page headers did —
- * editors see only Answers, staff see Conversations and Email alerts,
+ * editors see Answers and Settings, while staff see operational pages,
  * owners see everything.
  */
 const ROLE_LABELS: Record<string, string> = {
@@ -98,12 +97,6 @@ const ICONS: Record<HeaderArea, ReactNode> = {
       <path d="M3.5 19c.5-3.5 2.8-5 5.5-5s5 1.5 5.5 5" />
       <circle cx="17" cy="9.5" r="2.4" />
       <path d="M16.6 14.3c2.2.4 3.9 1.8 4.3 4.2" />
-    </Mark>
-  ),
-  alerts: (
-    <Mark>
-      <path d="M6 9.5a6 6 0 0 1 12 0c0 6 1.8 6.5 1.8 8H4.2c0-1.5 1.8-2 1.8-8z" />
-      <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
     </Mark>
   ),
   settings: (

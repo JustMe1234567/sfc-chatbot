@@ -63,7 +63,7 @@ async function escalateConversation(
   target: Conversation,
   service: Awaited<ReturnType<typeof getChatbotService>>,
 ): Promise<Response> {
-  const { store, db, mail } = service;
+  const { store, db } = service;
   const escalated: Conversation = { ...target, state: "awaiting_staff" };
   await store.updateConversationState(target.id, "awaiting_staff");
   // First transition out of bot-active is the escalation the analytics
@@ -72,12 +72,6 @@ async function escalateConversation(
   const hours = await getSupportHours(db);
   const reply = newMessage(target.id, "bot", handoffReply(hours));
   await store.appendMessage(reply);
-  try {
-    const { recordEscalationAlert } = await import("@/mail/notifications");
-    await recordEscalationAlert(db, mail, target.id);
-  } catch (error) {
-    console.error("escalation alert recording failed:", error);
-  }
   return NextResponse.json({ conversation: escalated, reply });
 }
 
@@ -138,7 +132,7 @@ async function recordMediumRequest(
   service: Awaited<ReturnType<typeof getChatbotService>>,
   medium: "email" | "phone",
 ): Promise<Response> {
-  const { store, db, mail } = service;
+  const { store, db } = service;
   const request: ContactRequest = {
     id: crypto.randomUUID(),
     conversationId: conversation.id,
@@ -150,12 +144,6 @@ async function recordMediumRequest(
   };
   if (!(await store.createContactRequest(request))) {
     return contactRequestOpenResponse();
-  }
-  try {
-    const { recordContactRequestAlert } = await import("@/mail/notifications");
-    await recordContactRequestAlert(db, mail, conversation.id, request.id);
-  } catch (error) {
-    console.error("contact request alert recording failed:", error);
   }
   const hours = await getSupportHours(db);
   const destination = medium === "email" ? conversation.visitorEmail : conversation.visitorPhone;

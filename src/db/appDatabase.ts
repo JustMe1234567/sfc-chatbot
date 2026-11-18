@@ -3,7 +3,7 @@ import type { Sql } from "postgres";
 
 /**
  * The small query surface every non-store consumer uses (settings, seeds,
- * notifications, mail outbox, staff administration, auth helpers). Both
+ * settings, staff administration, and auth helpers). Both
  * backends implement it, so those consumers hold portable SQL — plain
  * statements with `?` placeholders that SQLite and Postgres answer
  * identically — while the Store keeps a dedicated implementation per

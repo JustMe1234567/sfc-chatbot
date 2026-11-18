@@ -90,15 +90,17 @@ export async function provisionStaff(input: {
   const { db } = await getChatbotService();
   const userId = randomUUID();
   const authUserId = randomUUID();
+  const username = input.email.split("@")[0]!.toLowerCase();
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO staff_members
-     ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role",
+     ("id", "name", "email", "username", "emailVerified", "createdAt", "updatedAt", "role",
       "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     userId,
     input.name,
-    input.email.toLowerCase(),
+    `${userId}@staff.invalid`,
+    username,
     true,
     now,
     now,
@@ -110,7 +112,7 @@ export async function provisionStaff(input: {
   );
   registerFakeStaff({
     userId: authUserId,
-    email: input.email,
+    username,
     name: input.name,
     password: input.password,
   });
@@ -120,11 +122,12 @@ export async function provisionStaff(input: {
 /** Full second-factor enrollment for a provisioned, verified staff member. */
 export async function enrollTotp(
   jar: CookieJar,
-  email: string,
+  login: string,
   password: string,
 ): Promise<TOTP> {
-  const signIn = await authRequest(jar, "/api/auth/sign-in/email", {
-    body: { email, password },
+  const username = login.includes("@") ? login.split("@")[0]!.toLowerCase() : login.toLowerCase();
+  const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
+    body: { username, password },
   });
   if (!signIn.ok) {
     throw new Error(`enroll sign-in failed: ${signIn.status} ${await signIn.text()}`);
@@ -150,12 +153,13 @@ export async function enrollTotp(
 /** Password + TOTP sign-in, leaving the jar holding a dashboard session. */
 export async function signInWithTotp(
   jar: CookieJar,
-  email: string,
+  login: string,
   password: string,
   totp: TOTP,
 ): Promise<void> {
-  const signIn = await authRequest(jar, "/api/auth/sign-in/email", {
-    body: { email, password },
+  const username = login.includes("@") ? login.split("@")[0]!.toLowerCase() : login.toLowerCase();
+  const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
+    body: { username, password },
   });
   const result = (await signIn.json()) as { twoFactorRedirect?: boolean };
   if (!signIn.ok || !result.twoFactorRedirect) {

@@ -39,7 +39,7 @@ beforeAll(async () => {
   staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
-  staffUserId = (await db.get<{ id: string }>('SELECT id FROM staff_members WHERE email = ?', STAFF_EMAIL))!.id;
+  staffUserId = (await db.get<{ id: string }>('SELECT id FROM staff_members WHERE username = ?', "helper"))!.id;
 });
 
 async function service() {
@@ -399,7 +399,7 @@ describe("the History controls and wording (ticket 62)", () => {
   it("explains that inactive History conversations are removable too", async () => {
     const actions = await read("src/app/dashboard/inbox/history-actions.tsx");
     const retention = await read("src/app/dashboard/notifications/retention-form.tsx");
-    const settingsPage = await read("src/app/dashboard/notifications/page.tsx");
+    const settingsPage = await read("src/app/dashboard/settings/page.tsx");
     expect(actions).not.toMatch(/removes \{count\} closed conversation/);
     expect(actions).toMatch(/closed or inactive/);
     expect(retention).not.toContain("Closed conversations are removed permanently");

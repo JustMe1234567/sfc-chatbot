@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 }
 
 /**
- * Invite a named staff member by email. Creating additional owner accounts
+ * Create a named staff account with owner-managed credentials. Additional owner accounts
  * stays with the trusted bootstrap command.
  */
 export async function POST(request: Request) {
@@ -32,21 +32,23 @@ export async function POST(request: Request) {
   }
   const body = (await request.json().catch(() => null)) as {
     name?: unknown;
-    email?: unknown;
+    username?: unknown;
+    password?: unknown;
     role?: unknown;
   } | null;
   const name = typeof body?.name === "string" ? body.name.trim() : "";
-  const email = typeof body?.email === "string" ? body.email.trim() : "";
+  const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
+  const password = typeof body?.password === "string" ? body.password : "";
   const role = typeof body?.role === "string" ? body.role : "";
-  if (name.length === 0 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (name.length === 0 || name.length > 80 || !/^[a-z0-9._-]{3,32}$/.test(username) || password.length < 10) {
     return NextResponse.json(
-      { error: { code: "invalid_member", message: "Provide a name (max 80 characters) and a valid email." } },
+      { error: { code: "invalid_member", message: "Provide a name, a valid username, and a password of at least 10 characters." } },
       { status: 400 },
     );
   }
   if (role !== "staff" && role !== "editor") {
     return NextResponse.json(
-      { error: { code: "invalid_role", message: "Invite a staff or editor account." } },
+      { error: { code: "invalid_role", message: "Choose a staff or editor account." } },
       { status: 400 },
     );
   }
@@ -54,17 +56,18 @@ export async function POST(request: Request) {
   const service = await getChatbotService();
   try {
     const member = await provisionStaffMember(service.auth, service.db, {
-      email,
+      username,
+      password,
       name,
       role: role as StaffRole,
     });
-    await audit(service.store, guard.staff.userId, "staff_invited", {}, `${email} (${role})`);
-    return NextResponse.json({ member, invitationStatus: "sent" }, { status: 201 });
+    await audit(service.store, guard.staff.userId, "staff_created", {}, `${username} (${role})`);
+    return NextResponse.json({ member }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/already exist|accepted|disabled|differently provisioned|unique/i.test(message)) {
       return NextResponse.json(
-        { error: { code: "member_exists", message: "An account with this email already exists." } },
+        { error: { code: "member_exists", message: "An account with this username already exists." } },
         { status: 409 },
       );
     }

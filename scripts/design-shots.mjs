@@ -55,7 +55,7 @@ for (const [width, height, label] of WIDTHS) {
     console.log("captured", `after-conversation-${label}`);
   }
   await shot("/dashboard/answers", `after-answers-${label}`);
-  await shot("/dashboard/notifications", `after-alerts-${label}`);
+  await shot("/dashboard/settings", `after-settings-${label}`);
   await shot("/dashboard/staff", `after-staff-${label}`);
 }
 // The signed-out screens, in a clean context.

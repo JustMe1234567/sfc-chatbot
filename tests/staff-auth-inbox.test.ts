@@ -6,7 +6,6 @@ import {
   authRequest,
   CookieJar,
   enrollTotp,
-  latestOutboxMail,
   provisionStaff,
   signInWithTotp,
   staffApiRequest,
@@ -64,12 +63,12 @@ describe("staff authentication gate", () => {
   it("does not grant dashboard access to an Auth user without a staff record", async () => {
     registerFakeStaff({
       userId: crypto.randomUUID(),
-      email: "unknown-auth-user@example.edu",
+      username: "unknown-auth-user",
       name: "Unknown",
       password: "unknown-user-password-42",
     });
-    const response = await authRequest(new CookieJar(), "/api/auth/sign-in/email", {
-      body: { email: "unknown-auth-user@example.edu", password: "unknown-user-password-42" },
+    const response = await authRequest(new CookieJar(), "/api/auth/sign-in/username", {
+      body: { username: "unknown-auth-user", password: "unknown-user-password-42" },
     });
     expect(response.status).toBe(401);
   });
@@ -77,10 +76,10 @@ describe("staff authentication gate", () => {
   it("blocks cross-origin authentication mutations", async () => {
     const { POST } = await import("../src/app/api/auth/[...all]/route");
     const response = await POST(
-      new Request(`${TEST_ORIGIN}/api/auth/sign-in/email`, {
+      new Request(`${TEST_ORIGIN}/api/auth/sign-in/username`, {
         method: "POST",
         headers: { "Content-Type": "application/json", origin: "https://evil.example" },
-        body: JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD }),
+        body: JSON.stringify({ username: "registrar", password: STAFF_PASSWORD }),
       }),
     );
     expect(response.status).toBe(403);
@@ -97,11 +96,11 @@ describe("staff authentication gate", () => {
     await provisionStaff({ email: "unverified@example.edu", password: "valid-password-123", name: "Unverified" });
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    await db.run('UPDATE staff_members SET "emailVerified" = ? WHERE "email" = ?', false, "unverified@example.edu");
+    await db.run('UPDATE staff_members SET "emailVerified" = ? WHERE "username" = ?', false, "unverified");
 
     const jar = new CookieJar();
-    const response = await authRequest(jar, "/api/auth/sign-in/email", {
-      body: { email: "unverified@example.edu", password: "valid-password-123" },
+    const response = await authRequest(jar, "/api/auth/sign-in/username", {
+      body: { username: "unverified", password: "valid-password-123" },
     });
     expect(response.ok).toBe(false);
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
@@ -111,8 +110,8 @@ describe("staff authentication gate", () => {
   it("refuses the dashboard until the second factor is enrolled and verified", async () => {
     await provisionStaff({ email: "unenrolled@example.edu", password: "valid-password-123", name: "Unenrolled" });
     const jar = new CookieJar();
-    const signIn = await authRequest(jar, "/api/auth/sign-in/email", {
-      body: { email: "unenrolled@example.edu", password: "valid-password-123" },
+    const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
+      body: { username: "unenrolled", password: "valid-password-123" },
     });
     expect(signIn.ok).toBe(true);
 
@@ -123,8 +122,8 @@ describe("staff authentication gate", () => {
   });
 
   it("rejects wrong passwords with a generic error", async () => {
-    const response = await authRequest(null, "/api/auth/sign-in/email", {
-      body: { email: STAFF_EMAIL, password: "not-the-password" },
+    const response = await authRequest(null, "/api/auth/sign-in/username", {
+      body: { username: "registrar", password: "not-the-password" },
     });
     expect(response.ok).toBe(false);
     const body = (await response.json()) as { message?: string; code?: string };
@@ -135,8 +134,8 @@ describe("staff authentication gate", () => {
     const ip = "10.77.7.7";
     let throttled = false;
     for (let i = 0; i < 12; i++) {
-      const response = await authRequest(null, "/api/auth/sign-in/email", {
-        body: { email: STAFF_EMAIL, password: "not-the-password" },
+      const response = await authRequest(null, "/api/auth/sign-in/username", {
+        body: { username: "registrar", password: "not-the-password" },
         ip,
       });
       if (response.status === 429) {
@@ -191,11 +190,11 @@ describe("protected shared inbox", () => {
 
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
-    await db.run('UPDATE staff_members SET "banned" = ? WHERE "email" = ?', true, STAFF_EMAIL);
+    await db.run('UPDATE staff_members SET "banned" = ? WHERE "username" = ?', true, "registrar");
 
     const after = await staffApiRequest(jar, "/api/staff/conversations");
     expect(after.status).toBe(401);
-    await db.run('UPDATE staff_members SET "banned" = ? WHERE "email" = ?', false, STAFF_EMAIL);
+    await db.run('UPDATE staff_members SET "banned" = ? WHERE "username" = ?', false, "registrar");
   });
 
   it("rejects a signed-out session cookie", async () => {
@@ -229,60 +228,6 @@ describe("protected shared inbox", () => {
     expireFakeSessions(STAFF_EMAIL);
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(401);
-  });
-});
-
-describe("password reset", () => {
-  it("completes a single-use reset, revokes old sessions, and rejects replay", async () => {
-    const resetEmail = "resettable@example.edu";
-    const oldPassword = "original-password-123";
-    const newPassword = "rotated-password-456";
-    await provisionStaff({ email: resetEmail, password: oldPassword, name: "Resettable" });
-    const totp = await enrollTotp(new CookieJar(), resetEmail, oldPassword);
-
-    // An active session exists when the reset is requested.
-    const jar = new CookieJar();
-    await signInWithTotp(jar, resetEmail, oldPassword, totp);
-
-    await authRequest(null, "/api/auth/forget-password", { body: { email: resetEmail } });
-    const mail = await latestOutboxMail();
-    expect(mail.to).toBe(resetEmail);
-    const token = /token_hash=([A-Za-z0-9]+)/.exec(mail.body)?.[1];
-    expect(token).toBeTruthy();
-
-    const recoveryJar = new CookieJar();
-    const confirm = await authRequest(
-      recoveryJar,
-      `/api/auth/confirm?token_hash=${token}&type=recovery`,
-      { method: "GET" },
-    );
-    expect(confirm.status).toBe(303);
-    const verify = await authRequest(recoveryJar, "/api/auth/two-factor/verify-totp", {
-      body: { code: totp.generate() },
-    });
-    expect(verify.ok).toBe(true);
-    const reset = await authRequest(recoveryJar, "/api/auth/reset-password", {
-      body: { newPassword },
-    });
-    expect(reset.ok).toBe(true);
-
-    // The pre-reset session no longer opens the dashboard.
-    const inboxWithOldSession = await staffApiRequest(jar, "/api/staff/conversations");
-    expect(inboxWithOldSession.status).toBe(401);
-
-    // The new password signs in (with the second factor as before).
-    const freshJar = new CookieJar();
-    await signInWithTotp(freshJar, resetEmail, newPassword, totp);
-    const inbox = await staffApiRequest(freshJar, "/api/staff/conversations");
-    expect(inbox.status).toBe(200);
-
-    // A replayed token is refused.
-    const replay = await authRequest(
-      new CookieJar(),
-      `/api/auth/confirm?token_hash=${token}&type=recovery`,
-      { method: "GET" },
-    );
-    expect(replay.ok).toBe(false);
   });
 });
 

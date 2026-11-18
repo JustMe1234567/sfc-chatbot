@@ -77,7 +77,7 @@ describe("a11y polish batch (ticket 29)", () => {
       "src/app/dashboard/answers/new/page.tsx",
       "src/app/dashboard/answers/page.tsx",
       "src/app/dashboard/contacts/page.tsx",
-      "src/app/dashboard/notifications/page.tsx",
+      "src/app/dashboard/settings/page.tsx",
       "src/app/dashboard/staff/page.tsx",
       // The inbox desk serves /dashboard/inbox, /inbox/history, and
       // /inbox/[id] — the main dashboard surface.
@@ -107,7 +107,7 @@ describe("a11y polish batch (ticket 29)", () => {
       ["src/app/dashboard/answers/new/page.tsx", 'title: "New rule"'],
       ["src/app/dashboard/answers/[id]/page.tsx", 'title: "Edit rule"'],
       ["src/app/dashboard/contacts/page.tsx", 'title: "Visitor contacts"'],
-      ["src/app/dashboard/notifications/page.tsx", 'title: "Notifications"'],
+      ["src/app/dashboard/settings/page.tsx", 'title: "Settings"'],
       ["src/app/dashboard/staff/page.tsx", 'title: "Staff"'],
     ];
     for (const [target, pin] of titles) {

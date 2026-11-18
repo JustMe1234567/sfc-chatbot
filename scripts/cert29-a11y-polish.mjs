@@ -134,8 +134,7 @@ const routes = [
   ["/dashboard/answers", "Answers"],
   ["/dashboard/answers/new", "New rule"],
   ["/dashboard/analytics", "Analytics"],
-  ["/dashboard/emails", "Email alerts"],
-  ["/dashboard/notifications", "Notifications"],
+  ["/dashboard/settings", "Settings"],
   ["/dashboard/staff", "Staff"],
 ];
 for (const [route, title] of routes) {

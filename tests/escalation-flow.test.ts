@@ -55,7 +55,7 @@ describe("unknown question offers a visitor-consented handoff", () => {
     expect(escalation?.count).toBe(0);
   });
 
-  it("escalates, alerts once, and enters Incoming only after the offer is clicked", async () => {
+  it("escalates with dashboard attention and enters Incoming only after the offer is clicked", async () => {
     const conversation = await startConversation();
     await ask(conversation, "What are the admission requirements?");
 
@@ -100,7 +100,7 @@ describe("unknown question offers a visitor-consented handoff", () => {
       ),
       conversation.id,
     );
-    expect(alerts?.count).toBe(1);
+    expect(alerts?.count).toBe(0);
 
     const deskResponse = await staffApiRequest(ownerJar, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {

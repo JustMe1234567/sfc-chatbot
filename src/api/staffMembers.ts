@@ -4,12 +4,11 @@ import type { StaffRole } from "../auth/server";
 export interface StaffMemberRow {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: string;
   banned: boolean;
   emailVerified: boolean;
   twoFactorEnabled: boolean;
-  invitationStatus: "pending" | "sent" | "accepted";
 }
 
 /** Flag columns are INTEGER 0/1 on SQLite and BOOLEAN on Postgres. */
@@ -20,30 +19,28 @@ function truthy(value: unknown): boolean {
 interface UserFlagRow {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: string;
   banned: unknown;
   emailVerified: unknown;
   twoFactorEnabled: unknown;
-  invitationStatus: "pending" | "sent" | "accepted";
   [column: string]: unknown;
 }
 
 /** The staff roster for transfer pickers and the owner's management page. */
 export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[]> {
   const rows = await db.all<UserFlagRow>(
-    `SELECT "id", "name", "email", "role", "banned", "emailVerified", "twoFactorEnabled", "invitationStatus"
+    `SELECT "id", "name", "username", "role", "banned", "emailVerified", "twoFactorEnabled"
      FROM staff_members ORDER BY "createdAt"`,
   );
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
-    email: row.email,
+    username: row.username,
     role: row.role,
     banned: truthy(row.banned),
     emailVerified: truthy(row.emailVerified),
     twoFactorEnabled: truthy(row.twoFactorEnabled),
-    invitationStatus: row.invitationStatus,
   }));
 }
 

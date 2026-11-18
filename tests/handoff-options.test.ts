@@ -44,7 +44,6 @@ const EDITOR_EMAIL = "options-editor@example.edu";
 const EDITOR_PASSWORD = "options-editor-ridge-3k";
 const STAFF_EMAIL = "options-staff@example.edu";
 const STAFF_PASSWORD = "options-staff-quiet-8v";
-const ALERT_RECIPIENT = "desk-options@example.edu";
 
 let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
 let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
@@ -90,14 +89,6 @@ function escalationAlerts(conversationId: string): Promise<number> {
     "SELECT COUNT(*)::int AS n FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?",
     "SELECT COUNT(*) AS n FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?",
     conversationId,
-  );
-}
-
-async function mailsTo(address: string): Promise<number> {
-  return count(
-    "SELECT COUNT(*)::int AS n FROM mail_outbox WHERE to_address = ?",
-    "SELECT COUNT(*) AS n FROM mail_outbox WHERE to_address = ?",
-    address,
   );
 }
 
@@ -176,17 +167,6 @@ async function staffJar(
   return jar;
 }
 
-async function putRecipients(jar: CookieJar, recipients: string[]): Promise<Response> {
-  const { PUT } = await import("../src/app/api/staff/settings/alert-recipients/route");
-  return PUT(
-    new Request(`${TEST_ORIGIN}/api/staff/settings/alert-recipients`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", cookie: jar.header(), origin: TEST_ORIGIN },
-      body: JSON.stringify({ recipients }),
-    }),
-  );
-}
-
 beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
@@ -201,8 +181,6 @@ beforeAll(async () => {
   // A published rule deliberately covering the same topic as an option:
   // every click test below proves the click bypasses it.
   await store.upsertAnswerRule({ ...AID_RULE });
-  const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-  await putRecipients(owner, [ALERT_RECIPIENT]);
 });
 
 describe("the seeded options (ticket 67)", () => {
@@ -309,10 +287,9 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     ]);
   });
 
-  it("hands off exactly once after Yes: alert row, email, Incoming, waiting lock", async () => {
+  it("hands off exactly once after Yes: sound attention, Incoming, waiting lock", async () => {
     const conversation = await startConversation();
     expect(await escalationAlerts(conversation.id)).toBe(0);
-    const mailsBefore = await mailsTo(ALERT_RECIPIENT);
     await clickOption(conversation, ADMISSIONS_OPTION);
     const yes = await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
     expect(yes.status).toBe(200);
@@ -322,8 +299,7 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     };
     expect(yesBody.conversation.state).toBe("awaiting_staff");
 
-    expect(await escalationAlerts(conversation.id)).toBe(1);
-    expect(await mailsTo(ALERT_RECIPIENT)).toBe(mailsBefore + 1);
+    expect(await escalationAlerts(conversation.id)).toBe(0);
 
     // The Chat request exists and is open; the desk shows the conversation
     // in Incoming with attention feedback.
@@ -346,13 +322,10 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     expect((await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }))).status).toBe(
       200,
     );
-    const mailsBefore = await mailsTo(ALERT_RECIPIENT);
-
     const repeat = await clickOption(conversation, COURSE_PRICES_OPTION);
     expect(repeat.status).toBe(409);
     expect(await errorCode(repeat)).toBe("awaiting_staff");
-    expect(await escalationAlerts(conversation.id)).toBe(1);
-    expect(await mailsTo(ALERT_RECIPIENT)).toBe(mailsBefore);
+    expect(await escalationAlerts(conversation.id)).toBe(0);
 
     const history = await loadHistory(conversation);
     const historyBody = (await history.json()) as {
@@ -401,8 +374,6 @@ describe("a claimed chat never re-escalates from a click", () => {
     await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
     const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
     await staffPost(jar, conversation.id, "claim");
-    const mailsBefore = await mailsTo(ALERT_RECIPIENT);
-
     const clicked = await clickOption(conversation, COURSE_PRICES_OPTION);
     expect(clicked.status).toBe(200);
     const body = (await clicked.json()) as {
@@ -411,8 +382,7 @@ describe("a claimed chat never re-escalates from a click", () => {
     };
     expect(body.conversation.state).toBe("claimed");
     expect(body.reply).toBeNull();
-    expect(await escalationAlerts(conversation.id)).toBe(1);
-    expect(await mailsTo(ALERT_RECIPIENT)).toBe(mailsBefore);
+    expect(await escalationAlerts(conversation.id)).toBe(0);
 
     const history = await loadHistory(conversation);
     const historyBody = (await history.json()) as {

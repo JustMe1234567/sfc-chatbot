@@ -50,12 +50,11 @@ describe("shared pending feedback (ticket 42)", () => {
       ["src/app/dashboard/answers/rule-form.tsx", ["Saving…"]],
       ["src/app/dashboard/answers/escalation-phrases-form.tsx", ["Saving…"]],
       ["src/app/dashboard/answers/welcome-form.tsx", ["Saving…"]],
-      ["src/app/dashboard/notifications/retry-button.tsx", ["Retrying…"]],
       ["src/app/dashboard/notifications/support-hours-form.tsx", ["Saving…", "Clearing…"]],
       ["src/app/dashboard/notifications/retention-form.tsx", ["Saving…", "Resetting…"]],
-      ["src/app/dashboard/notifications/alert-settings-form.tsx", ["Saving…", "Deleting…", "Adding…"]],
       ["src/app/dashboard/analytics/analytics-settings-form.tsx", ["Saving…"]],
-      ["src/app/dashboard/staff/invite-form.tsx", ["Sending…"]],
+      ["src/app/dashboard/staff/account-form.tsx", ["Creating…"]],
+      ["src/app/dashboard/settings/password-settings.tsx", ["Changing…"]],
     ];
     for (const [file, verbs] of cases) {
       const source = await read(file);

@@ -167,7 +167,7 @@ describe("a staff reply never emails the visitor a return link", () => {
     expect(body.messages.at(-1)?.role).toBe("staff");
   });
 
-  it("still sends the staff escalation alert exactly as before", async () => {
+  it("uses dashboard attention without creating a staff email delivery", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
     const before = await count(
@@ -180,12 +180,12 @@ describe("a staff reply never emails the visitor a return link", () => {
         "SELECT COUNT(*)::int AS n FROM notifications WHERE type = 'escalation_alert'",
         "SELECT COUNT(*) AS n FROM notifications WHERE type = 'escalation_alert'",
       ),
-    ).toBe(before + 1);
-    const row = (await db.get<{ conversation_id: string }>(
+    ).toBe(before);
+    const row = await db.get<{ conversation_id: string }>(
       "SELECT conversation_id FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?",
       conversation.id,
-    )) as { conversation_id: string };
-    expect(row.conversation_id).toBe(conversation.id);
+    );
+    expect(row).toBeUndefined();
   });
 });
 

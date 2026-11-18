@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "build:widget": "tsx scripts/build-widget.ts",
     "bootstrap:owner": "tsx scripts/bootstrap-owner.ts",
-    "recover:staff": "tsx scripts/recover-staff-mfa.ts",
+    "recover:staff": "tsx scripts/recover-staff-credentials.ts",
     "config:export": "tsx scripts/export-configuration.ts",
     "config:import": "tsx scripts/import-configuration.ts",
     "test": "vitest run",

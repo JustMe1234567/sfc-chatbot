@@ -239,8 +239,8 @@ async function openCardMenu(card, topic) {
 }
 
 // --- The app-shell scrolling contract (ticket 58). --------------------------
-// A long page: alerts settings. The document itself must not scroll.
-await page.goto(`${BASE}/dashboard/notifications`);
+// A long page: application settings. The document itself must not scroll.
+await page.goto(`${BASE}/dashboard/settings`);
 await page.waitForLoadState("domcontentloaded");
 await rail.waitFor({ timeout: 10000 });
 const pageScroll = await page.evaluate(() => ({
@@ -279,7 +279,7 @@ console.log("ok: only the content column scrolls; the rail and Sign out hold sti
 
 // A hover callout survives content scrolls (the rail is stationary).
 await page.evaluate(() => window.localStorage.removeItem("dashboard.sidebar.collapsed"));
-await page.goto(`${BASE}/dashboard/notifications`);
+await page.goto(`${BASE}/dashboard/settings`);
 await page.waitForLoadState("domcontentloaded");
 if ((await rail.getAttribute("data-collapsed")) === null) {
   throw new Error("the rail does not default to compact");

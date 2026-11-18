@@ -31,9 +31,6 @@ export async function setSetting(db: AppDatabase, key: string, value: string): P
   );
 }
 
-const ALERT_RECIPIENTS_KEY = "alert_recipients";
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** A string-list setting; a corrupt value reads as empty rather than throwing. */
 async function getStringListSetting(db: AppDatabase, key: string): Promise<string[]> {
   const raw = await getSetting(db, key);
@@ -46,33 +43,6 @@ async function getStringListSetting(db: AppDatabase, key: string): Promise<strin
   } catch {
     return [];
   }
-}
-
-export function getAlertRecipients(db: AppDatabase): Promise<string[]> {
-  return getStringListSetting(db, ALERT_RECIPIENTS_KEY);
-}
-
-export async function setAlertRecipients(db: AppDatabase, recipients: string[]): Promise<void> {
-  await setSetting(db, ALERT_RECIPIENTS_KEY, JSON.stringify(recipients));
-}
-
-export function isValidRecipientList(recipients: unknown): recipients is string[] {
-  return (
-    Array.isArray(recipients) &&
-    recipients.length > 0 &&
-    recipients.length <= 10 &&
-    recipients.every((item) => typeof item === "string" && EMAIL_PATTERN.test(item))
-  );
-}
-
-/**
- * The single-address half of the list rule (ticket 54): the stacked
- * recipient boxes validate each entry inline as it is added or edited,
- * with the whole-list PUT and `isValidRecipientList` still the final
- * authority.
- */
-export function isValidRecipientEmail(value: string): boolean {
-  return EMAIL_PATTERN.test(value);
 }
 
 const ESCALATION_PHRASES_KEY = "escalation_phrases";

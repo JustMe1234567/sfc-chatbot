@@ -1409,7 +1409,7 @@ a:focus-visible {
   }
 }
 
-/* Email alerts: compact configuration hierarchy plus a dense delivery log. */
+/* Operational settings: compact configuration hierarchy. */
 
 .alertsPage {
   max-width: 72rem;

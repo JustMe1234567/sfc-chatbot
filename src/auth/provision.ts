@@ -4,25 +4,25 @@ import type { AuthProvider } from "./provider";
 import type { StaffRole } from "./server";
 
 export interface ProvisionInput {
-  email: string;
+  username: string;
+  password: string;
   name: string;
   role: StaffRole;
 }
 
 export interface ProvisionedStaff {
   userId: string;
-  email: string;
+  username: string;
   role: string;
-  invitationStatus: "sent";
 }
 
 interface ExistingStaff {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: string;
   banned: unknown;
-  invitationStatus: "pending" | "sent" | "accepted";
+  supabaseUserId: string | null;
 }
 
 function isBanned(value: unknown): boolean {
@@ -30,29 +30,28 @@ function isBanned(value: unknown): boolean {
 }
 
 /**
- * Creates or retries an invitation without ever accepting a role change as
- * part of the retry. The application row is written first as `pending`, so a
- * mail/provider failure is visible and safely retryable instead of leaving an
- * untracked Supabase user.
+ * Creates an owner-managed staff account. The application row is written
+ * first so a provider failure remains visible and can be retried without
+ * changing the requested name or role.
  */
 export async function provisionStaffMember(
   auth: AuthProvider,
   db: AppDatabase,
   input: ProvisionInput,
 ): Promise<ProvisionedStaff> {
-  const email = input.email.trim().toLowerCase();
+  const username = input.username.trim().toLowerCase();
   const name = input.name.trim();
   const existing = await db.get<ExistingStaff>(
-    `SELECT "id", "name", "email", "role", "banned", "invitationStatus"
-     FROM staff_members WHERE lower(email) = lower(?)`,
-    email,
+    `SELECT "id", "name", "username", "role", "banned", "supabaseUserId"
+     FROM staff_members WHERE lower("username") = lower(?)`,
+    username,
   );
 
   let applicationId: string;
   if (existing) {
     if (
       isBanned(existing.banned) ||
-      existing.invitationStatus === "accepted" ||
+      existing.supabaseUserId !== null ||
       existing.name !== name ||
       existing.role !== input.role
     ) {
@@ -64,31 +63,32 @@ export async function provisionStaffMember(
     const now = new Date().toISOString();
     await db.run(
       `INSERT INTO staff_members
-       ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role",
+       ("id", "name", "email", "username", "emailVerified", "createdAt", "updatedAt", "role",
         "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       applicationId,
       name,
-      email,
-      false,
+      `${applicationId}@staff.invalid`,
+      username,
+      true,
       now,
       now,
       input.role,
       false,
       false,
       null,
-      "pending",
+      "accepted",
     );
   }
 
-  const invited = await auth.invite(email, name);
+  const created = await auth.createAccount(applicationId, name, input.password);
   await db.run(
     `UPDATE staff_members
-     SET "supabaseUserId" = ?, "invitationStatus" = 'sent', "updatedAt" = ?
+     SET "supabaseUserId" = ?, "updatedAt" = ?
      WHERE "id" = ?`,
-    invited.userId,
+    created.userId,
     new Date().toISOString(),
     applicationId,
   );
-  return { userId: applicationId, email, role: input.role, invitationStatus: "sent" };
+  return { userId: applicationId, username, role: input.role };
 }

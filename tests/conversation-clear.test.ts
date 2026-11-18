@@ -153,20 +153,20 @@ describe("clearing a bot-active conversation", () => {
 });
 
 describe("clearing after escalation and while claimed", () => {
-  it("closes an escalated conversation into History with its alert record intact", async () => {
+  it("closes an escalated conversation into History without creating mail records", async () => {
     const old = await escalatedConversation("Clear test: escalated then cleared, nothing covers this.");
 
     const response = await clearConversation(old);
     expect(response.status).toBe(200);
     const fresh = (await response.json()) as ClearResponse;
 
-    // Staff history keeps the transcript and the audit/alert records.
+    // Staff history keeps the transcript; sound-only attention creates no delivery record.
     expect(
       (await sql<{ n: number }>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?", old.id)).n,
     ).toBeGreaterThanOrEqual(2);
     expect(
       (await sql<{ n: number }>("SELECT COUNT(*) AS n FROM notifications WHERE conversation_id = ?", old.id)).n,
-    ).toBe(1);
+    ).toBe(0);
 
     // The desk's History lists it; the Active lists do not.
     const jar = await staffJar();

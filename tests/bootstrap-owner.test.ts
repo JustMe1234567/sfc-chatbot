@@ -9,23 +9,23 @@ beforeAll(async () => {
 });
 
 describe("trusted first-owner provisioning", () => {
-  test("creates an owner invitation without accepting a password", async () => {
+  test("creates an owner username and password account", async () => {
     const { auth, db } = await getChatbotService();
     const owner = await provisionStaffMember(auth, db, {
-      email: "bootstrap-owner@example.edu",
+      username: "bootstrap-owner",
+      password: "bootstrap-owner-password-42",
       name: "Bootstrap Owner",
       role: "owner",
     });
 
     expect(owner).toMatchObject({
-      email: "bootstrap-owner@example.edu",
+      username: "bootstrap-owner",
       role: "owner",
-      invitationStatus: "sent",
     });
-    const stored = await db.get<{ role: string; invitationStatus: string }>(
-      `SELECT role, "invitationStatus" FROM staff_members WHERE id = ?`,
+    const stored = await db.get<{ role: string; username: string }>(
+      `SELECT role, username FROM staff_members WHERE id = ?`,
       owner.userId,
     );
-    expect(stored).toEqual({ role: "owner", invitationStatus: "sent" });
+    expect(stored).toEqual({ role: "owner", username: "bootstrap-owner" });
   });
 });

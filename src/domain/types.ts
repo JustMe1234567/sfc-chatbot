@@ -182,6 +182,9 @@ export interface AuditEntry {
     | "rule_restored"
     | "rule_purged"
     | "staff_invited"
+    | "staff_created"
+    | "staff_password_reset"
+    | "staff_mfa_reset"
     | "staff_disabled";
   /** Human-readable context, e.g. the transfer target's display name. */
   detail: string | null;
