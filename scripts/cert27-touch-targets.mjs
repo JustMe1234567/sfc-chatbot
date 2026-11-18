@@ -9,6 +9,8 @@
 // refused and gaps reported; the 360px embed's composer height and
 // horizontal fit are asserted per ticket 18's constraint.
 // Usage: node scripts/cert27-touch-targets.mjs <outdir> [port]
+// Dev-mode only (ticket 78): under a production build the ticket-76 embed
+// allowlist denies the loopback demo origin — the probe below fails fast.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -25,6 +27,20 @@ for (let attempt = 0; ; attempt++) {
   } catch {
     if (attempt > 40) throw new Error("server never came up");
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
+// Ticket 78 guard: the widget steps drive the demo page, which must be an
+// allowed widget host — this cert is dev-mode-only.
+{
+  const eligibility = await (
+    await fetch(`${BASE}/api/v1/embed-eligibility?origin=${encodeURIComponent(BASE)}`)
+  ).json();
+  if (eligibility.allowed !== true) {
+    throw new Error(
+      `the demo origin ${BASE} is not an allowed widget host on this server — under a production build the ticket-76 embed allowlist admits only allowlisted HTTPS origins. ` +
+        `Run \`next dev\` with CHATBOT_BASE_URL=${BASE} and re-run this cert against that origin.`,
+    );
   }
 }
 

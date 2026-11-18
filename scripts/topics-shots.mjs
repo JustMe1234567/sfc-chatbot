@@ -4,18 +4,24 @@
 // none), and exercises the contact gate (ticket 66), click-through, handoff
 // state, transcript dominance, long transcript, and three viewport widths.
 // Usage: node scripts/topics-shots.mjs <outdir> [port]
+// Dev-mode only (ticket 78): under a production build the ticket-76 embed
+// allowlist denies the loopback demo origin — the probe below fails fast.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
-import { waitForServer } from "./lib/shot-driver.mjs";
+import { assertDemoOriginEmbeddable, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3124"}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/topics-demo.db";
 
 await waitForServer(BASE);
+// The widget steps drive the demo page, so the origin must be an allowed
+// widget host (ticket 78): dev-mode only — under a production build the
+// embed allowlist denies the loopback demo origin and this fails fast.
+await assertDemoOriginEmbeddable(BASE);
 
 /** Extra published topics beyond the seeds; one label wraps two lines. The
     first phrase doubles as the question the chip sends (as with seeds). */

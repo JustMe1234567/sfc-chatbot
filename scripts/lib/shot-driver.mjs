@@ -19,6 +19,29 @@ export async function waitForServer(base) {
 }
 
 /**
+ * Fail-fast guard for the demo-page widget steps (ticket 78): ticket 76's
+ * production embed allowlist admits only allowlisted HTTPS origins, so under
+ * a production build the loopback demo origin is denied and every launcher
+ * wait would time out opaquely. Outside production the trusted application
+ * origins keep the demo origin embeddable — these steps are dev-mode-only,
+ * and this probe turns the denial into a clear instruction.
+ */
+export async function assertDemoOriginEmbeddable(base) {
+  const response = await fetch(`${base}/api/v1/embed-eligibility?origin=${encodeURIComponent(base)}`);
+  if (!response.ok) {
+    throw new Error(`the embed eligibility probe failed: ${response.status}`);
+  }
+  const body = await response.json();
+  if (body.allowed !== true) {
+    throw new Error(
+      `the demo origin ${base} is not an allowed widget host on this server — ` +
+        "under a production build the ticket-76 embed allowlist admits only allowlisted HTTPS origins. " +
+        `These widget steps are dev-mode-only: run \`next dev\` with CHATBOT_BASE_URL=${base} and re-run against that origin.`,
+    );
+  }
+}
+
+/**
  * A clean enrollment slate for the screenshot owner: wipes any prior TOTP
  * enrollment and sessions the owner left behind — the script enrolls fresh
  * each run, and twoFactor.enable rejects while a factor is already active.

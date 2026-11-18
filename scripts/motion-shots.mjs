@@ -3,12 +3,15 @@
 // message arrivals (new vs restored history), and reduced-motion behavior;
 // then the dashboard in normal and reduced-motion modes at two widths.
 // Usage: node scripts/motion-shots.mjs <outdir> [port]
+// Dev-mode only (ticket 78): under a production build the ticket-76 embed
+// allowlist denies the loopback demo origin — the probe below fails fast.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
 import {
+  assertDemoOriginEmbeddable,
   enrollAndSignIn,
   freshTotpSlate,
   signInWithTotp,
@@ -22,6 +25,10 @@ const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-motion-check-31";
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/motion-demo.db";
 
 await waitForServer(BASE);
+// The widget steps drive the demo page, so the origin must be an allowed
+// widget host (ticket 78): dev-mode only — under a production build the
+// embed allowlist denies the loopback demo origin and this fails fast.
+await assertDemoOriginEmbeddable(BASE);
 
 // A service route initializes migrations + seeds; healthz alone does not.
 await fetch(`${BASE}/api/v1/topics`);
