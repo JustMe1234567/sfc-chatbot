@@ -309,7 +309,10 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
       }
       const updated = await client.auth.updateUser({ password: newPassword });
       if (updated.error) return finish(authError(updated.error.message));
-      await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", identity.userId);
+      // Ticket 82 review amendment: a self-service password change revokes
+      // no sessions — the acting member stays signed in. Only owner-issued
+      // resets wipe sessions ("password resets still revoke every session",
+      // ADR-0006), because there the account holder is not the actor.
       return finish(json({ success: true }));
     }
 

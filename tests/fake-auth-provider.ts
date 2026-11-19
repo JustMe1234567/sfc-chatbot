@@ -234,9 +234,11 @@ class FakeAuthProvider implements AuthProvider {
       if (!session || !user || password.length < 10) {
         return this.error("Sign in required.", 401);
       }
+      // Ticket 82 review amendment: a self-service change revokes no
+      // sessions — parity with the real provider, which attaches no cookie
+      // either. Only the reset path wipes.
       user.password = password;
-      await this.revokeAll(user.id);
-      return this.response({ success: true }, 200, "");
+      return this.response({ success: true }, 200);
     }
 
     return this.response({ error: { code: "not_found", message: "Authentication route not found." } }, 404);

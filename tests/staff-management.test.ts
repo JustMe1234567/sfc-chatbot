@@ -220,19 +220,32 @@ describe("the owner manages named staff accounts", () => {
     expect((await staffApiRequest(replacement, "/api/staff/conversations")).status).toBe(200);
   });
 
-  it("lets signed-in staff change their own password", async () => {
+  it("lets signed-in staff change their own password without revoking sessions (ticket 82 amendment)", async () => {
     await provisionStaff({ email: "self-change@example.edu", password: "self-change-password-42", name: "Self Change" });
     const jar = new CookieJar();
     await signInAs(jar, "self-change", "self-change-password-42");
+    // A second live session of the same account, as another browser holds.
+    const second = new CookieJar();
+    await signInAs(second, "self-change", "self-change-password-42");
     const changed = await authRequest(jar, "/api/auth/change-password", {
       body: { newPassword: "bob-new-secure-password-94" },
     });
     expect(changed.status).toBe(200);
-    expect((await staffApiRequest(jar, "/api/staff/conversations")).status).toBe(401);
+    // A self-service change revokes nothing: the acting session and the
+    // account's other live session keep working. Only owner-issued resets
+    // wipe every session.
+    expect((await staffApiRequest(jar, "/api/staff/conversations")).status).toBe(200);
+    expect((await staffApiRequest(second, "/api/staff/conversations")).status).toBe(200);
 
+    // Fresh sign-ins require the new password; the old one no longer works.
     const fresh = new CookieJar();
     await signInAs(fresh, "self-change", "bob-new-secure-password-94");
     expect((await staffApiRequest(fresh, "/api/staff/conversations")).status).toBe(200);
+    const stale = new CookieJar();
+    const oldPassword = await authRequest(stale, "/api/auth/sign-in/username", {
+      body: { username: "self-change", password: "self-change-password-42" },
+    });
+    expect(oldPassword.status).toBe(401);
   });
 });
 
