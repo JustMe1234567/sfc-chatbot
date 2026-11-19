@@ -7,8 +7,6 @@ import { createClient, type SupabaseClient, type User } from "@supabase/supabase
 import { trustedOrigins } from "../config";
 import { publicClientKey } from "../api/clientKey";
 import {
-  isIpBlocked,
-  recordBlockedLoginAttempt,
   recordLoginFailure,
   recordLoginSuccess,
 } from "../domain/loginLog";
@@ -232,19 +230,15 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
         `SELECT "id", "supabaseUserId", "banned" FROM staff_members WHERE lower("username") = lower(?)`,
         username,
       );
-      // The classification the log's criteria pivot on: whether the
-      // attempted username belongs to a live staff account. Unknown or
-      // disabled names take the block path below; valid names never do.
-      const usernameIsStaff = Boolean(member?.supabaseUserId) && !enabled(member?.banned);
-      if (!usernameIsStaff && (await isIpBlocked(dependencies.db, ip))) {
-        // While the IP is blocked, attempts that name no live staff account
-        // are rejected outright and logged as blocked. The response is the
-        // identical generic failure — a blocked attacker must not learn
-        // which usernames are real from the status code.
-        await recordBlockedLoginAttempt(dependencies.db, { username, ip, userAgent });
-        return finish(authError("Username or password is incorrect.", 401));
-      }
       if (!member?.supabaseUserId || enabled(member.banned)) {
+        // Unknown or disabled usernames are the block rule's population:
+        // the keyed transaction that records this failure makes the
+        // active-block decision at the authoritative point (ticket 81,
+        // second amendment) — an attempt queued behind the threshold-setting
+        // failure lands as blocked rather than as an eleventh failure that
+        // re-stamps the block. The response is the identical generic failure
+        // either way: a blocked attacker must not learn which usernames are
+        // real from the status code.
         await recordLoginFailure(dependencies.db, {
           username,
           ip,

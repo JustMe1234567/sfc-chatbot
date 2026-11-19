@@ -6,8 +6,6 @@ import type {
 } from "../src/auth/provider";
 import { publicClientKey } from "../src/api/clientKey";
 import {
-  isIpBlocked,
-  recordBlockedLoginAttempt,
   recordLoginFailure,
   recordLoginSuccess,
 } from "../src/domain/loginLog";
@@ -147,19 +145,15 @@ class FakeAuthProvider implements AuthProvider {
       const banned = staff?.banned === true || staff?.banned === 1;
       const ip = publicClientKey(request);
       const userAgent = request.headers.get("user-agent");
-      // The identical generic failure: a blocked attacker must not learn
-      // which usernames are real from the status code.
-      const rejectBlocked = async (): Promise<Response> => {
-        await recordBlockedLoginAttempt(this.dependencies.db, { username, ip, userAgent });
-        return this.error("Username or password is incorrect.", 401);
-      };
       // The real provider's classification, mirrored branch for branch
       // (ticket 81 parity): whether the attempted username belongs to a live
       // staff account decides which criteria feed and who may be blocked.
+      // The active-block decision is the keyed transaction's, made at the
+      // authoritative point — not a pre-read (ticket 81 second amendment).
+      // Every rejection below is the identical generic failure: a blocked
+      // attacker must not learn which usernames are real from the status
+      // code.
       if (!user) {
-        if (await isIpBlocked(this.dependencies.db, ip)) {
-          return rejectBlocked();
-        }
         await recordLoginFailure(this.dependencies.db, {
           username,
           ip,
@@ -170,9 +164,6 @@ class FakeAuthProvider implements AuthProvider {
         return this.error("Username or password is incorrect.", 401);
       }
       if (banned || user.banned) {
-        if (await isIpBlocked(this.dependencies.db, ip)) {
-          return rejectBlocked();
-        }
         await recordLoginFailure(this.dependencies.db, {
           username,
           ip,

@@ -180,6 +180,18 @@ export interface LoginFailureInput extends LoginEventInput {
  * count-then-write would let every concurrent attempt read the same prior
  * total and miss. The key covers the valid-username criterion (a) too;
  * those decisions share the IP's queue and stay exact.
+ *
+ * The active-block check runs inside that same transaction (ticket 81
+ * second amendment), not as a provider pre-read: an attempt that queued
+ * behind the threshold-setting failure finds the block live here and is
+ * recorded with outcome "blocked" instead of counting as an eleventh
+ * failure that re-stamps `blocked_until` from its own clock. Valid
+ * usernames are never block-checked — the carve-out that keeps a correct
+ * credential signing in from a blocked IP.
+ *
+ * Returns the event's `suspicious` flag and whether the block rule engaged
+ * on this attempt: `blocked` is true when this failure either crossed the
+ * threshold (creating the one-hour block) or was rejected by the live one.
  */
 export async function recordLoginFailure(
   db: AppDatabase,
@@ -190,6 +202,32 @@ export async function recordLoginFailure(
   return db.transaction(`login-ip:${input.ip}`, async (tx) => {
     let suspicious = false;
     let blocked = false;
+    if (!input.usernameIsStaff) {
+      // The authoritative active-block check, at the serialization point:
+      // no earlier read can speak for a queued attempt's state.
+      const block = await tx.get<{ blockedUntil: string }>(
+        `SELECT blocked_until AS "blockedUntil" FROM login_ip_blocks WHERE ip = ?`,
+        input.ip,
+      );
+      if (block !== undefined && block.blockedUntil > createdAt) {
+        await insertEvent(
+          tx,
+          {
+            username: input.username,
+            ip: input.ip,
+            userAgent: input.userAgent,
+            outcome: "blocked",
+            reason: "ip_blocked",
+            suspicious: false,
+            usernameIsStaff: false,
+          },
+          createdAt,
+        );
+        // Rejected by the live block, which this path never touches — the
+        // expiry stays the threshold-setting attempt's hour.
+        return { suspicious: false, blocked: true };
+      }
+    }
     if (input.usernameIsStaff) {
       // (a): the 5th and later failures against one valid username from one
       // IP inside the window carry the flag.
@@ -245,24 +283,6 @@ export async function recordLoginFailure(
     }
     return { suspicious, blocked };
   });
-}
-
-/**
- * Records one attempt rejected by an active IP block. These events are the
- * owner's evidence of the block working; they never extend the block and
- * never feed the failure counters, so sustained hammering during a block
- * cannot turn the one-hour expiry into a rolling one.
- */
-export async function recordBlockedLoginAttempt(
-  db: AppDatabase,
-  input: LoginEventInput,
-  now: number = Date.now(),
-): Promise<void> {
-  await insertEvent(
-    db,
-    { ...input, outcome: "blocked", reason: "ip_blocked", suspicious: false, usernameIsStaff: false },
-    new Date(now).toISOString(),
-  );
 }
 
 /**

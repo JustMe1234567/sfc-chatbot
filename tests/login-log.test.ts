@@ -10,7 +10,6 @@ import {
   clearLoginEvents,
   isIpBlocked,
   listLoginEvents,
-  recordBlockedLoginAttempt,
   recordLoginFailure,
   recordLoginSuccess,
   sweepLoginEvents,
@@ -441,10 +440,21 @@ describe("the ip block rule (ticket 81)", () => {
         usernameIsStaff: false,
       }, start + i);
     }
-    // Sustained hammering during the block lands as blocked events.
+    // Sustained hammering during the block flows through the same keyed
+    // transaction that records failures: every attempt lands as a blocked
+    // event and none of them re-stamps the block it arrived into.
     for (let i = 0; i < 20; i++) {
-      await recordBlockedLoginAttempt(db, { username: `hammer-c-more-${i}`, ip, userAgent: null }, start + 30 * 60 * 1000 + i);
+      const result = await recordLoginFailure(db, {
+        username: `hammer-c-more-${i}`,
+        ip,
+        userAgent: null,
+        reason: "unknown_username",
+        usernameIsStaff: false,
+      }, start + 30 * 60 * 1000 + i);
+      expect(result.blocked).toBe(true);
     }
+    const blockedEvents = (await eventsForIp(db, ip)).filter((event) => event.outcome === "blocked");
+    expect(blockedEvents).toHaveLength(20);
     // If any of that extended the block, the hour mark would not release.
     expect(await isIpBlocked(db, ip, start + 59 * 60 * 1000)).toBe(true);
     expect(await isIpBlocked(db, ip, start + 61 * 60 * 1000)).toBe(false);
@@ -559,6 +569,127 @@ describe("concurrent attempts cannot miss the thresholds (ticket 81 amendment)",
     const events = await eventsForIp(db, ip);
     expect(events).toHaveLength(5);
     expect(events.filter((event) => event.suspicious === 1)).toHaveLength(1);
+  });
+});
+
+describe("an attempt queued behind the block threshold is recorded blocked (ticket 81 second amendment)", () => {
+  it("records the queued attempt as blocked instead of an eleventh failure", { timeout: 120_000 }, async () => {
+    const db = await testDb();
+    const ip = "10.81.91.1";
+    const now = Date.now();
+    const results = await Promise.all(
+      Array.from({ length: 11 }, (_, i) =>
+        recordLoginFailure(db, {
+          username: `ghost-queued-${i}`,
+          ip,
+          userAgent: null,
+          reason: "unknown_username",
+          usernameIsStaff: false,
+        }, now),
+      ),
+    );
+    // Whatever order the eleven acquire the ip's boundary in, exactly ten
+    // of them are ordinary failures — the tenth sets the block — and the
+    // one queued behind it is recorded blocked, not an eleventh failure
+    // that re-stamps the block from its own clock.
+    const events = await eventsForIp(db, ip);
+    expect(events.filter((event) => event.outcome === "failure")).toHaveLength(10);
+    const blockedEvents = events.filter((event) => event.outcome === "blocked");
+    expect(blockedEvents).toHaveLength(1);
+    expect(blockedEvents[0]?.reason).toBe("ip_blocked");
+    // The trigger and the rejection both report the block rule engaging;
+    // no third attempt does.
+    expect(results.filter((result) => result.blocked)).toHaveLength(2);
+    // The expiry is the threshold-setting attempt's hour, unmoved: live one
+    // instant before it, gone exactly at it.
+    const block = await db.get<{ blockedUntil: string }>(
+      `SELECT blocked_until AS "blockedUntil" FROM login_ip_blocks WHERE ip = ?`,
+      ip,
+    );
+    expect(block?.blockedUntil).toBe(new Date(now + 60 * 60 * 1000).toISOString());
+    expect(await isIpBlocked(db, ip, now + 60 * 60 * 1000 - 1)).toBe(true);
+    expect(await isIpBlocked(db, ip, now + 60 * 60 * 1000)).toBe(false);
+  });
+
+  it("keeps a blocked attempt's rejection from moving the expiry", { timeout: 120_000 }, async () => {
+    const db = await testDb();
+    const ip = "10.81.91.2";
+    const now = Date.now();
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        recordLoginFailure(db, {
+          username: `ghost-expiry-${i}`,
+          ip,
+          userAgent: null,
+          reason: "unknown_username",
+          usernameIsStaff: false,
+        }, now),
+      ),
+    );
+    expect(results.filter((result) => result.blocked)).toHaveLength(1);
+    // A later attempt during the block is rejected through the keyed
+    // transaction five minutes into the hour; its clock never touches the
+    // block the threshold-setting attempt created.
+    const later = await recordLoginFailure(db, {
+      username: "ghost-expiry-later",
+      ip,
+      userAgent: null,
+      reason: "unknown_username",
+      usernameIsStaff: false,
+    }, now + 5 * 60 * 1000);
+    expect(later.blocked).toBe(true);
+    const block = await db.get<{ blockedUntil: string }>(
+      `SELECT blocked_until AS "blockedUntil" FROM login_ip_blocks WHERE ip = ?`,
+      ip,
+    );
+    expect(block?.blockedUntil).toBe(new Date(now + 60 * 60 * 1000).toISOString());
+    const events = await eventsForIp(db, ip);
+    expect(events.filter((event) => event.outcome === "failure")).toHaveLength(10);
+    expect(events.filter((event) => event.outcome === "blocked")).toHaveLength(1);
+    expect(await isIpBlocked(db, ip, now + 60 * 60 * 1000)).toBe(false);
+  });
+
+  it("keeps a valid-username failure an ordinary failure even interleaved with the block boundary", { timeout: 120_000 }, async () => {
+    const db = await testDb();
+    const ip = "10.81.91.3";
+    const now = Date.now();
+    // Ten non-staff-username failures race one valid-username failure at
+    // the same instant: wherever the valid one lands in the queue, the
+    // carve-out holds — it is never block-checked and never rejected, and
+    // it never feeds the block's count.
+    const results = await Promise.all([
+      ...Array.from({ length: 10 }, (_, i) =>
+        recordLoginFailure(db, {
+          username: `ghost-carveout-${i}`,
+          ip,
+          userAgent: null,
+          reason: "unknown_username",
+          usernameIsStaff: false,
+        }, now),
+      ),
+      recordLoginFailure(db, {
+        username: OWNER_USERNAME,
+        ip,
+        userAgent: null,
+        reason: "invalid_password",
+        usernameIsStaff: true,
+      }, now),
+    ]);
+    const events = await eventsForIp(db, ip);
+    expect(events.filter((event) => event.outcome === "failure")).toHaveLength(11);
+    expect(events.filter((event) => event.outcome === "blocked")).toHaveLength(0);
+    const valid = events.filter((event) => event.username === OWNER_USERNAME);
+    expect(valid).toHaveLength(1);
+    expect(valid[0]?.outcome).toBe("failure");
+    expect(valid[0]?.reason).toBe("invalid_password");
+    // Still exactly the tenth non-staff-username failure that engages the
+    // block, at the triggering attempt's hour.
+    expect(results.filter((result) => result.blocked)).toHaveLength(1);
+    const block = await db.get<{ blockedUntil: string }>(
+      `SELECT blocked_until AS "blockedUntil" FROM login_ip_blocks WHERE ip = ?`,
+      ip,
+    );
+    expect(block?.blockedUntil).toBe(new Date(now + 60 * 60 * 1000).toISOString());
   });
 });
 
