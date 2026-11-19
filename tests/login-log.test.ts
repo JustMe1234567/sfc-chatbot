@@ -507,6 +507,61 @@ describe("the ip block rule (ticket 81)", () => {
   });
 });
 
+describe("concurrent attempts cannot miss the thresholds (ticket 81 amendment)", () => {
+  it("blocks at the tenth concurrent non-staff-username failure from one ip", { timeout: 120_000 }, async () => {
+    const db = await testDb();
+    const ip = "10.81.90.1";
+    const now = Date.now();
+    const results = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        recordLoginFailure(db, {
+          username: `ghost-concurrent-${i}`,
+          ip,
+          userAgent: null,
+          reason: "unknown_username",
+          usernameIsStaff: false,
+        }, now),
+      ),
+    );
+    // The events must count one another: exactly the tenth failure crosses
+    // the boundary, exactly one call reports it, and the block expires one
+    // hour after the triggering failure with no manual release.
+    expect(results.filter((result) => result.blocked)).toHaveLength(1);
+    expect(await isIpBlocked(db, ip, now)).toBe(true);
+    expect(await isIpBlocked(db, ip, now + 60 * 60 * 1000)).toBe(false);
+    // Criterion (c) under the same concurrency: of the ten, the 3rd and
+    // later carry the flag — eight flagged, two not.
+    const events = await eventsForIp(db, ip);
+    expect(events).toHaveLength(10);
+    expect(events.filter((event) => event.suspicious === 1)).toHaveLength(8);
+  });
+
+  it("flags the fifth concurrent valid-username failure without ever blocking", { timeout: 120_000 }, async () => {
+    const db = await testDb();
+    const ip = "10.81.90.2";
+    const now = Date.now();
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        recordLoginFailure(db, {
+          username: "flag-concurrent-valid",
+          ip,
+          userAgent: null,
+          reason: "invalid_password",
+          usernameIsStaff: true,
+        }, now),
+      ),
+    );
+    // Criterion (a): exactly the fifth of five carries the flag, and the
+    // valid-username carve-out holds — no call blocks, no block row exists.
+    expect(results.filter((result) => result.suspicious)).toHaveLength(1);
+    expect(results.filter((result) => result.blocked)).toHaveLength(0);
+    expect(await isIpBlocked(db, ip, now)).toBe(false);
+    const events = await eventsForIp(db, ip);
+    expect(events).toHaveLength(5);
+    expect(events.filter((event) => event.suspicious === 1)).toHaveLength(1);
+  });
+});
+
 describe("the owner-only logs api (ticket 81)", () => {
   it("refuses staff, editors, and the unauthenticated; serves owners", { timeout: 120_000 }, async () => {
     expect((await logsGet(new CookieJar())).status).toBe(401);

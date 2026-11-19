@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AppDatabase } from "../db/appDatabase";
+import type { AppDatabase, AppDatabaseTx } from "../db/appDatabase";
 import { DEFAULT_LOGIN_RETENTION_DAYS, readLoginRetention } from "../settings";
 
 /**
@@ -91,7 +91,7 @@ type InsertableLoginEvent = LoginEventInput & {
 };
 
 async function insertEvent(
-  db: AppDatabase,
+  db: AppDatabaseTx,
   event: InsertableLoginEvent,
   createdAt: string,
 ): Promise<void> {
@@ -173,6 +173,13 @@ export interface LoginFailureInput extends LoginEventInput {
  * IP lands inside the rolling ten-minute window, the IP is blocked for one
  * hour — the triggering failure itself is logged as an ordinary failure,
  * and only attempts arriving after it are rejected as blocked.
+ *
+ * The whole evaluation is one transaction keyed on the client IP (ticket 81
+ * amendment): concurrent failures count one another, so neither the block
+ * boundary nor a suspicious boundary can be passed unnoticed — bare
+ * count-then-write would let every concurrent attempt read the same prior
+ * total and miss. The key covers the valid-username criterion (a) too;
+ * those decisions share the IP's queue and stay exact.
  */
 export async function recordLoginFailure(
   db: AppDatabase,
@@ -180,62 +187,64 @@ export async function recordLoginFailure(
   now: number = Date.now(),
 ): Promise<{ suspicious: boolean; blocked: boolean }> {
   const createdAt = new Date(now).toISOString();
-  let suspicious = false;
-  let blocked = false;
-  if (input.usernameIsStaff) {
-    // (a): the 5th and later failures against one valid username from one
-    // IP inside the window carry the flag.
-    const prior = await db.get<{ hits: number }>(
-      `SELECT COUNT(*) AS hits FROM login_events
-       WHERE username = ? AND ip = ? AND outcome = 'failure'
-         AND username_known = 1 AND created_at >= ?`,
-      input.username,
-      input.ip,
-      new Date(now - LOGIN_FLAG_WINDOW_MS).toISOString(),
-    );
-    suspicious = Number(prior?.hits ?? 0) + 1 >= LOGIN_FLAG_VALID_FAILURES;
-  } else {
-    // (c): the 3rd and later non-staff-username failures from one IP inside
-    // the window carry the flag.
-    const prior = await db.get<{ hits: number }>(
-      `SELECT COUNT(*) AS hits FROM login_events
-       WHERE ip = ? AND outcome = 'failure' AND username_known = 0 AND created_at >= ?`,
-      input.ip,
-      new Date(now - LOGIN_FLAG_WINDOW_MS).toISOString(),
-    );
-    suspicious = Number(prior?.hits ?? 0) + 1 >= LOGIN_FLAG_UNKNOWN_FAILURES;
-    // The block rule: the same population, its own window and threshold.
-    const counted = await db.get<{ hits: number }>(
-      `SELECT COUNT(*) AS hits FROM login_events
-       WHERE ip = ? AND outcome = 'failure' AND username_known = 0 AND created_at >= ?`,
-      input.ip,
-      new Date(now - LOGIN_BLOCK_WINDOW_MS).toISOString(),
-    );
-    blocked = Number(counted?.hits ?? 0) + 1 >= LOGIN_BLOCK_FAILURES;
-  }
-  await insertEvent(
-    db,
-    {
-      username: input.username,
-      ip: input.ip,
-      userAgent: input.userAgent,
-      outcome: "failure",
-      reason: input.reason,
-      suspicious,
-      usernameIsStaff: input.usernameIsStaff,
-    },
-    createdAt,
-  );
-  if (blocked) {
-    await db.run(
-      `INSERT INTO login_ip_blocks (ip, blocked_until, created_at) VALUES (?, ?, ?)
-       ON CONFLICT (ip) DO UPDATE SET blocked_until = excluded.blocked_until`,
-      input.ip,
-      new Date(now + LOGIN_BLOCK_DURATION_MS).toISOString(),
+  return db.transaction(`login-ip:${input.ip}`, async (tx) => {
+    let suspicious = false;
+    let blocked = false;
+    if (input.usernameIsStaff) {
+      // (a): the 5th and later failures against one valid username from one
+      // IP inside the window carry the flag.
+      const prior = await tx.get<{ hits: number }>(
+        `SELECT COUNT(*) AS hits FROM login_events
+         WHERE username = ? AND ip = ? AND outcome = 'failure'
+           AND username_known = 1 AND created_at >= ?`,
+        input.username,
+        input.ip,
+        new Date(now - LOGIN_FLAG_WINDOW_MS).toISOString(),
+      );
+      suspicious = Number(prior?.hits ?? 0) + 1 >= LOGIN_FLAG_VALID_FAILURES;
+    } else {
+      // (c): the 3rd and later non-staff-username failures from one IP inside
+      // the window carry the flag.
+      const prior = await tx.get<{ hits: number }>(
+        `SELECT COUNT(*) AS hits FROM login_events
+         WHERE ip = ? AND outcome = 'failure' AND username_known = 0 AND created_at >= ?`,
+        input.ip,
+        new Date(now - LOGIN_FLAG_WINDOW_MS).toISOString(),
+      );
+      suspicious = Number(prior?.hits ?? 0) + 1 >= LOGIN_FLAG_UNKNOWN_FAILURES;
+      // The block rule: the same population, its own window and threshold.
+      const counted = await tx.get<{ hits: number }>(
+        `SELECT COUNT(*) AS hits FROM login_events
+         WHERE ip = ? AND outcome = 'failure' AND username_known = 0 AND created_at >= ?`,
+        input.ip,
+        new Date(now - LOGIN_BLOCK_WINDOW_MS).toISOString(),
+      );
+      blocked = Number(counted?.hits ?? 0) + 1 >= LOGIN_BLOCK_FAILURES;
+    }
+    await insertEvent(
+      tx,
+      {
+        username: input.username,
+        ip: input.ip,
+        userAgent: input.userAgent,
+        outcome: "failure",
+        reason: input.reason,
+        suspicious,
+        usernameIsStaff: input.usernameIsStaff,
+      },
       createdAt,
     );
-  }
-  return { suspicious, blocked };
+    if (blocked) {
+      await tx.run(
+        `INSERT INTO login_ip_blocks (ip, blocked_until, created_at) VALUES (?, ?, ?)
+         ON CONFLICT (ip) DO UPDATE SET blocked_until = excluded.blocked_until`,
+        input.ip,
+        new Date(now + LOGIN_BLOCK_DURATION_MS).toISOString(),
+        createdAt,
+      );
+    }
+    return { suspicious, blocked };
+  });
 }
 
 /**
