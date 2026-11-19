@@ -43,3 +43,13 @@ Make dashboard sign-ins observable: every attempt is logged, patterns are flagge
 - Success is recorded once the credential path has succeeded (username, password, account state all verified) even if the follow-up factor listing then errors: the session exists at that point, and the alternative would leave an attempt missing from the log entirely.
 - The cert script (`scripts/cert81-login-logs.mjs`) is written but **not run** — owner-UI cert runs stay gated by ticket 80's substrate decision, exactly as the ticket anticipates.
 - Code review findings fixed: the IP-block glossary entry now names the non-staff population precisely (unknown or disabled), and a speculative `limit` option was removed from the log list. Declined with reasons: the migrations README mapping table stays as-is (its rows already stop at 0018/0008 — 0019/0020 were never added either), and the twin (c)/block count queries stay separate (distinct concepts with independently adjustable constants).
+
+2026-11-19: **Review amendment — make login thresholds concurrency-safe.** The current threshold path performs count, event insertion, and IP-block upsert as separate operations. Concurrent failures can observe the same prior count, causing the fifth/third suspicious boundary or tenth-attempt block boundary to be missed. This violates the store's transaction/guarded-write invariant in ADR-0003 and weakens ticket 81's compensating control.
+
+Acceptance criteria for this amendment:
+
+- Evaluating a failed attempt, inserting its login event, and creating or extending any threshold-triggered block are atomic for the relevant IP/username decision.
+- Concurrent non-staff-username failures cannot pass the tenth-attempt boundary without creating the one-hour IP block.
+- Concurrent failures cannot silently miss the specified suspicious-event boundaries.
+- A deterministic regression test exercises concurrent attempts against the real login-log/store seam and runs for both supported database dialects where the existing suite provides parity.
+- The valid-username carve-out, generic failure response, rolling windows, expiry behavior, and adjustable threshold constants remain unchanged.
