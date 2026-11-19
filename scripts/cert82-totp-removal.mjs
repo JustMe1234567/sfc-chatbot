@@ -60,7 +60,10 @@ console.log("enroll page and two-factor routes are gone (404)");
 // The staff roster shows no second-factor state on any member card.
 await page.goto(`${BASE}/dashboard/staff`);
 await page.waitForLoadState("domcontentloaded");
-await page.getByRole("heading", { name: "Staff" }).waitFor({ timeout: 30000 });
+// The roster page's stable anchor (first run against a real build, 2026-11-20:
+// the page carries no bare "Staff" heading — account-form's heading is the
+// always-present landmark).
+await page.getByRole("heading", { name: "Create a staff account" }).waitFor({ timeout: 30000 });
 const factorText = await page.getByText("Second factor", { exact: false }).count();
 if (factorText) {
   throw new Error(`the staff roster still mentions the second factor on ${factorText} element(s)`);

@@ -84,7 +84,13 @@ if (suspiciousBadges === 0) {
 await shot("logs-complete-view");
 
 await page.getByRole("tab", { name: "Suspicious logs" }).click();
-await page.getByText("ghost-probe-blocked", { exact: false }).first().waitFor({ timeout: 30000 });
+// Criterion-(c) flags: the 3rd-on unknown-username failures are the ones the
+// suspicious view exists for. The blocked attempts themselves are NOT
+// flagged — ticket 81's second amendment records blocked rows with
+// suspicious false so they feed no counter — they belong to the complete
+// view only. (First run against a real build, 2026-11-20: the script
+// originally waited for the blocked username here.)
+await page.getByText("ghost-probe-2", { exact: false }).first().waitFor({ timeout: 30000 });
 const rows = await page.locator("tbody tr").count();
 if (rows === 0) {
   throw new Error("the suspicious view rendered empty with flags present");
@@ -99,8 +105,11 @@ await page.getByRole("dialog").waitFor({ timeout: 15000 });
 await shot("logs-confirm-selected-delete");
 await page.getByRole("button", { name: "Cancel" }).click();
 
-// The single-entry delete confirmation, confirmed for real.
-await page.getByRole("button", { name: /Delete the entry for ghost-probe-blocked/ }).click();
+// The single-entry delete confirmation, confirmed for real. The traffic
+// above lands TWO blocked rows for this username, so the locator must pin
+// one — .first() — or strict mode refuses the click. (First run against a
+// real build, 2026-11-20.)
+await page.getByRole("button", { name: /Delete the entry for ghost-probe-blocked/ }).first().click();
 await page.getByRole("dialog").waitFor({ timeout: 15000 });
 await shot("logs-confirm-single-delete");
 await page.getByRole("button", { name: "Delete", exact: true }).click();

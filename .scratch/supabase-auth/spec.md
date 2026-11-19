@@ -1,6 +1,6 @@
 # Supabase Auth implementation spec
 
-Status: implemented locally; hosted verification pending
+Status: implemented locally; hosted test-project verification recorded 2026-11-20 (tickets 70/81/82 certs on a local production runtime against the hosted test project — see ticket 82's evidence comment); Vercel-hosted verification still pending
 
 Approved direction: replace Better Auth with Supabase Auth using owner-managed usernames and passwords. Sign-in is single-stage username+password for every role — the mandatory TOTP requirement is gone (ticket 82; ADR-0006 records the posture change, with ticket 81's login log, suspicious flagging, and IP block as the compensating controls). Public signup, invitation email, password-recovery email, SMTP, Resend, and chat-alert email are not used. Localhost and the Vercel test deployment share a dedicated hosted test project. Production launch remains excluded.
 

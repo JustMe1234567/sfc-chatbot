@@ -4,6 +4,7 @@ This file is the shared localhost handoff for Codex, Zcode, and other repository
 
 ## Current state
 
+- Cert-recon server (tickets 70/81/82 reconciliation): STOPPED 2026-11-20 — ran a local PRODUCTION runtime (`next start`) on port 4388 against the hosted Supabase test project only (launcher `.scratch/cert-recon-server.mjs`, log `.scratch/cert-recon-server.log`); all three certs passed, all disposable records cleaned up (cert auth user deleted via admin API, staff row + login events + IP block + analytics rows deleted, settings rows restored by cert70's own finally), port released, nothing left listening on 4388. Run note: the app's Postgres pool must have headroom for the settings page's 8 concurrent reads — the run needed `PG_POOL_MAX=20` (see ticket 89). Port 3000's unrelated dev server (below) untouched by this session.
 - Status: running (listener confirmed on port 3000, owner unknown — not started by the ticket-76 session)
 - Base URL: http://localhost:3000
 - Chatbot demo: http://localhost:3000/demo/wordpress-test-page.html
