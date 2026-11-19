@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ask, askRaw, confirmHandoffYes, countQuery, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp, staffApiRequest } from "./auth-helpers";
+import { CookieJar, provisionStaff, staffApiRequest, signInAs } from "./auth-helpers";
 
 const OWNER_EMAIL = "consent-flow-owner@example.edu";
 const OWNER_PASSWORD = "consent-flow-owner-password-8x";
@@ -11,8 +11,7 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Flow Owner", role: "owner" });
-  const totp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, totp);
+  await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
 });
 
 describe("unknown question offers a visitor-consented handoff", () => {

@@ -11,8 +11,7 @@ import { join } from "node:path";
 import process from "node:process";
 import {
   assertDemoOriginEmbeddable,
-  enrollAndSignIn,
-  signInWithTotp,
+  signIn,
   waitForServer,
 } from "./lib/shot-driver.mjs";
 
@@ -169,7 +168,7 @@ mkdirSync(OUT, { recursive: true });
   const page = await context.newPage();
   page.on("pageerror", (error) => console.log("PAGE ERROR:", String(error).slice(0, 200)));
   await page.setViewportSize({ width: 1280, height: 800 });
-  const totp = await enrollAndSignIn(page, BASE, USERNAME, PASSWORD);
+  await signIn(page, BASE, USERNAME, PASSWORD);
   console.log("signed in");
 
   const buttonDuration = await page
@@ -191,7 +190,7 @@ mkdirSync(OUT, { recursive: true });
   const reduceContext = await browser.newContext({ reducedMotion: "reduce" });
   const reducePage = await reduceContext.newPage();
   await reducePage.setViewportSize({ width: 1280, height: 800 });
-  await signInWithTotp(reducePage, BASE, USERNAME, PASSWORD, totp);
+  await signIn(reducePage, BASE, USERNAME, PASSWORD);
   const reduceButton = await reducePage
     .locator("button")
     .first()

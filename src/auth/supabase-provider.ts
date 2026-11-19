@@ -181,20 +181,15 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
     if (claimsError || !claims?.session_id || !claims.sub) return null;
 
     // Claims prove the token; the live Auth rows prove that its session has
-    // not been revoked and that the linked user and MFA factor remain valid.
-    // Keeping this in one database round trip avoids an Auth network request
-    // on every one-second inbox refresh while preserving immediate revocation.
+    // not been revoked and that the linked user remains valid. Keeping this
+    // in one database round trip avoids an Auth network request on every
+    // one-second inbox refresh while preserving immediate revocation.
     const currentSession = await dependencies.db.get<{
       email: string | null;
       emailConfirmedAt: string | null;
-      mfaEnrolled: unknown;
     }>(
       `SELECT u.email,
-              u.email_confirmed_at AS "emailConfirmedAt",
-              EXISTS (
-                SELECT 1 FROM auth.mfa_factors f
-                WHERE f.user_id = u.id AND f.factor_type = 'totp' AND f.status = 'verified'
-              ) AS "mfaEnrolled"
+              u.email_confirmed_at AS "emailConfirmedAt"
        FROM auth.sessions s
        JOIN auth.users u ON u.id = s.user_id
        WHERE s.id = ? AND s.user_id = ?
@@ -210,8 +205,6 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
       sessionId: claims.session_id,
       email: currentSession.email ?? "",
       emailVerified: Boolean(currentSession.emailConfirmedAt),
-      aal: claims.aal === "aal2" ? "aal2" : "aal1",
-      mfaEnrolled: enabled(currentSession.mfaEnrolled),
     };
   }
 
@@ -285,16 +278,10 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
         });
         return finish(authError("Username or password is incorrect.", 401));
       }
-      // The credential path succeeded — this is the attempt's outcome even
-      // if the follow-up factor listing fails below.
+      // The credential path succeeded — single-stage sign-in (ticket 82):
+      // username and password are the whole flow.
       await recordLoginSuccess(dependencies.db, { username, ip, userAgent });
-      const factors = await client.auth.mfa.listFactors();
-      if (factors.error) return finish(authError());
-      return finish(
-        json({
-          twoFactorRedirect: factors.data.totp.some((factor) => factor.status === "verified"),
-        }),
-      );
+      return finish(json({ success: true }));
     }
 
     if (request.method === "GET" && path === "get-session") {
@@ -308,66 +295,9 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
             id: staff.id,
             username: staff.username,
             name: staff.name,
-            twoFactorEnabled: identity.mfaEnrolled,
           },
-          aal: identity.aal,
         }),
       );
-    }
-
-    if (request.method === "POST" && path === "two-factor/enable") {
-      const identity = await authenticate(request.headers);
-      const staff = identity ? await staffForUser(identity.userId) : null;
-      if (!identity || !staff || enabled(staff.banned)) {
-        return finish(authError("Sign in required.", 401));
-      }
-      const listed = await client.auth.mfa.listFactors();
-      if (listed.error) return finish(authError());
-      if (listed.data.all.some((factor) => factor.factor_type === "totp")) {
-        return finish(authError("An authenticator is already enrolled.", 409));
-      }
-      const enrolled = await client.auth.mfa.enroll({
-        factorType: "totp",
-        friendlyName: "Springfield College chat",
-        issuer: "Springfield College chat",
-      });
-      if (enrolled.error) return finish(authError(enrolled.error.message));
-      return finish(
-        json({
-          totpURI: enrolled.data.totp.uri,
-          qrCode: enrolled.data.totp.qr_code,
-          factorId: enrolled.data.id,
-        }),
-      );
-    }
-
-    if (request.method === "POST" && path === "two-factor/verify-totp") {
-      const code = typeof body?.code === "string" ? body.code.trim() : "";
-      const requestedFactor = typeof body?.factorId === "string" ? body.factorId : null;
-      if (!/^\d{6}$/.test(code)) return finish(authError("Enter the six-digit authenticator code."));
-      const identity = await authenticate(request.headers);
-      const staff = identity ? await staffForUser(identity.userId) : null;
-      if (!identity || !staff || enabled(staff.banned)) {
-        return finish(authError("Sign in required.", 401));
-      }
-      const listed = await client.auth.mfa.listFactors();
-      const factors = requestedFactor ? listed.data?.all : listed.data?.totp;
-      const factor = factors?.find(
-        (candidate) => candidate.factor_type === "totp" && (!requestedFactor || candidate.id === requestedFactor),
-      );
-      if (listed.error || !factor) return finish(authError("No authenticator is available."));
-      const verified = await client.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
-      if (verified.error) return finish(authError("The authenticator code is invalid.", 401));
-      await dependencies.db.run(
-        `UPDATE staff_members
-         SET "twoFactorEnabled" = ?, "emailVerified" = ?, "mfaRecoveryApprovedAt" = NULL, "updatedAt" = ?
-         WHERE "supabaseUserId" = ?`,
-        true,
-        true,
-        new Date().toISOString(),
-        identity.userId,
-      );
-      return finish(json({ success: true }));
     }
 
     if (request.method === "POST" && path === "sign-out") {
@@ -380,8 +310,8 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
       if (newPassword.length < 10) return finish(authError("Password must be at least 10 characters."));
       const identity = await authenticate(request.headers);
       const staff = identity ? await staffForUser(identity.userId) : null;
-      if (!identity || identity.aal !== "aal2" || !staff || enabled(staff.banned)) {
-        return finish(authError("Verify your authenticator before changing the password.", 403));
+      if (!identity || !staff || enabled(staff.banned)) {
+        return finish(authError("Sign in required.", 401));
       }
       const updated = await client.auth.updateUser({ password: newPassword });
       if (updated.error) return finish(authError(updated.error.message));
@@ -413,15 +343,6 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
     async resetPassword(userId: string, password: string): Promise<void> {
       const updated = await admin.auth.admin.updateUserById(userId, { password });
       if (updated.error) throw updated.error;
-      await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", userId);
-    },
-    async resetMfa(userId: string): Promise<void> {
-      const listed = await admin.auth.admin.mfa.listFactors({ userId });
-      if (listed.error) throw listed.error;
-      for (const factor of listed.data.factors) {
-        const removed = await admin.auth.admin.mfa.deleteFactor({ userId, id: factor.id });
-        if (removed.error) throw removed.error;
-      }
       await dependencies.db.run("DELETE FROM auth.sessions WHERE user_id = ?", userId);
     },
     async revokeAll(userId: string): Promise<void> {

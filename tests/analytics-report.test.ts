@@ -2,9 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { startConversation, startConversationRaw, TEST_CONTACT, ask, confirmHandoffYes, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 /**
@@ -23,10 +22,6 @@ const EDITOR_PASSWORD = "editor-analytics-orbit-8d";
 
 /** UTC+2, no DST: local day boundaries sit at fixed UTC instants. */
 const REPORTING_ZONE = "Etc/GMT-2";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 const ownerJar = new CookieJar();
 const staffJar = new CookieJar();
@@ -122,12 +117,9 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
-  await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-  await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
-  await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+  await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
+  await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
+  await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
   // Deterministic zone for day-boundary work (no DST at UTC+2).
   const saved = await putAnalyticsSettings(ownerJar, {
     reportingTimeZone: REPORTING_ZONE,

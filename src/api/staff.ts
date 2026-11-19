@@ -19,10 +19,11 @@ export interface StaffContext {
 /**
  * Resolves the current staff context from the session cookie on every
  * dashboard and staff API request: a valid server-side session, a verified
- * account, an active (not banned) account, the second factor
- * enabled, and an allowed role. Any failure returns a Response the caller
- * should send unchanged. Route handlers pass request.headers; server
- * components pass (await headers()).
+ * account, an active (not banned) account, and an allowed role. Sign-in is
+ * single-stage username + password (ticket 82 removed the second factor;
+ * ticket 81's login log and IP block are the compensating controls). Any
+ * failure returns a Response the caller should send unchanged. Route
+ * handlers pass request.headers; server components pass (await headers()).
  */
 export async function requireStaff(
   requestHeaders: Headers,
@@ -46,9 +47,8 @@ export async function requireStaff(
     role: string;
     banned: unknown;
     emailVerified: unknown;
-    twoFactorEnabled: unknown;
   }>(
-    `SELECT "id", "name", "username", "role", "banned", "emailVerified", "twoFactorEnabled"
+    `SELECT "id", "name", "username", "role", "banned", "emailVerified"
      FROM staff_members WHERE "supabaseUserId" = ?`,
     identity.userId,
   );
@@ -61,24 +61,6 @@ export async function requireStaff(
     user.emailVerified === true || user.emailVerified === 1 || user.emailVerified === "1";
   if (!staffEmailVerified) {
     return { response: NextResponse.json(GENERIC_AUTH_ERROR, { status: 403 }) };
-  }
-  const staffMfa =
-    user.twoFactorEnabled === true || user.twoFactorEnabled === 1 || user.twoFactorEnabled === "1";
-  if (!identity.mfaEnrolled || !staffMfa) {
-    return {
-      response: NextResponse.json(
-        { error: { code: "two_factor_enrollment_required", message: "Enroll a second factor to continue." } },
-        { status: 403 },
-      ),
-    };
-  }
-  if (identity.aal !== "aal2") {
-    return {
-      response: NextResponse.json(
-        { error: { code: "two_factor_challenge_required", message: "Verify your authenticator to continue." } },
-        { status: 403 },
-      ),
-    };
   }
   const role = user.role;
   const allowed = options?.roles ?? DASHBOARD_ROLES;

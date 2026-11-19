@@ -64,8 +64,8 @@ export async function provisionStaffMember(
     await db.run(
       `INSERT INTO staff_members
        ("id", "name", "email", "username", "emailVerified", "createdAt", "updatedAt", "role",
-        "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        "banned", "supabaseUserId", "invitationStatus")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       applicationId,
       name,
       `${applicationId}@staff.invalid`,
@@ -74,7 +74,6 @@ export async function provisionStaffMember(
       now,
       now,
       input.role,
-      false,
       false,
       null,
       "accepted",

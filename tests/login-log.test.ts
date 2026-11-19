@@ -20,9 +20,8 @@ import { countQuery, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./
 import {
   authRequest,
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 /**
@@ -43,9 +42,6 @@ const EDITOR_PASSWORD = "pen-log-cartoon-15";
 const OWNER_USERNAME = "owner.log";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
 let ownerJar: CookieJar;
 let staffJar: CookieJar;
 let editorJar: CookieJar;
@@ -57,15 +53,12 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Log Owner", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Log Desk", role: "staff" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Log Editor", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
   ownerJar = new CookieJar();
-  await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+  await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
   staffJar = new CookieJar();
-  await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
   editorJar = new CookieJar();
-  await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+  await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
 }, 120_000);
 
 async function testDb(): Promise<AppDatabase> {

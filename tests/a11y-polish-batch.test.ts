@@ -121,10 +121,5 @@ describe("a11y polish batch (ticket 29)", () => {
       "utf8",
     );
     expect(login).toContain('title: "Sign in"');
-    const enroll = await readFile(
-      path.join(repoRoot(), "src/app/dashboard/enroll/layout.tsx"),
-      "utf8",
-    );
-    expect(enroll).toContain('title: "Second-factor setup"');
   });
 });

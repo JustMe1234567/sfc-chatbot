@@ -4,9 +4,8 @@ import path from "node:path";
 import { TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 import {
   DEFAULT_EMBED_ALLOWLIST_ORIGIN,
@@ -38,10 +37,6 @@ const EDITOR_PASSWORD = "embed-editor-meadow-6p";
 const STAFF_EMAIL = "embed-staff@example.edu";
 const STAFF_PASSWORD = "embed-staff-fable-9d";
 
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-
 const COLLEGE = "https://springfieldcollege.ca";
 const OTHER_SITE = "https://alumni-foundation.example";
 
@@ -53,10 +48,9 @@ async function service(): Promise<Awaited<ReturnType<typeof import("../src/db/se
 async function staffJar(
   email: string,
   password: string,
-  totp: Awaited<ReturnType<typeof enrollTotp>>,
 ): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, email, password, totp);
+  await signInAs(jar, email, password);
   return jar;
 }
 
@@ -113,9 +107,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("origin normalization and validation", () => {
@@ -264,7 +255,7 @@ describe("the seeded allowlist setting", () => {
     // never been configured, so this runs before any owner save in this file.
     const { db } = await service();
     expect(await getEmbedAllowlistOrigins(db)).toEqual([DEFAULT_EMBED_ALLOWLIST_ORIGIN]);
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     expect(await getAllowlist(owner)).toEqual({ origins: [DEFAULT_EMBED_ALLOWLIST_ORIGIN] });
   });
 
@@ -345,13 +336,13 @@ describe("the public eligibility check", () => {
   it("outside production, the fixed loopback origins are automatic exceptions that are not stored", async () => {
     expect(await eligibilityAllowed("http://localhost:3000/chat")).toBe(true);
     expect(await eligibilityAllowed("http://127.0.0.1:3000")).toBe(true);
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     expect((await getAllowlist(owner)).origins).not.toContain("http://localhost:3000");
     expect((await getAllowlist(owner)).origins).not.toContain("http://127.0.0.1:3000");
   });
 
   it("applies owner saves to newly loaded widgets immediately, with no redeploy", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     expect(await eligibilityAllowed(OTHER_SITE)).toBe(false);
     const saved = await putAllowlist(owner, [DEFAULT_EMBED_ALLOWLIST_ORIGIN, `${OTHER_SITE}/donate`]);
     expect(saved.status).toBe(200);
@@ -366,7 +357,7 @@ describe("the public eligibility check", () => {
 
 describe("the owner-only allowlist API", () => {
   it("reads and writes for the owner, normalizing pasted addresses", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const saved = await putAllowlist(owner, [
       `${COLLEGE}/programs/example/?campaign=fall`,
       "https://Portal.Example:8443/entry",
@@ -385,9 +376,9 @@ describe("the owner-only allowlist API", () => {
   });
 
   it("refuses staff, editors, anonymous callers, and untrusted origins", async () => {
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
 
     expect((await putAllowlist(staff, [])).status).toBe(403);
     expect((await putAllowlist(editor, [])).status).toBe(403);
@@ -431,7 +422,7 @@ describe("the owner-only allowlist API", () => {
   });
 
   it("rejects invalid writes with actionable validation feedback, changing nothing", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const before = (await getAllowlist(owner)).origins;
 
     const cases: [unknown, string][] = [
@@ -467,7 +458,7 @@ describe("the owner-only allowlist API", () => {
   });
 
   it("persists a saved empty list and reports it as empty, not as the seed", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     expect((await putAllowlist(owner, [])).status).toBe(200);
     expect(await getAllowlist(owner)).toEqual({ origins: [] });
     expect(await eligibilityAllowed(COLLEGE)).toBe(false);

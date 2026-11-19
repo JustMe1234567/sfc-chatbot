@@ -15,9 +15,8 @@ import {
 } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 import { repoRoot } from "../src/paths";
 
@@ -32,8 +31,6 @@ import { repoRoot } from "../src/paths";
 
 const STAFF_EMAIL = "alice@example.edu";
 const STAFF_PASSWORD = "alice-return-harbor-61";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function count(postgresSql: string, sqliteSql: string, ...params: string[]): Promise<number> {
   const { getChatbotService } = await import("../src/db/service");
@@ -57,7 +54,7 @@ async function redeem(rawToken: string): Promise<Response> {
 
 async function staffClaimReply(conversationId: string, replyText: string): Promise<Response> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   const claimRoute = await import("../src/app/api/staff/conversations/[id]/claim/route");
   await claimRoute.POST(
     new Request(`${TEST_ORIGIN}/api/staff/conversations/${conversationId}/claim`, {
@@ -113,7 +110,6 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Alice" });
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("the optional handoff email request is gone", () => {

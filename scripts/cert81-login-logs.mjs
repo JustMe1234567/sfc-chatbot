@@ -8,15 +8,14 @@
 //
 // RUNS ARE GATED BY TICKET 80: the owner-UI substrate decision. The script
 // needs a server (dev or the substrate ticket 80 settles on) with a
-// freshly bootstrapped owner whose credentials it is given — enrollAndSignIn
-// fails fast against an owner that already has a verified authenticator.
+// freshly bootstrapped owner whose credentials it is given.
 //
 // Usage: node scripts/cert81-login-logs.mjs <outdir> [base]
 // Env:   CERT_OWNER_USERNAME, CERT_OWNER_PASSWORD (a freshly provisioned owner)
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { enrollAndSignIn, waitForServer } from "./lib/shot-driver.mjs";
+import { signIn, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/ticket81";
 const BASE = process.argv[3] ?? "http://127.0.0.1:3000";
@@ -37,10 +36,10 @@ async function shot(name) {
   console.log(`shot: ${name}`);
 }
 
-// Sign in through the real UI. The enroll pass and the full sign-in both
-// write success login events from this browser's IP — the first one is the
-// criterion-(b) flag the Suspicious view shows.
-const totp = await enrollAndSignIn(page, BASE, USERNAME, PASSWORD);
+// Sign in through the real UI. The single success from this browser's IP
+// is the criterion-(b) flag (first-ever-IP sign-in) the Suspicious view
+// shows.
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 // Drive the sign-in traffic from the page's own origin (the auth seam only
 // accepts the app's trusted origin), so every attempt carries one client
@@ -113,6 +112,5 @@ await page.getByRole("dialog").waitFor({ timeout: 15000 });
 await shot("logs-confirm-clear-all");
 await page.getByRole("button", { name: "Cancel" }).click();
 
-console.log(`returned TOTP for re-sign-in passes: ${totp ? "ok" : "missing"}`);
 await browser.close();
 console.log("ticket 81 cert complete");

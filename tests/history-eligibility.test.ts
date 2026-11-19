@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
+import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
 import { repoRoot } from "../src/paths";
 
 /**
@@ -25,8 +25,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type StoredState = "bot_active" | "awaiting_staff" | "claimed" | "closed";
 const ALL_STATES: StoredState[] = ["bot_active", "awaiting_staff", "claimed", "closed"];
 
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 let staffUserId: string;
 
 beforeAll(async () => {
@@ -35,8 +33,6 @@ beforeAll(async () => {
   await warmChatbotService();
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
   staffUserId = (await db.get<{ id: string }>('SELECT id FROM staff_members WHERE username = ?', "helper"))!.id;
@@ -154,13 +150,13 @@ function ago(ms: number): string {
 
 async function staffJar(): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   return jar;
 }
 
 async function ownerJar(): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+  await signInAs(jar, OWNER_EMAIL, OWNER_PASSWORD);
   return jar;
 }
 

@@ -14,10 +14,9 @@ import {
 } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
   staffApiRequest,
+  signInAs,
 } from "./auth-helpers";
 import {
   distinctOptions,
@@ -44,10 +43,6 @@ const EDITOR_EMAIL = "options-editor@example.edu";
 const EDITOR_PASSWORD = "options-editor-ridge-3k";
 const STAFF_EMAIL = "options-staff@example.edu";
 const STAFF_PASSWORD = "options-staff-quiet-8v";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 const ADMISSIONS_OPTION = "I want to speak to someone in admissions";
 const COURSE_PRICES_OPTION = "I have a question about course prices";
@@ -160,10 +155,9 @@ async function staffPost(
 async function staffJar(
   email: string,
   password: string,
-  totp: Awaited<ReturnType<typeof enrollTotp>>,
 ): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, email, password, totp);
+  await signInAs(jar, email, password);
   return jar;
 }
 
@@ -174,9 +168,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
   const { store } = await service();
   // A published rule deliberately covering the same topic as an option:
   // every click test below proves the click bypasses it.
@@ -200,7 +191,7 @@ describe("the seeded options (ticket 67)", () => {
 
 describe("the Answers admin surface for options", () => {
   it("applies editor saves on the very next fetch, without a redeploy", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
     const saved = await putOptions(editor, [
       ADMISSIONS_OPTION,
       "Please connect me with the registrar",
@@ -224,7 +215,7 @@ describe("the Answers admin surface for options", () => {
   });
 
   it("rejects malformed option lists", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await putOptions(editor, "not a list" as unknown as string[])).status).toBe(400);
     expect((await putOptions(editor, ["?!?"])).status).toBe(400);
     expect((await putOptions(editor, ["x".repeat(201)])).status).toBe(400);
@@ -234,12 +225,12 @@ describe("the Answers admin surface for options", () => {
   });
 
   it("is editor-role territory: plain staff, anonymous, and untrusted origins refused", async () => {
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     expect((await putOptions(staff, ["staff cannot"])).status).toBe(403);
 
     expect((await putOptions(new CookieJar(), ["anonymous"])).status).toBe(401);
 
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     expect((await putOptions(owner, ["evil"], "https://evil.example.net")).status).toBe(403);
   });
 });
@@ -306,7 +297,7 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     const { store } = await service();
     const request = await store.getOpenContactRequest(conversation.id);
     expect(request?.medium).toBe("chat");
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const deskResponse = await staffApiRequest(owner, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {
       incoming: { id: string; attention: boolean }[];
@@ -340,7 +331,7 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     const conversation = await startConversation();
     await clickOption(conversation, FINANCIAL_AID_OPTION);
     await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
-    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     expect((await staffPost(jar, conversation.id, "claim")).status).toBe(200);
 
     // Take over completes the open Chat request (ticket 69).
@@ -372,7 +363,7 @@ describe("a claimed chat never re-escalates from a click", () => {
     const conversation = await startConversation();
     await clickOption(conversation, ADMISSIONS_OPTION);
     await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
-    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     await staffPost(jar, conversation.id, "claim");
     const clicked = await clickOption(conversation, COURSE_PRICES_OPTION);
     expect(clicked.status).toBe(200);
@@ -409,7 +400,7 @@ describe("typing the same wording keeps normal matching", () => {
   });
 
   it("prompts before handing off when a typed handoff phrase is used (ticket 69)", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
     const saved = await putEscalationPhrases(editor, ["question about financial aid"]);
     expect(saved.status).toBe(200);
 

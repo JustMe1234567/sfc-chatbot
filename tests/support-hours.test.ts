@@ -2,9 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { confirmHandoffYes, ask, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 const OWNER_EMAIL = "owner@example.edu";
@@ -13,10 +12,6 @@ const STAFF_EMAIL = "helper@example.edu";
 const STAFF_PASSWORD = "helper-hours-anchor-2b";
 const EDITOR_EMAIL = "editor@example.edu";
 const EDITOR_PASSWORD = "editor-hours-orbit-8d";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 /** Monday–Friday 09:00–17:00 at UTC+2 (Etc/GMT-2 has no DST: deterministic). */
 const WEEKDAY_HOURS = {
@@ -59,9 +54,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
 });
 
 describe("support-hours membership across day boundaries and zones", () => {
@@ -118,7 +110,7 @@ describe("support-hours membership across day boundaries and zones", () => {
 describe("the owner configures support hours", () => {
   it("sets, changes, and clears them", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
 
     const saved = await putHours(ownerJar, WEEKDAY_HOURS);
     expect(saved.status).toBe(200);
@@ -135,7 +127,7 @@ describe("the owner configures support hours", () => {
 
   it("rejects malformed configurations", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
 
     for (const bad of [
       { ...WEEKDAY_HOURS, timeZone: "Not/AZone" },
@@ -153,15 +145,15 @@ describe("the owner configures support hours", () => {
 
   it("is owner-only and origin-checked", async () => {
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     expect((await putHours(staffJar, WEEKDAY_HOURS)).status).toBe(403);
 
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await putHours(editorJar, WEEKDAY_HOURS)).status).toBe(403);
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     expect((await putHours(ownerJar, WEEKDAY_HOURS, "https://evil.example.net")).status).toBe(403);
     expect((await putHours(null, WEEKDAY_HOURS)).status).toBe(401);
   });
@@ -178,7 +170,7 @@ describe("the visitor's handoff wording follows the configuration", () => {
       new Date().toISOString(),
     );
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     expect((await getHours(ownerJar)).hours).toBeNull();
 
     const conversation = await startConversation();
@@ -202,7 +194,7 @@ describe("the visitor's handoff wording follows the configuration", () => {
     // Always-open hours (all days, 00:00–24:00) make the on-duty wording
     // deterministic regardless of when the test runs.
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const saved = await putHours(ownerJar, {
       timeZone: "Etc/GMT-2",
       days: [0, 1, 2, 3, 4, 5, 6],

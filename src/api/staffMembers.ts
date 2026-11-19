@@ -8,7 +8,6 @@ export interface StaffMemberRow {
   role: string;
   banned: boolean;
   emailVerified: boolean;
-  twoFactorEnabled: boolean;
 }
 
 /** Flag columns are INTEGER 0/1 on SQLite and BOOLEAN on Postgres. */
@@ -23,14 +22,13 @@ interface UserFlagRow {
   role: string;
   banned: unknown;
   emailVerified: unknown;
-  twoFactorEnabled: unknown;
   [column: string]: unknown;
 }
 
 /** The staff roster for transfer pickers and the owner's management page. */
 export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[]> {
   const rows = await db.all<UserFlagRow>(
-    `SELECT "id", "name", "username", "role", "banned", "emailVerified", "twoFactorEnabled"
+    `SELECT "id", "name", "username", "role", "banned", "emailVerified"
      FROM staff_members ORDER BY "createdAt"`,
   );
   return rows.map((row) => ({
@@ -40,14 +38,14 @@ export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[
     role: row.role,
     banned: truthy(row.banned),
     emailVerified: truthy(row.emailVerified),
-    twoFactorEnabled: truthy(row.twoFactorEnabled),
   }));
 }
 
 /**
  * A staff account that can pass the dashboard's own checks today: active,
- * verified, second-factor-enrolled, and holding inbox permission. The set of
- * accounts a conversation may be transferred to.
+ * verified, and holding inbox permission (owner or staff role). The set of
+ * accounts a conversation may be transferred to — since ticket 82 removed
+ * the second factor, factor state no longer narrows it.
  */
 export async function activeInboxMember(
   db: AppDatabase,
@@ -59,9 +57,8 @@ export async function activeInboxMember(
     role: string;
     banned: unknown;
     email_verified: unknown;
-    two_factor_enabled: unknown;
   }>(
-    'SELECT "id", "name", "role", "banned", "emailVerified" AS email_verified, "twoFactorEnabled" AS two_factor_enabled FROM staff_members WHERE "id" = ?',
+    'SELECT "id", "name", "role", "banned", "emailVerified" AS email_verified FROM staff_members WHERE "id" = ?',
     userId,
   );
   if (!row) {
@@ -69,9 +66,6 @@ export async function activeInboxMember(
   }
   const role: StaffRole = row.role as StaffRole;
   const eligible =
-    (role === "owner" || role === "staff") &&
-    !truthy(row.banned) &&
-    truthy(row.email_verified) &&
-    truthy(row.two_factor_enabled);
+    (role === "owner" || role === "staff") && !truthy(row.banned) && truthy(row.email_verified);
   return eligible ? { id: row.id, name: row.name } : null;
 }

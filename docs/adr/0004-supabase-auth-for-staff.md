@@ -1,6 +1,6 @@
 # Supabase Auth for hosted staff access
 
-Status: accepted
+Status: accepted (the mandatory-TOTP clause superseded by ADR-0006)
 
 Supabase Auth owns staff passwords, sessions, and mandatory TOTP factors, while the application database owns usernames, staff membership, status, and owner/staff/editor permissions. Owners create staff/editor accounts with an initial password; there is no public signup, invitation email, or email-based recovery. A password reset preserves the enrolled factor and revokes every session, while a separate MFA reset removes the factor, revokes every session, and forces reenrollment. Synthetic internal email identifiers satisfy Supabase Auth's email/password interface but are never shown or used for delivery.
 

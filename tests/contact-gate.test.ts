@@ -16,7 +16,7 @@ import {
   warmChatbotService,
   type ConversationStart,
 } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
+import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
 import { repoRoot } from "../src/paths";
 import type { ConversationState } from "../src/domain/types";
 
@@ -32,9 +32,6 @@ const OWNER_EMAIL = "gate-owner@example.edu";
 const OWNER_PASSWORD = "gate-owner-lantern-41";
 const STAFF_EMAIL = "gate-staff@example.edu";
 const STAFF_PASSWORD = "gate-staff-lantern-42";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function service() {
   const { getChatbotService } = await import("../src/db/service");
@@ -107,9 +104,9 @@ async function errorCode(response: Response): Promise<string | undefined> {
   return ((await response.json()) as { error?: { code?: string } }).error?.code;
 }
 
-async function staffJar(email: string, password: string, totp: typeof staffTotp): Promise<CookieJar> {
+async function staffJar(email: string, password: string): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, email, password, totp);
+  await signInAs(jar, email, password);
   return jar;
 }
 
@@ -128,8 +125,6 @@ beforeAll(async () => {
   await warmChatbotService();
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("starting a chat requires valid contact details", () => {
@@ -357,7 +352,7 @@ describe("staff see the name beside the state", () => {
     }
     const { deskLabel } = await import("../src/domain/inbox");
 
-    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     const response = await deskList(jar);
     expect(response.status).toBe(200);
     const desk = (await response.json()) as {
@@ -407,7 +402,7 @@ describe("contact details leave with the conversation", () => {
     const conversation = await closedConversation(contact);
     expect(await rowsHolding(contact)).toBe(1);
 
-    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     const { POST } = await import("../src/app/api/staff/conversations/[id]/delete/route");
     const deleted = await POST(
       new Request(`${TEST_ORIGIN}/api/staff/conversations/${conversation.id}/delete`, {
@@ -449,7 +444,7 @@ describe("contact details leave with the conversation", () => {
     await closedConversation(contact);
     expect(await rowsHolding(contact)).toBe(1);
 
-    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const { POST } = await import("../src/app/api/staff/conversations/clear-history/route");
     const cleared = await POST(
       new Request(`${TEST_ORIGIN}/api/staff/conversations/clear-history`, {

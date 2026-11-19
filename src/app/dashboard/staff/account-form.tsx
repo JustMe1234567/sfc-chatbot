@@ -40,7 +40,7 @@ export default function AccountForm() {
     <form className={styles.ruleCard} onSubmit={submit}>
       <h2>Create a staff account</h2>
       <p className={styles.hint}>
-        Share the username and password directly with the member. They must enroll an authenticator before dashboard access.
+        Share the username and password directly with the member. The password alone admits the dashboard.
       </p>
       <label htmlFor="account-name">Name</label>
       <input id="account-name" type="text" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} required />

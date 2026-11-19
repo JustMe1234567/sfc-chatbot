@@ -4,7 +4,7 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { enrollAndSignIn, waitForServer } from "./lib/shot-driver.mjs";
+import { signIn, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3122"}`;
@@ -23,7 +23,7 @@ const context = await browser.newContext();
 const page = await context.newPage();
 await page.setViewportSize({ width: 1280, height: 800 });
 
-await enrollAndSignIn(page, BASE, USERNAME, PASSWORD);
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 async function shot(path, name) {

@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { assertDemoOriginEmbeddable, enrollAndSignIn, waitForServer } from "./lib/shot-driver.mjs";
+import { assertDemoOriginEmbeddable, signIn, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3123"}`;
@@ -100,7 +100,7 @@ page.on("response", async (response) => {
 });
 await page.setViewportSize({ width: 1280, height: 800 });
 
-await enrollAndSignIn(page, BASE, USERNAME, PASSWORD);
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 

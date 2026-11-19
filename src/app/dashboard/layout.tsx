@@ -21,7 +21,7 @@ const TITLE_METADATA: Metadata = {
  * The dashboard favicon (ticket 70): the configured asset (or the bundled
  * crest) served by the versioned branding route, so a save reaches the
  * browser tab on the next load without a redeploy. This layout wraps every
- * /dashboard segment — login and enrollment included — and only those; the
+ * /dashboard segment — the login page included — and only those; the
  * public demo and the widget keep their own favicon behavior.
  */
 export async function generateMetadata(): Promise<Metadata> {

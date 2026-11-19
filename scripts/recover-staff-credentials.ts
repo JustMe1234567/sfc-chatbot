@@ -15,20 +15,19 @@ function readFlag(name: string): string | undefined {
 
 const username = readFlag("username")?.trim().toLowerCase();
 const password = readFlag("password");
-const resetMfa = process.argv.includes("--reset-mfa");
 const identityVerified = process.argv.includes("--identity-verified");
 const databaseUrl = appDatabaseUrl();
 
 if (
   !username ||
   !/^[a-z0-9._-]{3,32}$/.test(username) ||
-  (!password && !resetMfa) ||
-  (password !== undefined && password.length < 10) ||
+  !password ||
+  password.length < 10 ||
   !identityVerified ||
   !databaseUrl
 ) {
   console.error(
-    "Usage: npm run recover:staff -- --username <username> [--password <10+ characters>] [--reset-mfa] --identity-verified (DATABASE_URL is required)",
+    "Usage: npm run recover:staff -- --username <username> --password <10+ characters> --identity-verified (DATABASE_URL is required)",
   );
   process.exit(1);
 }
@@ -51,21 +50,9 @@ try {
   }
 
   const auth = createSupabaseAuth({ db, baseUrl: appBaseUrl() });
-  if (password) await auth.resetPassword(member.supabaseUserId, password);
-  if (resetMfa) {
-    await auth.resetMfa(member.supabaseUserId);
-    await db.run(
-      `UPDATE staff_members
-       SET "twoFactorEnabled" = ?, "mfaRecoveryApprovedAt" = NULL, "updatedAt" = ?
-       WHERE "id" = ?`,
-      false,
-      new Date().toISOString(),
-      member.id,
-    );
-  }
+  await auth.resetPassword(member.supabaseUserId, password);
 
   console.log(`Credentials reset for ${username}. All existing sessions were revoked.`);
-  if (resetMfa) console.log("Authenticator factors were removed; enrollment is mandatory at next sign-in.");
 } finally {
   await sql.end({ timeout: 5 });
 }

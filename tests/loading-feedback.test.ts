@@ -74,9 +74,6 @@ describe("shared pending feedback (ticket 42)", () => {
   it("labels authentication and sign-out with their active verbs", async () => {
     const login = await read("src/app/dashboard/login/page.tsx");
     expect(login).toContain("Signing in…");
-    expect(login).toContain("Verifying…");
-    const enroll = await read("src/app/dashboard/enroll/page.tsx");
-    expect(enroll).toContain("Verifying…");
     const signOut = await read("src/app/dashboard/inbox/sign-out-button.tsx");
     expect(signOut).toContain("Signing out…");
     expect(signOut).toContain("Revoking sessions…");

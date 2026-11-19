@@ -33,21 +33,12 @@ async function request<T>(path: string, body?: unknown): Promise<ClientResult<T>
 export const authClient = {
   getSession() {
     return request<{
-      user: { id: string; username: string; name: string; twoFactorEnabled: boolean };
-      aal: "aal1" | "aal2";
+      user: { id: string; username: string; name: string };
     } | null>("get-session");
   },
   signIn: {
     username(input: { username: string; password: string }) {
-      return request<{ twoFactorRedirect: boolean }>("sign-in/username", input);
-    },
-  },
-  twoFactor: {
-    enable(_input?: { password?: string; method?: string; issuer?: string }) {
-      return request<{ totpURI: string; qrCode: string; factorId: string }>("two-factor/enable", {});
-    },
-    verifyTotp(input: { code: string; factorId?: string }) {
-      return request<{ success: true }>("two-factor/verify-totp", input);
+      return request<{ success: true }>("sign-in/username", input);
     },
   },
   signOut() {

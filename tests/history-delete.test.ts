@@ -6,7 +6,7 @@ import {
   useTempDatabase,
   warmChatbotService,
 } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
+import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
 
 /**
  * Ticket 51: staff can delete one closed conversation from the History tab
@@ -21,17 +21,12 @@ const OWNER_PASSWORD = "owner-history-lantern-8w";
 const STAFF_EMAIL = "helper@example.edu";
 const STAFF_PASSWORD = "helper-history-meadow-2v";
 
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-
 beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 /** A conversation row in the given state, straight SQL (no lifecycle needed). */
@@ -98,7 +93,7 @@ async function clearRequest(jar: CookieJar | null): Promise<Response> {
 function staffJar(): Promise<CookieJar> {
   return (async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     return jar;
   })();
 }
@@ -106,7 +101,7 @@ function staffJar(): Promise<CookieJar> {
 function ownerJar(): Promise<CookieJar> {
   return (async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(jar, OWNER_EMAIL, OWNER_PASSWORD);
     return jar;
   })();
 }

@@ -9,7 +9,7 @@ import {
   useTempDatabase,
   warmChatbotService,
 } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
+import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
 import { createNeedsHumanSignal, NEEDS_HUMAN_POLL_MS } from "../src/domain/needsHumanSignal";
 import { repoRoot } from "../src/paths";
 
@@ -30,10 +30,6 @@ const OWNER_PASSWORD = "bell-owner-harbor-5w";
 const STAFF_PASSWORD = "bell-staff-quiet-3m";
 const EDITOR_PASSWORD = "bell-editor-ridge-9k";
 
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
-
 async function service(): Promise<Awaited<ReturnType<typeof import("../src/db/service").getChatbotService>>> {
   const { getChatbotService } = await import("../src/db/service");
   return getChatbotService();
@@ -42,10 +38,9 @@ async function service(): Promise<Awaited<ReturnType<typeof import("../src/db/se
 async function staffJar(
   email: string,
   password: string,
-  totp: Awaited<ReturnType<typeof enrollTotp>>,
 ): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, email, password, totp);
+  await signInAs(jar, email, password);
   return jar;
 }
 
@@ -71,9 +66,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
 });
 
 describe("the staff-only needs-human endpoint (ticket 79)", () => {
@@ -83,12 +75,12 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
   });
 
   it("refuses editors — their role has no Conversations row", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await getNeedsHuman(editor)).status).toBe(403);
   });
 
   it("answers a plain boolean, false while nothing is waiting", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const response = await getNeedsHuman(owner);
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
@@ -98,13 +90,13 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
     expect(body.needsHuman).toBe(false);
 
     // Staff read the same signal from the same endpoint.
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     expect(await needsHuman(staff)).toBe(false);
   });
 
   it("is true exactly while a live desk conversation sits in awaiting_staff", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     const { store } = await service();
 
     // A real visitor chat: the visitor's own message puts it on the desk,
@@ -125,7 +117,7 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
   });
 
   it("stays true while any conversation is still waiting, and clears on the last one", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const { store } = await service();
 
     const first = await startConversation({ fullName: "Bee Apiarist" });
@@ -144,7 +136,7 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
   });
 
   it("follows the desk read model exactly: an awaiting conversation the desk omits is not Needs human", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const { store } = await service();
     // Ticket 73: conversations with no visitor-authored message never
     // reach the desk lists — a state flipped on one of them is invisible

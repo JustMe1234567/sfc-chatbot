@@ -49,9 +49,6 @@ export default async function StaffPage() {
                 )}
               </div>
               <div className={styles.preview}>@{member.username}</div>
-              <div className={styles.meta}>
-                {member.twoFactorEnabled ? "Second factor enrolled" : "Second factor not enrolled"}
-              </div>
               {!member.banned && member.role !== "owner" && member.id !== guard.staff.userId ? (
                 <>
                   <CredentialActions memberId={member.id} name={member.name} />

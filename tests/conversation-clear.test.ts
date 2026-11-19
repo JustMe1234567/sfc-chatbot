@@ -2,15 +2,12 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ask, confirmHandoffYes, loadHistory, startConversation, submitContact, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 const STAFF_EMAIL = "clear-desk@example.edu";
 const STAFF_PASSWORD = "clear-desk-anchor-7w";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 interface ClearResponse {
   id: string;
@@ -63,7 +60,7 @@ async function sql<T>(query: string, ...params: (string | number)[]): Promise<T>
 
 async function staffJar(): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   return jar;
 }
 
@@ -80,7 +77,6 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Skye" });
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("clearing a bot-active conversation", () => {

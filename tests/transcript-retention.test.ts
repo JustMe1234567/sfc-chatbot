@@ -2,9 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ask, confirmHandoffYes, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 const OWNER_EMAIL = "owner@example.edu";
@@ -13,10 +12,6 @@ const STAFF_EMAIL = "helper@example.edu";
 const STAFF_PASSWORD = "helper-retain-porch-4n";
 const EDITOR_EMAIL = "editor@example.edu";
 const EDITOR_PASSWORD = "editor-retain-quartz-9k";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 const RETENTION_PATH = "/api/staff/settings/transcript-retention";
 
@@ -88,7 +83,7 @@ async function closedConversation(email?: string): Promise<ConversationStart> {
   await ask(conversation, "Nothing approved covers this; I need to speak to a human.");
   await confirmHandoffYes(conversation);
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
   expect((await staffAction(jar, conversation.id, "close")).status).toBe(200);
   return conversation;
@@ -100,7 +95,7 @@ async function claimedConversation(): Promise<ConversationStart> {
   await ask(conversation, "Please let me speak to a human; nothing covers it.");
   await confirmHandoffYes(conversation);
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   expect((await staffAction(jar, conversation.id, "claim")).status).toBe(200);
   return conversation;
 }
@@ -132,15 +127,12 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
 });
 
 describe("the owner configures transcript retention", () => {
   it("sets, changes, and clears the retention period", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     expect((await getRetention(ownerJar)).days).toBeNull();
 
     const saved = await putRetention(ownerJar, 30);
@@ -158,7 +150,7 @@ describe("the owner configures transcript retention", () => {
 
   it("rejects malformed periods", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     for (const bad of [0, -5, 3651, 2.5, "30", true]) {
       const response = await putRetention(ownerJar, bad);
       expect(response.status).toBe(400);
@@ -171,17 +163,17 @@ describe("the owner configures transcript retention", () => {
 
   it("is owner-only and origin-checked", async () => {
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     expect((await putRetention(staffJar, 30)).status).toBe(403);
     const staffRead = await getRetention(staffJar).catch(() => null);
     expect(staffRead).toBeNull();
 
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await putRetention(editorJar, 30)).status).toBe(403);
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     expect((await putRetention(ownerJar, 30, "https://evil.example.net")).status).toBe(403);
     expect((await putRetention(null, 30)).status).toBe(401);
   });
@@ -196,7 +188,7 @@ describe("the owner configures transcript retention", () => {
 describe("cleanup removes expired History conversations and keeps live ones", () => {
   it("keeps active and recent conversations, removes the expired one with its data", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const saved = await putRetention(ownerJar, 30);
     expect(saved.status).toBe(200);
 
@@ -219,12 +211,12 @@ describe("cleanup removes expired History conversations and keeps live ones", ()
 
     // Ordinary staff traffic runs the automated cleanup.
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     const inbox = await inboxGet(staffJar);
     expect(inbox.status).toBe(200);
 
     const staffRead = new CookieJar();
-    await signInWithTotp(staffRead, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffRead, STAFF_EMAIL, STAFF_PASSWORD);
     expect((await staffDetail(staffRead, expired.id)).status).toBe(404);
     for (const survivor of [recentlyClosed, awaiting, claimed, botActive]) {
       expect((await staffDetail(staffRead, survivor.id)).status).toBe(200);
@@ -388,7 +380,7 @@ describe("a deleted conversation is unavailable everywhere", () => {
     );
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const saved = await putRetention(ownerJar, 30);
     expect(saved.status).toBe(200);
     const body = (await saved.json()) as { days: number; removed: number };
@@ -396,7 +388,7 @@ describe("a deleted conversation is unavailable everywhere", () => {
     expect(body.removed).toBeGreaterThanOrEqual(1);
 
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     expect((await staffDetail(staffJar, gone.id)).status).toBe(404);
 
     // The widget's stored credential no longer opens the conversation.
@@ -430,7 +422,7 @@ describe("cleanup is safe to rerun", () => {
 
     // And through the automated path: a second inbox load stays healthy.
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     expect((await inboxGet(staffJar)).status).toBe(200);
     expect((await sql<{ n: number }>("SELECT COUNT(*) AS n FROM retention_runs")).n).toBe(before.n);
   });

@@ -27,6 +27,8 @@ tables. Where each piece physically lives:
 | 24 shared rate limits | 0016 | 0006 |
 | 69 contact requests | 0017 | 0007 |
 | Supabase-linked staff records | 0018 | 0008 |
+| 81 login events | 0021 | 0011 |
+| 82 drop staff factor columns | 0022 | 0012 |
 
 ## Why SQLite skips 0009
 

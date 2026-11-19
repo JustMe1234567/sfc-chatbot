@@ -26,4 +26,4 @@ if (!username || !password || password.length < 10 || !databaseUrl) {
 const owner = await bootstrapOwner({ username, password, name, databaseUrl });
 console.log(`Owner account created: ${owner.username} (${owner.userId})`);
 console.log(`Targeted store: ${owner.store}`);
-console.log("The owner signs in with that password, then enrolls an authenticator.");
+console.log("The owner signs in with that username and password.");

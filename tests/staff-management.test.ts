@@ -3,11 +3,10 @@ import { confirmHandoffYes, ask, loadHistory, startConversation, TEST_ORIGIN, us
 import {
   authRequest,
   CookieJar,
-  enrollTotp,
   latestOutboxMail,
   provisionStaff,
-  signInWithTotp,
   staffApiRequest,
+  signInAs,
 } from "./auth-helpers";
 
 const OWNER_EMAIL = "owner@example.edu";
@@ -18,10 +17,6 @@ const BOB_EMAIL = "bob@example.edu";
 const BOB_PASSWORD = "bob-transfer-harbor-3v";
 const EDITOR_EMAIL = "editor@example.edu";
 const EDITOR_PASSWORD = "editor-answer-lantern-8m";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let aliceTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let bobTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function staffId(email: string): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
@@ -85,11 +80,6 @@ async function membersRequest(
     const { POST } = await import("../src/app/api/staff/members/[id]/reset-password/route");
     return POST(request, { params: Promise.resolve({ id: passwordReset[1] }) });
   }
-  const mfaReset = path.match(/^\/api\/staff\/members\/([^/]+)\/reset-mfa$/);
-  if (mfaReset?.[1]) {
-    const { POST } = await import("../src/app/api/staff/members/[id]/reset-mfa/route");
-    return POST(request, { params: Promise.resolve({ id: mfaReset[1] }) });
-  }
   throw new Error(`unmapped members path: ${path}`);
 }
 
@@ -99,7 +89,7 @@ async function claimedConversation(): Promise<{ id: string; token: string }> {
   await ask(conversation, "Tell me about evening classes; I need to speak to a human.");
   await confirmHandoffYes(conversation);
   const jar = new CookieJar();
-  await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+  await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
   const claim = await conversationAction(jar, conversation.id, "claim");
   expect(claim.status).toBe(200);
   return conversation;
@@ -133,15 +123,12 @@ beforeAll(async () => {
   await provisionStaff({ email: ALICE_EMAIL, password: ALICE_PASSWORD, name: "Alice" });
   await provisionStaff({ email: BOB_EMAIL, password: BOB_PASSWORD, name: "Bob" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  aliceTotp = await enrollTotp(new CookieJar(), ALICE_EMAIL, ALICE_PASSWORD);
-  bobTotp = await enrollTotp(new CookieJar(), BOB_EMAIL, BOB_PASSWORD);
 });
 
 describe("the owner manages named staff accounts", () => {
   it("creates an active username and password account without sending email", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
 
     const create = await membersRequest(ownerJar, "POST", "/api/staff/members", {
       name: "Carol",
@@ -156,9 +143,6 @@ describe("the owner manages named staff accounts", () => {
     const outboxCount = await (await import("../src/db/service")).getChatbotService()
       .then(({ db }) => db.get<{ n: number }>("SELECT COUNT(*) AS n FROM mail_outbox"));
     expect(Number(outboxCount?.n ?? 0)).toBe(0);
-
-    await enrollTotp(new CookieJar(), "carol", "carol-secure-password-42");
-
     const duplicate = await membersRequest(ownerJar, "POST", "/api/staff/members", {
       name: "Carol Again",
       username: "carol",
@@ -183,7 +167,7 @@ describe("the owner manages named staff accounts", () => {
 
   it("is owner-only and origin-checked", async () => {
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     const forbidden = await membersRequest(aliceJar, "POST", "/api/staff/members", {
       name: "Nope",
       email: "nope@example.edu",
@@ -192,7 +176,7 @@ describe("the owner manages named staff accounts", () => {
     expect(forbidden.status).toBe(403);
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const crossSite = await membersRequest(
       ownerJar,
       "POST",
@@ -203,9 +187,9 @@ describe("the owner manages named staff accounts", () => {
     expect(crossSite.status).toBe(403);
   });
 
-  it("resets a staff password, revokes sessions, and preserves MFA", async () => {
+  it("resets a staff password and revokes sessions", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const created = await membersRequest(ownerJar, "POST", "/api/staff/members", {
       name: "Diana",
       username: "diana",
@@ -213,9 +197,8 @@ describe("the owner manages named staff accounts", () => {
       role: "staff",
     });
     const member = (await created.json()) as { member: { userId: string } };
-    const totp = await enrollTotp(new CookieJar(), "diana", "diana-original-password-42");
     const active = new CookieJar();
-    await signInWithTotp(active, "diana", "diana-original-password-42", totp);
+    await signInAs(active, "diana", "diana-original-password-42");
 
     const reset = await membersRequest(
       ownerJar,
@@ -225,58 +208,22 @@ describe("the owner manages named staff accounts", () => {
     );
     expect(reset.status).toBe(200);
     expect((await staffApiRequest(active, "/api/staff/conversations")).status).toBe(401);
-    expect((await authRequest(active, "/api/auth/two-factor/enable", { body: {} })).status).toBe(401);
+    // The second factor left the auth surface entirely (ticket 82): the
+    // enrollment route answers not_found.
+    expect((await authRequest(active, "/api/auth/two-factor/enable", { body: {} })).status).toBe(404);
     expect((await authRequest(new CookieJar(), "/api/auth/sign-in/username", {
       body: { username: "diana", password: "diana-original-password-42" },
     })).status).toBe(401);
 
     const replacement = new CookieJar();
-    await signInWithTotp(replacement, "diana", "diana-replacement-password-84", totp);
+    await signInAs(replacement, "diana", "diana-replacement-password-84");
     expect((await staffApiRequest(replacement, "/api/staff/conversations")).status).toBe(200);
   });
 
-  it("resets MFA separately, revokes sessions, and requires reenrollment", async () => {
-    const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-    const created = await membersRequest(ownerJar, "POST", "/api/staff/members", {
-      name: "Mara",
-      username: "mara",
-      password: "mara-secure-password-42",
-      role: "staff",
-    });
-    const member = (await created.json()) as { member: { userId: string } };
-    const oldTotp = await enrollTotp(new CookieJar(), "mara", "mara-secure-password-42");
-    const active = new CookieJar();
-    await signInWithTotp(active, "mara", "mara-secure-password-42", oldTotp);
-
-    const reset = await membersRequest(
-      ownerJar,
-      "POST",
-      `/api/staff/members/${member.member.userId}/reset-mfa`,
-    );
-    expect(reset.status).toBe(200);
-    expect((await staffApiRequest(active, "/api/staff/conversations")).status).toBe(401);
-    expect((await authRequest(active, "/api/auth/two-factor/enable", { body: {} })).status).toBe(401);
-
-    const passwordOnly = new CookieJar();
-    const signIn = await authRequest(passwordOnly, "/api/auth/sign-in/username", {
-      body: { username: "mara", password: "mara-secure-password-42" },
-    });
-    expect(await signIn.json()).toEqual({ twoFactorRedirect: false });
-    const blocked = await staffApiRequest(passwordOnly, "/api/staff/conversations");
-    expect(blocked.status).toBe(403);
-    expect(((await blocked.json()) as { error: { code: string } }).error.code)
-      .toBe("two_factor_enrollment_required");
-
-    const newTotp = await enrollTotp(new CookieJar(), "mara", "mara-secure-password-42");
-    expect(newTotp.secret.base32).not.toBe(oldTotp.secret.base32);
-  });
-
-  it("lets fully authenticated staff change their own password", async () => {
+  it("lets signed-in staff change their own password", async () => {
     await provisionStaff({ email: "self-change@example.edu", password: "self-change-password-42", name: "Self Change" });
-    const totp = await enrollTotp(new CookieJar(), "self-change", "self-change-password-42");
     const jar = new CookieJar();
-    await signInWithTotp(jar, "self-change", "self-change-password-42", totp);
+    await signInAs(jar, "self-change", "self-change-password-42");
     const changed = await authRequest(jar, "/api/auth/change-password", {
       body: { newPassword: "bob-new-secure-password-94" },
     });
@@ -284,7 +231,7 @@ describe("the owner manages named staff accounts", () => {
     expect((await staffApiRequest(jar, "/api/staff/conversations")).status).toBe(401);
 
     const fresh = new CookieJar();
-    await signInWithTotp(fresh, "self-change", "bob-new-secure-password-94", totp);
+    await signInAs(fresh, "self-change", "bob-new-secure-password-94");
     expect((await staffApiRequest(fresh, "/api/staff/conversations")).status).toBe(200);
   });
 });
@@ -296,10 +243,8 @@ describe("disabling an account takes effect immediately", () => {
     const VICTIM_EMAIL = "dave@example.edu";
     const VICTIM_PASSWORD = "dave-disposable-heron-45";
     await provisionStaff({ email: VICTIM_EMAIL, password: VICTIM_PASSWORD, name: "Dave" });
-    const victimTotp = await enrollTotp(new CookieJar(), VICTIM_EMAIL, VICTIM_PASSWORD);
-
     const victimJar = new CookieJar();
-    await signInWithTotp(victimJar, VICTIM_EMAIL, VICTIM_PASSWORD, victimTotp);
+    await signInAs(victimJar, VICTIM_EMAIL, VICTIM_PASSWORD);
     // Dave has a live session and can read the inbox.
     const inboxRoute = await import("../src/app/api/staff/conversations/route");
     const before = await inboxRoute.GET(
@@ -308,7 +253,7 @@ describe("disabling an account takes effect immediately", () => {
     expect(before.status).toBe(200);
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const disable = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(VICTIM_EMAIL)}/disable`);
     expect(disable.status).toBe(200);
 
@@ -326,7 +271,7 @@ describe("disabling an account takes effect immediately", () => {
 
   it("refuses to disable the acting owner or another owner account", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const self = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(OWNER_EMAIL)}/disable`);
     expect(self.status).toBe(400);
     const unknown = await membersRequest(ownerJar, "POST", "/api/staff/members/does-not-exist/disable");
@@ -338,18 +283,16 @@ describe("disabling an account takes effect immediately", () => {
     const HOLDER_EMAIL = "frank@example.edu";
     const HOLDER_PASSWORD = "frank-disposable-anchor-92";
     await provisionStaff({ email: HOLDER_EMAIL, password: HOLDER_PASSWORD, name: "Frank" });
-    const holderTotp = await enrollTotp(new CookieJar(), HOLDER_EMAIL, HOLDER_PASSWORD);
-
     const conversation = await startConversation();
     await ask(conversation, "Who arranges accessible parking? I need to speak to a human.");
   await confirmHandoffYes(conversation);
     const holderJar = new CookieJar();
-    await signInWithTotp(holderJar, HOLDER_EMAIL, HOLDER_PASSWORD, holderTotp);
+    await signInAs(holderJar, HOLDER_EMAIL, HOLDER_PASSWORD);
     const claim = await conversationAction(holderJar, conversation.id, "claim");
     expect(claim.status).toBe(200);
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const disable = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(HOLDER_EMAIL)}/disable`);
     expect(disable.status).toBe(200);
 
@@ -369,7 +312,7 @@ describe("releasing a claim", () => {
   it("returns the conversation to the shared inbox and the visitor chat", async () => {
     const { id: conversationId, token } = await claimedConversation();
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
 
     const release = await conversationAction(aliceJar, conversationId, "release");
     expect(release.status).toBe(200);
@@ -392,7 +335,7 @@ describe("releasing a claim", () => {
     expect(inboxBody.incoming.some((item) => item.id === conversationId)).toBe(true);
 
     const bobJar = new CookieJar();
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     const reclaim = await conversationAction(bobJar, conversationId, "claim");
     expect(reclaim.status).toBe(200);
   });
@@ -400,14 +343,14 @@ describe("releasing a claim", () => {
   it("only the claimer or the owner may release", async () => {
     const { id: conversationId } = await claimedConversation();
     const bobJar = new CookieJar();
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     const notClaimer = await conversationAction(bobJar, conversationId, "release");
     expect(notClaimer.status).toBe(409);
     const conflict = (await notClaimer.json()) as { claimedBy: string };
     expect(conflict.claimedBy).toBe("Alice");
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const override = await conversationAction(ownerJar, conversationId, "release");
     expect(override.status).toBe(200);
   });
@@ -417,7 +360,7 @@ describe("releasing a claim", () => {
     await ask(conversation, "I need to speak to a human; nothing covers it.");
   await confirmHandoffYes(conversation);
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     const unclaimed = await conversationAction(aliceJar, conversation.id, "release");
     expect(unclaimed.status).toBe(409);
   });
@@ -427,7 +370,7 @@ describe("transferring a claim", () => {
   it("hands the conversation to another active staff member with history intact", async () => {
     const { id: conversationId, token } = await claimedConversation();
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     await conversationAction(aliceJar, conversationId, "reply", { text: "Alice here, taking this over." });
 
     const transfer = await conversationAction(aliceJar, conversationId, "transfer", {
@@ -440,7 +383,7 @@ describe("transferring a claim", () => {
 
     // The new owner can reply; the old one no longer can.
     const bobJar = new CookieJar();
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     const bobReply = await conversationAction(bobJar, conversationId, "reply", { text: "Bob continuing from here." });
     expect(bobReply.status).toBe(200);
     const aliceReply = await conversationAction(aliceJar, conversationId, "reply", { text: "still alice" });
@@ -463,7 +406,7 @@ describe("transferring a claim", () => {
   it("rejects ineligible targets and protects assignment changes", async () => {
     const { id: conversationId } = await claimedConversation();
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
 
     const editorTarget = await conversationAction(aliceJar, conversationId, "transfer", {
       to: await staffId(EDITOR_EMAIL),
@@ -481,7 +424,7 @@ describe("transferring a claim", () => {
     expect(unknownTarget.status).toBe(400);
 
     const bobJar = new CookieJar();
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     const notClaimer = await conversationAction(bobJar, conversationId, "transfer", {
       to: await staffId(BOB_EMAIL),
     });
@@ -489,7 +432,7 @@ describe("transferring a claim", () => {
 
     // The owner can move the assignment even without holding the claim.
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const override = await conversationAction(ownerJar, conversationId, "transfer", {
       to: await staffId(BOB_EMAIL),
     });
@@ -500,16 +443,14 @@ describe("transferring a claim", () => {
     const VICTIM_EMAIL = "erin@example.edu";
     const VICTIM_PASSWORD = "erin-disposable-orbit-77";
     await provisionStaff({ email: VICTIM_EMAIL, password: VICTIM_PASSWORD, name: "Erin" });
-    await enrollTotp(new CookieJar(), VICTIM_EMAIL, VICTIM_PASSWORD);
-
     const { id: conversationId } = await claimedConversation();
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const disable = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(VICTIM_EMAIL)}/disable`);
     expect(disable.status).toBe(200);
 
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     const disabledTarget = await conversationAction(aliceJar, conversationId, "transfer", {
       to: await staffId(VICTIM_EMAIL),
     });
@@ -521,7 +462,7 @@ describe("the owner role can reply without holding the claim", () => {
   it("lets the owner answer a conversation claimed by someone else", async () => {
     const { id: conversationId } = await claimedConversation();
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const reply = await conversationAction(ownerJar, conversationId, "reply", {
       text: "Owner stepping in briefly.",
     });
@@ -533,16 +474,16 @@ describe("the audit trail", () => {
   it("records claim, reply, transfer, and release with who did it", async () => {
     const { id: conversationId } = await claimedConversation();
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     await conversationAction(aliceJar, conversationId, "reply", { text: "One answer before I go." });
     await conversationAction(aliceJar, conversationId, "transfer", { to: await staffId(BOB_EMAIL) });
 
     const bobJar = new CookieJar();
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     await conversationAction(bobJar, conversationId, "release");
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const detail = await conversationDetail(ownerJar, conversationId);
     const actions = detail.audit.map((entry) => entry.action);
     expect(actions).toContain("conversation_claimed");
@@ -561,7 +502,7 @@ describe("the audit trail", () => {
     const { db } = await getChatbotService();
 
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, (await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD)));
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const create = await (await import("../src/app/api/staff/answer-rules/route")).POST(
       new Request(`${TEST_ORIGIN}/api/staff/answer-rules`, {
         method: "POST",
@@ -583,7 +524,7 @@ describe("the audit trail", () => {
     expect(rows.map((row) => row.action)).toContain("rule_created");
 
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const staffRows = (await db.all<{ action: string; detail: string }>(
       "SELECT action, detail FROM audit_log WHERE action IN ('staff_created','staff_disabled')",
     )) as { action: string; detail: string }[];

@@ -1,11 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { askRaw, startConversation, submitContact, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
+import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
 
 const STAFF_EMAIL = "lock-staff@example.edu";
 const STAFF_PASSWORD = "lock-staff-password-1";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function postMessage(
   conversation: ConversationStart,
@@ -41,7 +39,6 @@ beforeAll(async () => {
   useTempDatabase();
   await warmChatbotService();
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Lock Staff" });
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("visitor input lock while waiting for staff (ticket 43)", () => {
@@ -73,7 +70,7 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
 
     // Staff takeover unlocks input without any visitor-side reset.
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     const claim = await staffClaim(jar, conversation.id);
     expect(claim.status).toBe(200);
 

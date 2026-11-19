@@ -1,4 +1,3 @@
-import { TOTP, URI } from "otpauth";
 import { randomUUID } from "node:crypto";
 import { countQuery, TEST_ORIGIN, useTempDatabase } from "./helpers";
 import { registerFakeStaff } from "./fake-auth-provider";
@@ -99,8 +98,8 @@ export async function provisionStaff(input: {
   await db.run(
     `INSERT INTO staff_members
      ("id", "name", "email", "username", "emailVerified", "createdAt", "updatedAt", "role",
-      "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      "banned", "supabaseUserId", "invitationStatus")
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     userId,
     input.name,
     `${userId}@staff.invalid`,
@@ -109,7 +108,6 @@ export async function provisionStaff(input: {
     now,
     now,
     input.role ?? "staff",
-    false,
     false,
     authUserId,
     "accepted",
@@ -123,57 +121,18 @@ export async function provisionStaff(input: {
   return { userId, email: input.email, role: input.role ?? "staff" };
 }
 
-/** Full second-factor enrollment for a provisioned, verified staff member. */
-export async function enrollTotp(
+/** Password-only sign-in, leaving the jar holding a dashboard session. */
+export async function signInAs(
   jar: CookieJar,
   login: string,
   password: string,
-): Promise<TOTP> {
-  const username = login.includes("@") ? login.split("@")[0]!.toLowerCase() : login.toLowerCase();
-  const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
-    body: { username, password },
-  });
-  if (!signIn.ok) {
-    throw new Error(`enroll sign-in failed: ${signIn.status} ${await signIn.text()}`);
-  }
-  const enable = await authRequest(jar, "/api/auth/two-factor/enable", {
-    body: { password, method: "totp", issuer: "Springfield College chat" },
-  });
-  const enabled = (await enable.json()) as { totpURI?: string };
-  if (!enable.ok || !enabled.totpURI) {
-    throw new Error(`totp enable failed: ${enable.status} ${JSON.stringify(enabled)}`);
-  }
-  const totp = URI.parse(enabled.totpURI) as TOTP;
-  const verify = await authRequest(jar, "/api/auth/two-factor/verify-totp", {
-    body: { code: totp.generate() },
-  });
-  if (!verify.ok) {
-    throw new Error(`totp verify failed: ${verify.status} ${await verify.text()}`);
-  }
-  await authRequest(jar, "/api/auth/sign-out");
-  return totp;
-}
-
-/** Password + TOTP sign-in, leaving the jar holding a dashboard session. */
-export async function signInWithTotp(
-  jar: CookieJar,
-  login: string,
-  password: string,
-  totp: TOTP,
 ): Promise<void> {
   const username = login.includes("@") ? login.split("@")[0]!.toLowerCase() : login.toLowerCase();
   const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
     body: { username, password },
   });
-  const result = (await signIn.json()) as { twoFactorRedirect?: boolean };
-  if (!signIn.ok || !result.twoFactorRedirect) {
-    throw new Error(`expected two-factor challenge: ${signIn.status} ${JSON.stringify(result)}`);
-  }
-  const verify = await authRequest(jar, "/api/auth/two-factor/verify-totp", {
-    body: { code: totp.generate() },
-  });
-  if (!verify.ok) {
-    throw new Error(`totp sign-in failed: ${verify.status} ${await verify.text()}`);
+  if (!signIn.ok) {
+    throw new Error(`sign-in failed: ${signIn.status} ${await signIn.text()}`);
   }
 }
 

@@ -5,9 +5,8 @@ import { ask, startConversation, TEST_ORIGIN, useTempDatabase,
 import {
   authRequest,
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 const OWNER_EMAIL = "owner@example.edu";
@@ -38,10 +37,6 @@ function uniqueRuleContent(tag: string): RulePayload {
     keywords: [["parking", tag]],
   };
 }
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function ruleRequest(
   jar: CookieJar | null,
@@ -136,15 +131,12 @@ beforeAll(async () => {
     await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("an editor maintains answer rules", () => {
   it("creates a draft rule that never answers visitors", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("draft");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -159,7 +151,7 @@ describe("an editor maintains answer rules", () => {
 
   it("publishing makes the topic button and answer available without a redeploy", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("launch");
     const rule = await createRule(jar, content);
     const published = await publishRule(jar, rule.id);
@@ -181,7 +173,7 @@ describe("an editor maintains answer rules", () => {
 
   it("unpublishing removes the answer from visitors", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("retire");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -198,7 +190,7 @@ describe("an editor maintains answer rules", () => {
 
   it("creates and publishes a keywords-only rule whose button asks its topic", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("keywordsonly");
     const rule = await createRule(jar, {
       topic: content.topic,
@@ -220,7 +212,7 @@ describe("an editor maintains answer rules", () => {
 
   it("revising published content returns it to draft until it is re-published", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("revise");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -245,7 +237,7 @@ describe("an editor maintains answer rules", () => {
 describe("who published a rule, and when it was reviewed", () => {
   it("records the publishing editor on the rule and resolves their name for the dashboard", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const rule = await createRule(jar, uniqueRuleContent("record"));
     await publishRule(jar, rule.id);
 
@@ -262,7 +254,7 @@ describe("who published a rule, and when it was reviewed", () => {
 describe("the answer lifecycle (ticket 58)", () => {
   it("duplicates a rule as a separate draft prefilled with its content", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("dupe");
     const original = await createRule(jar, content);
     await publishRule(jar, original.id);
@@ -300,7 +292,7 @@ describe("the answer lifecycle (ticket 58)", () => {
 
   it("archiving retires the answer from visitors immediately but keeps it restorable", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("archive");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -325,7 +317,7 @@ describe("the answer lifecycle (ticket 58)", () => {
 
   it("Delete moves the answer to Trash with a purge stamp, and restoring cancels the expiry", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("trash");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -350,7 +342,7 @@ describe("the answer lifecycle (ticket 58)", () => {
 
   it("permanently deletion works from Trash only, for owners and editors, and really removes", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const content = uniqueRuleContent("purge");
     const activeRule = await createRule(ownerJar, content);
     await publishRule(ownerJar, activeRule.id);
@@ -385,7 +377,7 @@ describe("the answer lifecycle (ticket 58)", () => {
 
     // An editor holds the same power.
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const editorRule = await createRule(editorJar, uniqueRuleContent("purge-editor"));
     await ruleRequest(editorJar, "POST", `/api/staff/answer-rules/${editorRule.id}/trash`);
     const editorPurge = await ruleRequest(
@@ -397,9 +389,9 @@ describe("the answer lifecycle (ticket 58)", () => {
 
     // Plain staff may not purge.
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     const ownerForStaff = new CookieJar();
-    await signInWithTotp(ownerForStaff, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerForStaff, OWNER_EMAIL, OWNER_PASSWORD);
     const staffTarget = await createRule(ownerForStaff, uniqueRuleContent("purge-staff"));
     await ruleRequest(ownerForStaff, "POST", `/api/staff/answer-rules/${staffTarget.id}/trash`);
     const staffPurge = await ruleRequest(
@@ -415,12 +407,12 @@ describe("authorization on answer rules", () => {
   it("lets the owner publish, but refuses plain staff, anonymous, and visitor credentials", async () => {
     const ownerContent = uniqueRuleContent("owner");
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const rule = await createRule(ownerJar, ownerContent);
     expect((await publishRule(ownerJar, rule.id)).status).toBe("published");
 
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     for (const [method, path] of [
       ["GET", "/api/staff/answer-rules"],
       ["POST", "/api/staff/answer-rules"],
@@ -454,7 +446,7 @@ describe("authorization on answer rules", () => {
 
   it("blocks answer-rule mutations from an untrusted origin", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const rule = await createRule(jar, uniqueRuleContent("csrf"));
 
     const crossSite = await ruleRequest(
@@ -471,7 +463,7 @@ describe("authorization on answer rules", () => {
 describe("answer-rule input limits", () => {
   it("rejects incomplete or invalid rule content", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const content = uniqueRuleContent("invalid");
 
     const missingTopic = await ruleRequest(jar, "POST", "/api/staff/answer-rules", {
@@ -508,7 +500,7 @@ describe("answer-rule input limits", () => {
 
   it("answers 404 for unknown rules", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
 
     const publish = await ruleRequest(jar, "POST", "/api/staff/answer-rules/nope/publish");
     expect(publish.status).toBe(404);

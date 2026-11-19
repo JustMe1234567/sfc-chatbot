@@ -5,19 +5,15 @@ import { ask, confirmHandoffYes, loadHistory, startConversation, TEST_ORIGIN,
 import {
   authRequest,
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
   useTempDatabase,
+  signInAs,
 } from "./auth-helpers";
 
 const ALICE_EMAIL = "alice@example.edu";
 const ALICE_PASSWORD = "alice-enrol-superb-1";
 const BOB_EMAIL = "bob@example.edu";
 const BOB_PASSWORD = "bob-harbor-quietly-2";
-
-let aliceTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let bobTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function staffPost(
   jar: CookieJar,
@@ -64,8 +60,6 @@ beforeAll(async () => {
   await warmChatbotService();
     await provisionStaff({ email: ALICE_EMAIL, password: ALICE_PASSWORD, name: "Alice" });
   await provisionStaff({ email: BOB_EMAIL, password: BOB_PASSWORD, name: "Bob" });
-  aliceTotp = await enrollTotp(new CookieJar(), ALICE_EMAIL, ALICE_PASSWORD);
-  bobTotp = await enrollTotp(new CookieJar(), BOB_EMAIL, BOB_PASSWORD);
 });
 
 describe("atomic claiming", () => {
@@ -73,8 +67,8 @@ describe("atomic claiming", () => {
     const conversation = await escalate();
     const aliceJar = new CookieJar();
     const bobJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
 
     const [aliceResult, bobResult] = await Promise.all([
       staffPost(aliceJar, conversation.id, "claim"),
@@ -100,7 +94,7 @@ describe("atomic claiming", () => {
   it("rejects state-changing staff requests without a trusted Origin", async () => {
     const conversation = await escalate();
     const jar = new CookieJar();
-    await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
     const { POST } = await import("../src/app/api/staff/conversations/[id]/claim/route");
     const response = await POST(
       new Request(`${TEST_ORIGIN}/api/staff/conversations/${conversation.id}/claim`, {
@@ -117,7 +111,7 @@ describe("staff replies", () => {
   it("lets the claimer reply, and the visitor reads it in the same conversation", async () => {
     const conversation = await escalate();
     const jar = new CookieJar();
-    await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
     const claim = await staffPost(jar, conversation.id, "claim");
     expect(claim.status).toBe(200);
 
@@ -139,14 +133,14 @@ describe("staff replies", () => {
   it("refuses replies before a claim and from anyone but the claimer", async () => {
     const unclaimed = await escalate();
     const aliceJar = new CookieJar();
-    await signInWithTotp(aliceJar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     const early = await staffPost(aliceJar, unclaimed.id, "reply", { text: "hello?" });
     expect(early.status).toBe(409);
 
     const conversation = await escalate();
     await staffPost(aliceJar, conversation.id, "claim");
     const bobJar = new CookieJar();
-    await signInWithTotp(bobJar, BOB_EMAIL, BOB_PASSWORD, bobTotp);
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     const reply = await staffPost(bobJar, conversation.id, "reply", { text: "Bob here" });
     expect(reply.status).toBe(409);
     const body = (await reply.json()) as { claimedBy: string };
@@ -156,7 +150,7 @@ describe("staff replies", () => {
   it("rejects an oversized or empty staff reply", async () => {
     const conversation = await escalate();
     const jar = new CookieJar();
-    await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
     await staffPost(jar, conversation.id, "claim");
 
     const empty = await staffPost(jar, conversation.id, "reply", { text: "   " });
@@ -170,7 +164,7 @@ describe("reconnect and reload recovery", () => {
   it("serves the full stored history to both sides after a fresh read", async () => {
     const conversation = await escalate();
     const jar = new CookieJar();
-    await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
     // The visitor's input is locked while staff help is requested (ticket
     // 43): Alice claims, and the visitor's follow-up lands under the claim.
     await staffPost(jar, conversation.id, "claim");
@@ -232,7 +226,7 @@ describe("closing a resolved conversation", () => {
   it("lets the claimer close; a later visitor question starts a new conversation", async () => {
     const conversation = await escalate();
     const jar = new CookieJar();
-    await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
     await staffPost(jar, conversation.id, "claim");
     await staffPost(jar, conversation.id, "reply", { text: "Glad we sorted that out." });
 
@@ -262,7 +256,7 @@ describe("closing a resolved conversation", () => {
   it("refuses to close an unclaimed conversation", async () => {
     const conversation = await escalate();
     const jar = new CookieJar();
-    await signInWithTotp(jar, ALICE_EMAIL, ALICE_PASSWORD, aliceTotp);
+    await signInAs(jar, ALICE_EMAIL, ALICE_PASSWORD);
     const close = await staffPost(jar, conversation.id, "close");
     expect(close.status).toBe(409);
   });

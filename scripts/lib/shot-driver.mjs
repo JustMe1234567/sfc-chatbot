@@ -1,12 +1,9 @@
 // Shared driver for the screenshot scripts (ticket 33): the healthz wait
-// and the enroll-and-sign-in flow through the real UI, so each shot script
-// starts at its own capture work instead of re-implementing the bootstrap.
+// and the sign-in flow through the real UI, so each shot script starts at
+// its own capture work instead of re-implementing the bootstrap.
 // Ticket 80: staff sign-in is username + password verified by hosted
-// Supabase Auth — staff rows live in staff_members and TOTP factors in the
-// hosted auth schema — so no driver function touches a local enrollment
-// table (the SQLite-era freshTotpSlate is gone; enrollAndSignIn fails fast
-// with instructions when it meets an owner who is already enrolled).
-import { TOTP, URI } from "otpauth";
+// Supabase Auth — staff rows live in staff_members — and ticket 82 made
+// that the whole flow: no enrollment stage exists any more.
 
 /** Waits until the server answers /api/healthz, or throws. */
 export async function waitForServer(base) {
@@ -45,64 +42,15 @@ export async function assertDemoOriginEmbeddable(base) {
 }
 
 /**
- * Enrolls the owner's TOTP through the real UI and signs in with the full
- * password + code flow, landing on the dashboard inbox. The owner must be
- * freshly provisioned: a verified factor never reaches /dashboard/enroll —
- * the credentials stage flips to the login page's own TOTP challenge — and
- * this driver cannot re-derive a secret an earlier run enrolled, because
- * factors live in hosted Supabase Auth rather than a store table a script
- * could wipe (the SQLite-era freshTotpSlate is gone for exactly that
- * reason). Enrollment signs out, so the second pass is a complete sign-in
- * against the same-page TOTP stage. Returns the enrolled TOTP generator —
- * callers that sign in again (reduced-motion passes) reuse it.
+ * Signs the staff member in through the real login page (single-stage
+ * username + password since ticket 82), landing on the dashboard inbox.
  */
-export async function enrollAndSignIn(page, base, username, password) {
+export async function signIn(page, base, username, password) {
   await page.goto(`${base}/dashboard/login`);
   await page.waitForLoadState("domcontentloaded");
   await page.fill("#username", username);
   await page.fill("#password", password);
   await page.click("button[type=submit]");
-  try {
-    // 60s: the first visit cold-compiles the login and enroll routes on a
-    // dev server.
-    await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
-  } catch {
-    throw new Error(
-      "sign-in did not reach /dashboard/enroll — either the credentials were refused or " +
-        "the owner already has a verified authenticator (the login page flips to its own " +
-        "TOTP stage instead, and this driver cannot re-derive a factor an earlier run " +
-        "enrolled; run against a freshly bootstrapped owner).",
-    );
-  }
-  await page.getByRole("button", { name: "Begin enrollment" }).click();
-  await page.waitForSelector("code", { timeout: 60000 });
-  const totp = URI.parse(`otpauth://totp/x?secret=${(await page.textContent("code")).trim()}`);
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-  // Full sign-in with the second factor: the credentials stage flips to the
-  // TOTP stage on the same page.
-  await page.waitForSelector("#username", { timeout: 15000 });
-  await page.fill("#username", username);
-  await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 15000 });
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-  console.log("signed in; enrollment complete");
-  return totp;
-}
-
-/** Re-signed-in helper for passes that reuse an enrolled TOTP. */
-export async function signInWithTotp(page, base, username, password, totp) {
-  await page.goto(`${base}/dashboard/login`);
-  await page.waitForLoadState("domcontentloaded");
-  await page.fill("#username", username);
-  await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 15000 });
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+  await page.waitForURL("**/dashboard/inbox", { timeout: 60000 });
+  console.log("signed in");
 }

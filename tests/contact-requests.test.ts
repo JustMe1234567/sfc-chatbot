@@ -12,10 +12,9 @@ import {
 } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
   staffApiRequest,
+  signInAs,
 } from "./auth-helpers";
 
 /**
@@ -35,10 +34,6 @@ const STAFF_EMAIL = "requests-staff@example.edu";
 const STAFF_PASSWORD = "requests-staff-quiet-3k";
 const EDITOR_EMAIL = "requests-editor@example.edu";
 const EDITOR_PASSWORD = "requests-editor-ridge-9v";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function service(): Promise<Awaited<ReturnType<typeof import("../src/db/service").getChatbotService>>> {
   const { getChatbotService } = await import("../src/db/service");
@@ -80,10 +75,9 @@ async function errorCode(response: Response): Promise<string | undefined> {
 async function staffJar(
   email: string,
   password: string,
-  totp: Awaited<ReturnType<typeof enrollTotp>>,
 ): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, email, password, totp);
+  await signInAs(jar, email, password);
   return jar;
 }
 
@@ -129,9 +123,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam", role: "staff" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
 });
 
 describe("temporary details are not saved contacts (ticket 69)", () => {
@@ -197,7 +188,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     expect(await contactAlerts(conversation.id)).toBe(0);
     expect(await escalationAlerts(conversation.id)).toBe(0);
 
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const deskResponse = await staffApiRequest(owner, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {
       active: { id: string; contactRequest: { medium: string } | null }[];
@@ -270,10 +261,10 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     await askRaw(conversation, JSON.stringify({ choice: "contact-email" }));
 
     // Editors are refused (403 by role), owners and staff are not.
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await staffPost(editor, conversation.id, "mark-contacted")).status).toBe(403);
 
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     const marked = await staffPost(staff, conversation.id, "mark-contacted");
     expect(marked.status).toBe(200);
     const body = (await marked.json()) as {
@@ -314,7 +305,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
   });
 
   it("refuses Mark contacted with nothing open, and never completes another conversation's request", async () => {
-    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const conversation = await startConversation();
     expect((await staffPost(jar, conversation.id, "mark-contacted")).status).toBe(409);
 
@@ -360,7 +351,7 @@ describe("the unknown-question handoff (tickets 37/69)", () => {
     expect(await escalationAlerts(conversation.id)).toBe(0);
 
     // Take over completes the Chat request.
-    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     expect((await staffPost(jar, conversation.id, "claim")).status).toBe(200);
     expect(await store.getOpenContactRequest(conversation.id)).toBeNull();
     expect((await store.listContactRequests(conversation.id))[0]?.status).toBe("completed");

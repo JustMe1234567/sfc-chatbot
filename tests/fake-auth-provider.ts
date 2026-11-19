@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { TOTP } from "otpauth";
 import type {
   AuthDependencies,
   AuthIdentity,
@@ -22,14 +21,11 @@ interface FakeUser {
   password: string | null;
   confirmed: boolean;
   banned: boolean;
-  factorId: string | null;
-  totp: TOTP | null;
 }
 
 interface FakeSession {
   id: string;
   userId: string;
-  aal: "aal1" | "aal2";
   expiresAt: number;
 }
 
@@ -55,8 +51,6 @@ class FakeAuthProvider implements AuthProvider {
       password: input.password,
       confirmed: input.confirmed ?? true,
       banned: false,
-      factorId: null,
-      totp: null,
     });
   }
 
@@ -113,8 +107,6 @@ class FakeAuthProvider implements AuthProvider {
       sessionId: session.id,
       email: `${user.id}@staff.invalid`,
       emailVerified: user.confirmed,
-      aal: session.aal,
-      mfaEnrolled: user.totp !== null,
     };
   }
 
@@ -215,10 +207,9 @@ class FakeAuthProvider implements AuthProvider {
       this.sessions.set(token, {
         id: randomUUID(),
         userId: user.id,
-        aal: "aal1",
         expiresAt: Date.now() + 60 * 60 * 1000,
       });
-      return this.response({ twoFactorRedirect: user.totp !== null }, 200, token);
+      return this.response({ success: true }, 200, token);
     }
 
     if (request.method === "GET" && path === "get-session") {
@@ -234,49 +225,8 @@ class FakeAuthProvider implements AuthProvider {
           id: user.id,
           username: staff?.username ?? user.username,
           name: staff?.name ?? user.name,
-          twoFactorEnabled: Boolean(user.totp),
         },
-        aal: identity.aal,
       });
-    }
-
-    if (request.method === "POST" && path === "two-factor/enable") {
-      const session = this.session(request.headers);
-      const user = session ? this.users.get(session.userId) : null;
-      if (!user) return this.error("Sign in required.", 401);
-      user.factorId = randomUUID();
-      user.totp = new TOTP({
-        issuer: "Springfield College chat",
-        label: user.username,
-        algorithm: "SHA1",
-        digits: 6,
-        period: 30,
-      });
-      return this.response({
-        totpURI: user.totp.toString(),
-        qrCode: "",
-        factorId: user.factorId,
-      });
-    }
-
-    if (request.method === "POST" && path === "two-factor/verify-totp") {
-      const token = this.token(request.headers);
-      const session = token ? this.sessions.get(token) : null;
-      const user = session ? this.users.get(session.userId) : null;
-      const code = typeof body?.code === "string" ? body.code : "";
-      if (!session || !user?.totp || user.totp.validate({ token: code, window: 1 }) === null) {
-        return this.error("The authenticator code is invalid.", 401);
-      }
-      session.aal = "aal2";
-      await this.dependencies.db.run(
-        `UPDATE staff_members SET "twoFactorEnabled" = ?, "emailVerified" = ?, "updatedAt" = ?
-         WHERE "supabaseUserId" = ?`,
-        true,
-        true,
-        new Date().toISOString(),
-        user.id,
-      );
-      return this.response({ success: true }, 200, token ?? undefined);
     }
 
     if (request.method === "POST" && path === "sign-out") {
@@ -290,8 +240,8 @@ class FakeAuthProvider implements AuthProvider {
       const session = token ? this.sessions.get(token) : null;
       const user = session ? this.users.get(session.userId) : null;
       const password = typeof body?.newPassword === "string" ? body.newPassword : "";
-      if (!session || session.aal !== "aal2" || !user || password.length < 10) {
-        return this.error("Verify your authenticator before changing the password.", 403);
+      if (!session || !user || password.length < 10) {
+        return this.error("Sign in required.", 401);
       }
       user.password = password;
       await this.revokeAll(user.id);
@@ -310,8 +260,6 @@ class FakeAuthProvider implements AuthProvider {
       password,
       confirmed: true,
       banned: false,
-      factorId: null,
-      totp: null,
     });
     return { userId };
   }
@@ -320,14 +268,6 @@ class FakeAuthProvider implements AuthProvider {
     const user = this.users.get(userId);
     if (!user) throw new Error("Staff account not found.");
     user.password = password;
-    await this.revokeAll(userId);
-  }
-
-  async resetMfa(userId: string): Promise<void> {
-    const user = this.users.get(userId);
-    if (!user) throw new Error("Staff account not found.");
-    user.factorId = null;
-    user.totp = null;
     await this.revokeAll(userId);
   }
 

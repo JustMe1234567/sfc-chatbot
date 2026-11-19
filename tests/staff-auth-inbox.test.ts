@@ -5,11 +5,10 @@ import { ask, confirmHandoffYes, startConversation, TEST_ORIGIN,
 import {
   authRequest,
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
   staffApiRequest,
   useTempDatabase,
+  signInAs,
 } from "./auth-helpers";
 import { expireFakeSessions, registerFakeStaff } from "./fake-auth-provider";
 
@@ -19,9 +18,6 @@ const OWNER_EMAIL = "owner@example.edu";
 const OWNER_PASSWORD = "owner-staple-cartoon-42";
 const EDITOR_EMAIL = "editor@example.edu";
 const EDITOR_PASSWORD = "editor-placid-nimbus-88";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function escalateAConversation(): Promise<void> {
   const conversation = await startConversation();
@@ -38,10 +34,7 @@ beforeAll(async () => {
     await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "College Owner", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Front Desk" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Content Editor", role: "editor" });
-  // Enroll and activate second factors once; later tests sign in with
-  // password + TOTP.
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
+  // Password-only sign-in throughout (ticket 82 removed the second factor).
 });
 
 describe("staff authentication gate", () => {
@@ -107,7 +100,7 @@ describe("staff authentication gate", () => {
     expect(inbox.status).toBe(401);
   });
 
-  it("refuses the dashboard until the second factor is enrolled and verified", async () => {
+  it("admits password-only sign-in to the dashboard (ticket 82 removed the second factor)", async () => {
     await provisionStaff({ email: "unenrolled@example.edu", password: "valid-password-123", name: "Unenrolled" });
     const jar = new CookieJar();
     const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
@@ -115,10 +108,11 @@ describe("staff authentication gate", () => {
     });
     expect(signIn.ok).toBe(true);
 
+    // No enrollment stage stands between the credential check and the
+    // inbox; ticket 81's login log and IP block are the compensating
+    // controls.
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
-    expect(inbox.status).toBe(403);
-    const body = (await inbox.json()) as { error: { code: string } };
-    expect(body.error.code).toBe("two_factor_enrollment_required");
+    expect(inbox.status).toBe(200);
   });
 
   it("rejects wrong passwords with a generic error", async () => {
@@ -175,10 +169,10 @@ describe("staff authentication gate", () => {
 });
 
 describe("protected shared inbox", () => {
-  it("lists escalated conversations and their transcripts for verified, two-factor staff", async () => {
+  it("lists escalated conversations and their transcripts for verified staff", async () => {
     await escalateAConversation();
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
 
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(200);
@@ -202,16 +196,15 @@ describe("protected shared inbox", () => {
   });
 
   it("refuses the inbox to a role without inbox access", async () => {
-    const editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
     const jar = new CookieJar();
-    await signInWithTotp(jar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(403);
   });
 
   it("ends access immediately when the account is disabled", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     const before = await staffApiRequest(jar, "/api/staff/conversations");
     expect(before.status).toBe(200);
 
@@ -226,7 +219,7 @@ describe("protected shared inbox", () => {
 
   it("rejects a signed-out session cookie", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     await authRequest(jar, "/api/auth/sign-out");
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(401);
@@ -234,7 +227,7 @@ describe("protected shared inbox", () => {
 
   it("revokes every session when staff sign out everywhere", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     const { POST } = await import("../src/app/api/staff/sessions/revoke-all/route");
 
     const sameOrigin = await POST(
@@ -251,7 +244,7 @@ describe("protected shared inbox", () => {
 
   it("rejects an expired session", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     expireFakeSessions(STAFF_EMAIL);
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
     expect(inbox.status).toBe(401);

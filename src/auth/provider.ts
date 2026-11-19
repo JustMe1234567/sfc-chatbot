@@ -6,8 +6,6 @@ export interface AuthIdentity {
   sessionId: string;
   email: string;
   emailVerified: boolean;
-  aal: "aal1" | "aal2";
-  mfaEnrolled: boolean;
 }
 
 export interface AuthProvider {
@@ -15,7 +13,6 @@ export interface AuthProvider {
   handle(request: Request): Promise<Response>;
   createAccount(staffId: string, name: string, password: string): Promise<{ userId: string }>;
   resetPassword(userId: string, password: string): Promise<void>;
-  resetMfa(userId: string): Promise<void>;
   revokeAll(userId: string): Promise<void>;
   disable(userId: string): Promise<void>;
 }

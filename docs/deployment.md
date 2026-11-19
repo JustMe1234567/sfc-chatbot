@@ -56,30 +56,37 @@ With the test-project environment loaded:
 npm run bootstrap:owner -- --username owner --password "choose-at-least-10-characters" --name "College Owner"
 ```
 
-The command applies migrations and creates both the application staff record and Supabase Auth user. The password is provided only as process input and is not printed or stored by the application. The owner signs in, enrolls TOTP, signs out, and signs in again with password plus authenticator.
+The command applies migrations and creates both the application staff record and Supabase Auth user. The password is provided only as process input and is not printed or stored by the application. The owner signs in with that username and password — single-stage, no authenticator (ADR-0006).
 
 Owners create staff/editor accounts from the Staff page by assigning a name, unique username, role, and initial password. Usernames are lowercase and case-insensitive. Public signup remains disabled.
 
-## 5. Lost-authenticator recovery
+On a deployment that predates ticket 82, run the one-time factor cleanup once after redeploying, so no account is left with a half-enrolled authenticator in hosted Auth:
+
+```powershell
+npx tsx scripts/remove-enrolled-factors.ts
+```
+
+Staff members who still hold the old Springfield entry in an authenticator app can delete it; the app no longer participates in sign-in.
+
+## 5. Lost-password recovery
 
 1. Verify the staff member using the college's approved out-of-band identity procedure. Do not rely on an email request alone.
-2. An owner can choose **Reset MFA** on the Staff page. For a lost owner authenticator, run the trusted operator command:
+2. An owner resets the password from the Staff page. For a lost owner password, run the trusted operator command:
 
    ```powershell
-   npm run recover:staff -- --username owner --reset-mfa --identity-verified
+   npm run recover:staff -- --username owner --password "new-10+-character-password" --identity-verified
    ```
 
-3. The reset deletes every Auth session and factor. It sends no email and never exposes the old TOTP secret.
-4. The member signs in with the existing password and enrolls a new authenticator before dashboard access resumes. Add `--password "new-10+-character-password"` to the trusted command only when the password must also be replaced.
+3. The reset deletes every Auth session. It sends no email and never exposes the old password.
 
-The command's explicit flag records that the human verification step happened; it does not perform that verification. Ordinary owner password resets preserve MFA and revoke all sessions. Staff can also change their own password from Settings after completing MFA.
+The command's explicit flag records that the human verification step happened; it does not perform that verification. Staff can also change their own password from Settings.
 
 ## 6. Localhost and Vercel test verification
 
 Before starting localhost, follow `LOCALHOST.md`: verify port 3000, avoid duplicate servers, and update the file when state changes. Then verify:
 
-- owner-created account login, wrong password refusal, TOTP enrollment/challenge, reload/refresh, ordinary sign-out, and global sign-out;
-- owner password reset, self-service password change, operator MFA recovery, and mandatory reenrollment;
+- owner-created account login, wrong password refusal, single-stage sign-in with no authenticator challenge (ticket 82), reload/refresh, ordinary sign-out, and global sign-out;
+- owner password reset, self-service password change, and session revocation;
 - owner/staff/editor access, unprovisioned Auth user refusal, cross-origin mutations, disabling, and stale-session refusal;
 - visitor chat, contact gate, handoff, takeover, reply, contacts, History, answer rules, settings, branding, and maintenance;
 - no secret key or database URL in page source, scripts, widget assets, or API responses.

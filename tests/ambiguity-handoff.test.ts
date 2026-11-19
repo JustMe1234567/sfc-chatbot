@@ -12,9 +12,8 @@ import {
 import {
   authRequest,
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 const OWNER_EMAIL = "owner@example.edu";
@@ -23,10 +22,6 @@ const EDITOR_EMAIL = "editor@example.edu";
 const EDITOR_PASSWORD = "editor-phrase-puzzle-9k";
 const STAFF_EMAIL = "helper@example.edu";
 const STAFF_PASSWORD = "helper-phrase-branch-4q";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 interface Choice {
   id: string;
@@ -79,9 +74,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("several matching rules offer choices", () => {
@@ -172,7 +164,7 @@ describe("seeded handoff phrases work out of the box", () => {
     // never been configured, so assert it explicitly before anything saves a
     // phrase list.
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await getPhrases(editorJar)).phrases).toEqual([
       "talk to a person",
       "speak to a human",
@@ -196,7 +188,7 @@ describe("seeded handoff phrases work out of the box", () => {
 describe("configured handoff phrases take priority over answer rules", () => {
   it("prompts when the question contains a configured phrase, and hands off on Yes", async () => {
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const saved = await putPhrases(editorJar, [
       "speak to a human",
       "I would like an operator",
@@ -222,7 +214,7 @@ describe("configured handoff phrases take priority over answer rules", () => {
 
   it("applies configuration changes on the very next question, without a redeploy", async () => {
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const changed = await putPhrases(editorJar, ["connect me with the registrar"]);
     expect(changed.status).toBe(200);
     const read = await getPhrases(editorJar);
@@ -239,7 +231,7 @@ describe("configured handoff phrases take priority over answer rules", () => {
 
   it("matches phrases as whole phrases, not inside other words", async () => {
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     await putPhrases(editorJar, ["speak to a human"]);
 
     // "humane" must not trigger "speak to a human": the rule answer wins.
@@ -274,12 +266,12 @@ describe("unknown questions offer a visitor-consented handoff", () => {
 describe("escalation-phrase configuration authorization", () => {
   it("lets the owner read and write, but refuses plain staff, and untrusted origins", async () => {
     const ownerJar = new CookieJar();
-    await signInWithTotp(ownerJar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
     const saved = await putPhrases(ownerJar, ["owner configured this"]);
     expect(saved.status).toBe(200);
 
     const staffJar = new CookieJar();
-    await signInWithTotp(staffJar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
     const forbidden = await putPhrases(staffJar, ["staff cannot"]);
     expect(forbidden.status).toBe(403);
 
@@ -305,7 +297,7 @@ describe("escalation-phrase configuration authorization", () => {
 
   it("rejects malformed phrase lists", async () => {
     const editorJar = new CookieJar();
-    await signInWithTotp(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
     const notAList = await putPhrases(editorJar, "not a list" as unknown as string[]);
     expect(notAList.status).toBe(400);
     const punctuationOnly = await putPhrases(editorJar, ["?!?"]);

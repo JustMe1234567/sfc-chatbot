@@ -59,17 +59,14 @@ A visitor's explicit ask to be reached (ticket 69), in one of three media: **Cha
 The message history shared by a visitor, the bot, and any administrator who takes over.
 
 **Staff account**:
-The named dashboard membership of a college employee. An owner assigns its username, initial password, and owner/staff/editor role; dashboard access begins only after the employee enrolls an authenticator.
+The named dashboard membership of a college employee. An owner assigns its username, initial password, and owner/staff/editor role; the password alone admits the dashboard (ticket 82 removed the second factor).
 
 **Owner**:
 The highest-privilege staff role, responsible for security-sensitive dashboard configuration and staff administration.
 _Avoid_: Superadmin, administrator
 
 **Staff credential reset**:
-An owner-issued password or authenticator reset for an existing staff account. Password resets revoke every session but preserve the authenticator; authenticator resets revoke every session and require enrollment of a new factor.
-
-**Authenticator recovery**:
-The controlled process for a staff member who has lost their authenticator. An owner or trusted operator verifies the person, revokes their sessions and old factor, then requires enrollment of a new authenticator before dashboard access resumes.
+An owner-issued password reset for an existing staff account. It revokes every session; the member signs back in with the new password.
 
 **Login log**:
 The complete owner-held record of dashboard sign-in attempts (ticket 81): every success, failure, and blocked attempt, each with the attempted username, outcome, reason, client IP, browser user agent, and time. Owners may delete entries individually, in checkbox-selected ranges, or all at once; the login retention period removes the rest.

@@ -2,17 +2,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ask, confirmHandoffYes, loadHistory, startConversation, testPostgresUrl, TEST_ORIGIN, useTempDatabase, warmChatbotService, type ConversationStart } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 const STAFF_EMAIL = "desk@example.edu";
 const STAFF_PASSWORD = "desk-attention-manor-6c";
 const SECOND_STAFF_EMAIL = "colleague@example.edu";
 const SECOND_STAFF_PASSWORD = "colleague-attention-pier-9f";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 interface DeskItem {
   id: string;
@@ -112,12 +109,11 @@ beforeAll(async () => {
   await warmChatbotService();
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Dana" });
   await provisionStaff({ email: SECOND_STAFF_EMAIL, password: SECOND_STAFF_PASSWORD, name: "Riley" });
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 async function staffJar(): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   return jar;
 }
 

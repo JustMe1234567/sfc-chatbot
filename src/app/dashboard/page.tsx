@@ -10,7 +10,6 @@ export default async function DashboardEntry() {
     // dashboard's front door sends each role to its own workspace.
     redirect(guard.staff.role === "editor" ? "/dashboard/answers" : "/dashboard/inbox");
   }
-  // No acceptable session: the login page also routes unenrolled staff to
-  // second-factor setup after a successful password sign-in.
+  // No acceptable session: sign-in is a single username + password stage.
   redirect("/dashboard/login");
 }

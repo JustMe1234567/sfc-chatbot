@@ -148,8 +148,8 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   const attentionTierCount = desk ? desk.active.filter((item) => item.attention).length : 0;
   const mayReassign =
     selected?.state === "claimed" && (claimedByMe || guard.staff.role === "owner");
-  // Transfer targets mirror the API's eligibility exactly: active, verified,
-  // second-factor-enrolled inbox members who don't already own it.
+  // Transfer targets mirror the API's eligibility exactly: active, verified
+  // inbox members who don't already own it.
   const transferTargets = selected
     ? (await listStaffMembers(db))
         .filter(
@@ -157,8 +157,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
             member.id !== selected.claimedBy &&
             (member.role === "owner" || member.role === "staff") &&
             !member.banned &&
-            member.emailVerified &&
-            member.twoFactorEnabled,
+            member.emailVerified,
         )
         .map((member) => ({ id: member.id, name: member.name }))
     : [];

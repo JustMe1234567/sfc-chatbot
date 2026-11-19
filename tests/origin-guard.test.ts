@@ -3,9 +3,8 @@ import { sameOriginGuard } from "../src/api/staff";
 import { TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 
 /**
@@ -21,8 +20,6 @@ import {
 
 const OWNER_EMAIL = "guard-owner@example.edu";
 const OWNER_PASSWORD = "guard-owner-harbor-5w";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function putPhrases(jar: CookieJar, headers: Record<string, string>): Promise<Response> {
   const { PUT } = await import("../src/app/api/staff/settings/escalation-phrases/route");
@@ -40,7 +37,6 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
 });
 
 describe("the same-origin guard's header rule (ticket 30)", () => {
@@ -100,7 +96,7 @@ describe("the same-origin guard's header rule (ticket 30)", () => {
 describe("a cookie-authenticated mutation without an Origin header (ticket 30)", () => {
   it("passes on a trusted Referer alone and fails with neither header", async () => {
     const jar = new CookieJar();
-    await signInWithTotp(jar, OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    await signInAs(jar, OWNER_EMAIL, OWNER_PASSWORD);
 
     const refererOnly = await putPhrases(jar, {
       referer: `${TEST_ORIGIN}/dashboard/answers`,
