@@ -1,6 +1,6 @@
 // Ticket 17 verification + screenshots (headless Chromium, one-off).
 // Seeds analytics data over the public APIs, signs the scratch owner in
-// through the real UI (TOTP enroll), opens the widget so the page itself
+// through the real UI, opens the widget so the page itself
 // beats presence, then captures the analytics page at three widths.
 // Usage: node scripts/analytics-shots.mjs <outdir> [port]
 // Dev-mode only (ticket 78): under a production build the ticket-76 embed
@@ -78,7 +78,7 @@ for (const [text, expectEscalation] of [
   escalations.push(conversation);
 }
 
-// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
+// --- Sign the owner in through the real UI (password-only since 82). ------
 const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();

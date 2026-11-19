@@ -1,5 +1,5 @@
-// Design-ticket screenshot driver (ticket 13): enrolls and signs the owner in
-// through the real UI in headless Chromium, then captures the staff surfaces
+// Design-ticket screenshot driver (ticket 13): signs the owner in through
+// the real UI in headless Chromium, then captures the staff surfaces
 // at three viewport widths. Usage: node scripts/design-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";

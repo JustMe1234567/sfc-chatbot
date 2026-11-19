@@ -59,15 +59,18 @@ database (the spec's controlled-test-store seam). The restart test spawns
 
 ## Staff dashboard and authentication
 
-Staff access is owner-managed and second-factor protected:
+Staff access is owner-managed, and sign-in is username and password for
+every role — single-stage, no second factor (ADR-0006; ticket 81's login
+log, suspicious-login flagging, and IP block are the compensating
+controls):
 
 ```bash
 npm run bootstrap:owner -- --username owner --password 'choose-10+-characters' --name 'Owner'
 npm run dev
 ```
 
-Open <http://localhost:3000/dashboard>. The owner signs in with the password
-provided at bootstrap and enrolls TOTP. Supabase Auth owns credentials and
+Open <http://localhost:3000/dashboard>. The owner signs in with the username
+and password provided at bootstrap. Supabase Auth owns credentials and
 sessions; `staff_members` owns application roles and disablement. Only the
 project URL and publishable key are public. The secret key and database URL
 remain server-only.

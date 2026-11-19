@@ -31,11 +31,9 @@ await fetch(`${BASE}/api/v1/topics`);
 
 // Provision the screenshot owner: one-shot per owner (bootstrap throws
 // "differently provisioned staff account already exists" against an owner it
-// already linked to Supabase Auth, and re-runs fail at sign-in anyway — the
-// driver cannot re-derive an earlier run's factor). There is no local table
-// to probe first: staff lives in the Postgres store and hosted Supabase
-// Auth, so the SQLite-era enrollment wipe and "user" existence check are
-// gone (ticket 80).
+// already linked to Supabase Auth). There is no local table to probe first:
+// staff lives in the Postgres store and hosted Supabase Auth, so the
+// SQLite-era enrollment wipe and "user" existence check are gone (ticket 80).
 const { execFileSync } = await import("node:child_process");
 execFileSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/bootstrap-owner.ts",
   "--username", USERNAME, "--password", PASSWORD, "--name", "Olive Owner"], {

@@ -5,7 +5,7 @@
 // truthful topic acknowledgment and the waiting lock engaging, a repeat
 // click refused with exactly one alert recorded — then proves typed wording
 // keeps normal answer matching against a competing published rule, signs the
-// owner in through the real UI (fresh TOTP enrollment) for the desk's
+// owner in through the real UI for the desk's
 // waiting row, Take over and a staff reply, and the Answers admin area's
 // Handoff Options tab, whose save reaches a new widget without a redeploy.
 // Usage: node scripts/cert67-handoff-options.mjs <outdir> [port]
@@ -16,8 +16,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket67";
@@ -70,9 +70,9 @@ if (JSON.stringify(seededOptions) !== JSON.stringify([ADMISSIONS_OPTION, COURSE_
   throw new Error(`the seeded options are not the three pictured phrases: ${JSON.stringify(seededOptions)}`);
 }
 
-// No local enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
-// Auth, not a store table, so this cert simply requires a freshly
-// bootstrapped owner and lets the username sign-in below enroll it fresh.
+// No local enrollment wipe (ticket 80): staff credentials live in hosted
+// Supabase Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner for the sign-in below.
 
 // A published rule that deliberately covers the same topic as the
 // financial-aid option: the click must bypass it, typing must not.
@@ -255,30 +255,8 @@ console.log("ok: typing the same wording keeps normal answer matching");
 // ===========================================================================
 // Part B — the desk: the waiting row, Take over, and the staff reply.
 // ===========================================================================
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
-await page.getByRole("button", { name: "Begin enrollment" }).click();
-await page.waitForSelector("code", { timeout: 60000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-// Full sign-in with the second factor: the credentials stage flips to the
-// TOTP stage on the same page.
-await page.waitForSelector("#username", { timeout: 15000 });
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// Sign the owner in through the real UI (password-only since ticket 82).
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 const list = page.getByRole("navigation", { name: "Conversation list" });
 await list.waitFor({ timeout: 10000 });

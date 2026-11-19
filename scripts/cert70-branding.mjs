@@ -27,8 +27,8 @@ import { createServer as httpsServer } from "node:https";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import postgres from "postgres";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket70";
@@ -182,31 +182,9 @@ try {
   }
 
   // =========================================================================
-  // Owner sign-in with fresh TOTP enrollment (fresh store).
+  // Owner sign-in (password-only flow since ticket 82, fresh store).
   // =========================================================================
-  await page.goto(`${BASE}/dashboard/login`);
-  await page.waitForLoadState("domcontentloaded");
-  await page.fill("#username", USERNAME);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/enroll", { timeout: 15000 });
-  await page.getByRole("button", { name: "Begin enrollment" }).click();
-  await page.waitForSelector("code", { timeout: 15000 });
-  const totp = URI.parse(`otpauth://totp/x?secret=${(await page.textContent("code")).trim()}`);
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-  // Full sign-in with the second factor: the credentials stage flips to the
-  // TOTP stage on the same page.
-  await page.waitForSelector("#username", { timeout: 15000 });
-  await page.fill("#username", USERNAME);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 15000 });
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-  console.log("signed in; enrollment complete");
+  await signIn(page, BASE, USERNAME, PASSWORD);
 
   // =========================================================================
   // The Settings page: nav destination, three cards, default chathead.

@@ -1,6 +1,6 @@
 // Ticket 44 verification (headless Chromium, one-off): the desk's status
 // treatments and the notification sound. Signs the owner in through the real
-// UI (fresh TOTP enrollment) against a scratch database, seeds conversations
+// UI against a scratch database, seeds conversations
 // through the public API, and counts chimes with a fake AudioContext whose
 // state is controllable — so the sound matrix (one cue per event, silence on
 // polling, burst coalescing, muting, reload/second-view dedup, and the
@@ -10,8 +10,8 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-desk-status";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3211"}`;
@@ -34,9 +34,9 @@ for (let attempt = 0; ; attempt++) {
 const topicsResponse = await fetch(`${BASE}/api/v1/topics`);
 if (!topicsResponse.ok) throw new Error(`topics fetch failed: ${topicsResponse.status}`);
 
-// No enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
-// Auth, not a store table, so the username sign-in below requires a freshly
-// bootstrapped owner and enrolls it fresh.
+// No enrollment wipe (ticket 80): staff credentials live in hosted Supabase
+// Auth, not a store table, so the sign-in below requires a freshly
+// bootstrapped owner.
 
 async function startChat() {
   const response = await fetch(`${BASE}/api/v1/conversations`, {
@@ -133,31 +133,8 @@ for (const target of [page]) {
 }
 await page.setViewportSize({ width: 1280, height: 800 });
 
-// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
-await page.getByRole("button", { name: "Begin enrollment" }).click();
-await page.waitForSelector("code", { timeout: 60000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-// Full sign-in with the second factor: the credentials stage flips to the
-// TOTP stage on the same page.
-await page.waitForSelector("#username", { timeout: 15000 });
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// --- Sign the owner in through the real UI (password-only since 82). ------
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 const chimes = (target = page) =>
   target.evaluate(() => Number(sessionStorage.getItem("__probeOsc") ?? "0") / 2);
@@ -414,16 +391,8 @@ const heldChat = await startChat();
 if ((await ask(heldChat, "Screenshot seed: autoplay check, let me speak to a human.")) !== "awaiting_staff") {
   throw new Error("expected an escalation");
 }
-// A fresh context means a fresh session: sign the owner in again with the
-// enrollment this run created.
-await blockedPage.goto(`${BASE}/dashboard/login`);
-await blockedPage.fill("#username", USERNAME);
-await blockedPage.fill("#password", PASSWORD);
-await blockedPage.click("button[type=submit]");
-await blockedPage.waitForSelector("#totp", { timeout: 15000 });
-await blockedPage.fill("#totp", totp.generate());
-await blockedPage.click("button[type=submit]");
-await blockedPage.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+// A fresh context means a fresh session: sign the owner in again.
+await signIn(blockedPage, BASE, USERNAME, PASSWORD);
 await blockedPage
   .getByRole("navigation", { name: "Conversation list" })
   .waitFor({ timeout: 10000 });

@@ -1,6 +1,6 @@
 // Ticket 29 certification (headless Chromium, one-off): the widget and
 // dashboard accessibility polish batch. Signs the owner in through the real
-// UI (fresh scratch database, fresh TOTP enrollment), Tab-walks the
+// UI (fresh scratch database), Tab-walks the
 // dashboard to prove the skip link is the first focusable element and jumps
 // to the content, asserts the per-route document titles, then drives the
 // widget: the contact email's autocomplete attribute (the audit's box the
@@ -14,8 +14,8 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket29";
@@ -61,9 +61,9 @@ function assert(condition, message) {
   console.log(`ok: ${message}`);
 }
 
-// No local enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
-// Auth, not a store table, so this cert simply requires a freshly
-// bootstrapped owner and lets the username sign-in below enroll it fresh.
+// No local enrollment wipe (ticket 80): staff credentials live in hosted
+// Supabase Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner for the sign-in below.
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -86,33 +86,10 @@ assert(
   "login page titles itself through the dashboard template",
 );
 
-// Owner sign-in with fresh TOTP enrollment (username flow). The first
-// visit cold-compiles each route on a dev server, so waits key on URLs and
+// Owner sign-in (password-only since ticket 82). The first visit
+// cold-compiles each route on a dev server, so waits key on URLs and
 // generous element timeouts rather than fixed sleeps.
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await Promise.all([
-  page.waitForURL("**/dashboard/enroll", { timeout: 60000 }),
-  page.click("button[type=submit]"),
-]);
-await page.getByRole("button", { name: "Begin enrollment" }).click();
-await page.waitForSelector("code", { timeout: 60000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-// Full sign-in with the second factor: the credentials stage flips to the
-// TOTP stage on the same page.
-await page.waitForSelector("#username", { timeout: 15000 });
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 async function expectTitle(title) {
   const actual = await page.title();

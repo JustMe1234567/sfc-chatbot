@@ -3,7 +3,7 @@
 // real widget on the demo page — form first, server-side rejection of a bad
 // phone, accepted details opening the chat, the gate returning after Clear
 // chat, and a direct-API bypass attempt against a legacy conversation —
-// then signs the owner in through the real UI (fresh TOTP enrollment) to
+// then signs the owner in through the real UI to
 // assert "Name · state" rows, the fallback label, the green/yellow/red tier
 // colors by computed style, and the Visitor emails page's new copy.
 // Usage: node scripts/cert66-widget-gate.mjs <outdir> [port]
@@ -14,8 +14,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket66";
@@ -54,9 +54,9 @@ for (let attempt = 0; ; attempt++) {
 const topicsResponse = await fetch(`${BASE}/api/v1/topics`);
 if (!topicsResponse.ok) throw new Error(`topics fetch failed: ${topicsResponse.status}`);
 
-// No local enrollment wipe (ticket 80): TOTP factors live in hosted Supabase
-// Auth, not a store table, so this cert simply requires a freshly
-// bootstrapped owner and lets the username sign-in below enroll it fresh.
+// No local enrollment wipe (ticket 80): staff credentials live in hosted
+// Supabase Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner for the sign-in below.
 
 const CONTACT = {
   fullName: "Jane Doe",
@@ -305,32 +305,8 @@ if ((await (await postMessage(claimedChat, { text: "Claim test: please let me sp
 }
 const legacyHistory = await seedLegacyConversation("closed", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
 
-// Sign the owner in through the real UI (fresh TOTP enrollment, username
-// flow).
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/enroll", { timeout: 60000 });
-await page.getByRole("button", { name: "Begin enrollment" }).click();
-await page.waitForSelector("code", { timeout: 60000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-// Full sign-in with the second factor: the credentials stage flips to the
-// TOTP stage on the same page.
-await page.waitForSelector("#username", { timeout: 15000 });
-await page.fill("#username", USERNAME);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// Sign the owner in through the real UI (password-only since ticket 82).
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 const list = page.getByRole("navigation", { name: "Conversation list" });
 await list.waitFor({ timeout: 10000 });

@@ -44,13 +44,38 @@ export async function assertDemoOriginEmbeddable(base) {
 /**
  * Signs the staff member in through the real login page (single-stage
  * username + password since ticket 82), landing on the dashboard inbox.
+ * `afterCredentials` (cert79's scratch-store substrate) runs once the
+ * sign-in answer has set the auth cookies but before the dashboard is
+ * opened: its store writes must exist before the first staff page's
+ * session join.
  */
-export async function signIn(page, base, username, password) {
+export async function signIn(page, base, username, password, afterCredentials) {
   await page.goto(`${base}/dashboard/login`);
   await page.waitForLoadState("domcontentloaded");
   await page.fill("#username", username);
   await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 60000 });
+  if (afterCredentials) {
+    const answered = page.waitForResponse((response) =>
+      response.url().includes("/api/auth/sign-in/username"),
+    );
+    await page.click("button[type=submit]");
+    await answered;
+    await afterCredentials();
+    // The page's own post-sign-in redirect may already have bounced off the
+    // inbox (the hook's store writes land after that first staff-page join),
+    // so navigate with a retry past that bounce rather than one-shot.
+    for (let attempt = 0; ; attempt++) {
+      await page.goto(`${base}/dashboard/inbox`).catch(() => {});
+      try {
+        await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+        break;
+      } catch {
+        if (attempt >= 2) throw new Error("the dashboard never accepted the seeded session");
+      }
+    }
+  } else {
+    await page.click("button[type=submit]");
+    await page.waitForURL("**/dashboard/inbox", { timeout: 60000 });
+  }
   console.log("signed in");
 }

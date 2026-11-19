@@ -1,8 +1,8 @@
 // Ticket 79 certification (headless Chromium, one-off): the needs-human bell
 // on the dashboard sidebar's Conversations navigation item. On a production
 // build against a scratch Postgres store, a freshly bootstrapped owner signs
-// in through the real UI (Supabase credentials + a fresh authenticator
-// enrollment), and the run proves: the bell is absent with nothing waiting
+// in through the real UI (Supabase credentials), and the run proves: the
+// bell is absent with nothing waiting
 // (row exactly as today — plain "Conversations" name, two icon strokes, no
 // badge, no count), it appears within one poll cadence on a page that carries
 // no desk data (Settings — the cross-page guarantee), it is identical in the
@@ -23,8 +23,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket79";
@@ -92,13 +92,12 @@ execFileSync(
 // ---------------------------------------------------------------------------
 // The scratch store's auth-schema mirror. In production the app's store IS
 // the Supabase database, so `authenticate()` joins the live auth.sessions /
-// auth.users / auth.mfa_factors rows through the store's own connection. A
-// scratch store has no auth schema, so the cert mirrors exactly those three
-// tables (only the columns the provider queries) and seeds them from the
-// real signed-in session: the session and user rows come from the session
-// cookie's own JWT (verified server-side by getClaims against the real
-// project), and the factor row records the factor the real enrollment just
-// created. Nothing here touches the app schema.
+// auth.users rows through the store's own connection. A scratch store has
+// no auth schema, so the cert mirrors exactly those two tables (only the
+// columns the provider queries) and seeds them from the real signed-in
+// session: the session and user rows come from the session cookie's own
+// JWT (verified server-side by getClaims against the real project).
+// Nothing here touches the app schema.
 // ---------------------------------------------------------------------------
 async function createAuthMirror() {
   // A re-run against a reused scratch store must start clean: leftover
@@ -121,13 +120,7 @@ async function createAuthMirror() {
     deleted_at timestamptz,
     banned_until timestamptz
   )`);
-  await sql.unsafe(`CREATE TABLE IF NOT EXISTS auth.mfa_factors (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL,
-    factor_type text NOT NULL,
-    status text NOT NULL
-  )`);
-  await sql.unsafe(`TRUNCATE auth.sessions, auth.users, auth.mfa_factors`);
+  await sql.unsafe(`TRUNCATE auth.sessions, auth.users`);
   await sql.unsafe(
     `TRUNCATE conversations, messages, notifications, visitor_sessions, return_tokens, audit_log CASCADE`,
   );
@@ -170,13 +163,6 @@ async function seedSessionRows(page) {
     VALUES (${claims.session_id}::uuid, ${claims.sub}::uuid, NULL)
     ON CONFLICT (id) DO NOTHING`;
   return claims;
-}
-
-/** Records the factor the real enrollment just created, so the app's own
- *  mfaEnrolled check (an EXISTS against auth.mfa_factors) sees it. */
-async function seedVerifiedFactor(claims) {
-  await sql`INSERT INTO auth.mfa_factors (user_id, factor_type, status)
-    VALUES (${claims.sub}::uuid, 'totp', 'verified')`;
 }
 
 /** The conversation's escalation, driven through the real visitor API. */
@@ -260,38 +246,14 @@ try {
   }
 
   // =========================================================================
-  // Owner sign-in with fresh TOTP enrollment (fresh store). The desktop
-  // rail is compact by default, so expand it first — every "expanded"
-  // proof below runs with labels visible.
+  // Owner sign-in (fresh store). The desktop rail is compact by default, so
+  // expand it first — every "expanded" proof below runs with labels
+  // visible. The scratch store has no auth schema, so the hook seeds the
+  // mirror rows the moment the sign-in answer sets the cookies — before
+  // the first staff page's session join (production joins these through
+  // the Supabase database itself).
   // =========================================================================
-  await page.goto(`${BASE}/dashboard/login`);
-  await page.waitForLoadState("domcontentloaded");
-  await page.fill("#username", USERNAME);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/enroll", { timeout: 45000 });
-  // Mirror the just-established session into the scratch store's auth
-  // schema (production joins these through the Supabase database itself).
-  const claims = await seedSessionRows(page);
-  await page.getByRole("button", { name: "Begin enrollment" }).click();
-  await page.waitForSelector("code", { timeout: 45000 });
-  const totp = URI.parse(`otpauth://totp/x?secret=${(await page.textContent("code")).trim()}`);
-  await seedVerifiedFactor(claims);
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/login", { timeout: 45000 });
-  await page.waitForSelector("#username", { timeout: 45000 });
-  await page.fill("#username", USERNAME);
-  await page.fill("#password", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 45000 });
-  // The second sign-in minted a fresh session; mirror it before the TOTP
-  // verify so the app's own session join sees it.
-  await seedSessionRows(page);
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 45000 });
-  console.log("signed in; enrollment complete");
+  await signIn(page, BASE, USERNAME, PASSWORD, () => seedSessionRows(page));
   await page.getByRole("button", { name: "Expand navigation" }).click();
   // The rail's width animates through the motion tokens; let it settle so
   // screenshots capture the finished expanded state, not the transition.
