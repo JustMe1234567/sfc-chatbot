@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "check": "npm run hygiene && npm run typecheck && npm test && npm run build",
     "dev": "npm run build:widget && next dev",
     "start": "npm run build:widget && next start",
     "build": "npm run build:widget && next build",
@@ -17,6 +18,7 @@
     "recover:staff": "tsx scripts/recover-staff-credentials.ts",
     "config:export": "tsx scripts/export-configuration.ts",
     "config:import": "tsx scripts/import-configuration.ts",
+    "hygiene": "node scripts/check-repository-hygiene.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
