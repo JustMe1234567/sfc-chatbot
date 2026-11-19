@@ -13,12 +13,16 @@ const POSTGRES_MIGRATIONS_DIR = path.join(repoRoot(), "migrations", "postgres");
  * Opens the Postgres connection for a Supabase-style DATABASE_URL. Prepared
  * statements are off by default: the serverless-friendly Supabase pooler
  * (transaction mode) rejects them, and the cost is negligible for this
- * application's query shapes.
+ * application's query shapes. Handshakes to the hosted pooler can stall
+ * (observed ~60s windows where every new connection hangs), so login gets a
+ * short timeout: the pool discards the hung connect and retries instead of
+ * queueing the whole app behind it.
  */
 export function openPostgres(url: string): PostgresSql {
   return postgres(url, {
     prepare: process.env.PG_PREPARE === "true",
     max: Number(process.env.PG_POOL_MAX ?? 8),
+    connect_timeout: 10,
   });
 }
 
@@ -32,7 +36,6 @@ export async function migratePostgres(sql: PostgresSql): Promise<void> {
     name TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
-
   const applied = new Set(
     (await sql.unsafe<{ name: string }[]>("SELECT name FROM _migrations")).map(
       (row) => row.name,
