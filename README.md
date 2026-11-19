@@ -41,8 +41,16 @@ database (the spec's controlled-test-store seam). The restart test spawns
 ## How the widget is embedded
 
 - `public/widget/v1.js` (built from `src/widget/loader.ts`) is the only thing
-  WordPress loads. It renders a launcher button and a cross-origin iframe at
-  `/widget/frame`; it makes no API calls and never touches page storage.
+  WordPress loads. Before rendering anything it makes exactly one API call:
+  `GET /api/v1/embed-eligibility` asks whether the host page's origin is
+  allowed. The request sends no visitor credential, and the response is only
+  an allow/deny result — never the allowlist. A denial, or any failure to
+  confirm eligibility, leaves the page untouched: no launcher, iframe, style,
+  or visitor-facing error. When allowed, it renders a launcher button and a
+  cross-origin iframe at `/widget/frame`; the loader never touches page
+  storage. The iframe response independently enforces a `frame-ancestors`
+  policy derived from the owner-managed embed allowlist (see
+  [ADR-0005](docs/adr/0005-owner-managed-embed-authorization.md)).
 - The visitor session credential lives in chatbot-origin `sessionStorage`
   inside the iframe — never in WordPress `localStorage` — and expires
   server-side after 24 hours.

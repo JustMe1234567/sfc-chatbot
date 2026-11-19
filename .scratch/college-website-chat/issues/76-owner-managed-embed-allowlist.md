@@ -74,3 +74,14 @@ Production standalone access to the widget frame renders nothing. Outside produc
 ## Triage verification
 
 The request is not already implemented. The current loader mutates the host page before any authorization check, the existing iframe ancestor policy is static rather than Owner-managed, and production standalone frame use is not refused. The existing origin-hardening ticket deliberately concerns CSRF and public-API posture, not widget host authorization. No matching rejected enhancement exists in the repository's out-of-scope knowledge base.
+
+## Comments
+
+2026-11-19: **Review amendment — correct the repository guide for the loader contract.** The implementation changed the loader from making no API calls to making exactly one credential-free, boolean-only eligibility request before DOM mutation, but `README.md` still documents the old no-API-call behavior.
+
+Acceptance criteria for this amendment:
+
+- `README.md` describes the pre-render `GET /api/v1/embed-eligibility` request and makes clear that it sends no visitor credential and receives only an allow/deny result.
+- The documented loader behavior agrees with ADR-0005 and does not weaken or broaden the ticket's authorization contract.
+
+2026-11-19: Amendment applied. The "How the widget is embedded" bullet now documents the single pre-render eligibility call (credential-free, allow/deny only, fail-closed — nothing rendered on denial), notes the iframe's independent `frame-ancestors` layer, and links ADR-0005.
