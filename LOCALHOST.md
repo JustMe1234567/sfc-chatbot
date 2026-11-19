@@ -4,7 +4,7 @@ This file is the shared localhost handoff for Codex, Zcode, and other repository
 
 ## Current state
 
-- Cert-recon server (tickets 70/81/82 reconciliation): STOPPED 2026-11-20 — ran a local PRODUCTION runtime (`next start`) on port 4388 against the hosted Supabase test project only (launcher `.scratch/cert-recon-server.mjs`, log `.scratch/cert-recon-server.log`); all three certs passed, all disposable records cleaned up (cert auth user deleted via admin API, staff row + login events + IP block + analytics rows deleted, settings rows restored by cert70's own finally), port released, nothing left listening on 4388. Run note: the app's Postgres pool must have headroom for the settings page's 8 concurrent reads — the run needed `PG_POOL_MAX=20` (see ticket 89). Port 3000's unrelated dev server (below) untouched by this session.
+- Ticket-89 cert server: STOPPED 2026-11-20 — ran a local PRODUCTION runtime (`next start`) on port 4388 against the hosted Supabase test project only (launcher `.scratch/cert89-server.mjs`, log `.scratch/cert89-server.log`, `PG_POOL_MAX=5`); cert70 did NOT pass (see ticket 89's record — the pool wedges on bursty load; the disposable `cert-recon` owner was fully cleaned up: auth user deleted via admin API, staff row + its 5 login_events deleted, settings rows restored byte-identically by cert70's own finally and verified), port released, nothing left listening on 4388. Port 3000's unrelated dev server (below) untouched by this session.
 - Status: running (listener confirmed on port 3000, owner unknown — not started by the ticket-76 session)
 - Base URL: http://localhost:3000
 - Chatbot demo: http://localhost:3000/demo/wordpress-test-page.html
@@ -16,7 +16,7 @@ This file is the shared localhost handoff for Codex, Zcode, and other repository
 - Ticket-79 cert server: STOPPED — ran `next start` on port 4391 against scratch Postgres `sfc_cert79` (dropped) for the needs-human-bell certification, driven by `.scratch/cert79-run/server.ps1` + `cert.ps1` (Supabase trio from .env.local; store username `postgres.bmlwasuvujkfchnbklls` matching the auth project ref; role `postgres.bmlwasuvujkfchnbklls` left in place on the 5433 cluster); the cert's Supabase auth user (cert79owner) was deleted by the script's cleanup after every attempt; orphans on 4390/4391 checked — nothing left listening
 - Ticket-78 cert server: STOPPED — ran `next start` on port 4390 against scratch Postgres `sfc_cert78` (dropped) for the fail-fast verification; orphans on 4390 checked, nothing left listening; scratch db and the stub role `postgres.cert78stub` were created and the db dropped again (role left in place on the scratch cluster)
 - Ticket-76 cert server: STOPPED again — ran `next start` on port 4376 against scratch Postgres `sfc_cert76` (dropped) for the embed-allowlist certification; orphans on 4376 killed, nothing left listening there
-- Last checked: 2026-11-19 05:25 +08:00 (Asia/Singapore)
+- Last checked: 2026-11-20 05:50 +08:00 (Asia/Singapore)
 
 ## Check before visiting or starting
 

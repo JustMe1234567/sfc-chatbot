@@ -47,20 +47,18 @@ export default async function SettingsPage() {
   }
 
   const { db, store } = await getChatbotService();
-  const [
-    iconVersion,
-    faviconVersion,
-    chathead,
-    supportHours,
-    retentionDays,
-    lastRun,
-    embedOrigins,
-    loginRetentionDays,
-  ] = await Promise.all([
+  // Ticket 89: all eight reads previously raced in one Promise.all, and on a
+  // pool without headroom (observed at PG_POOL_MAX=5) the authed render
+  // starved — the leases never freed and the navigation timed out. Two
+  // sequential groups of four keep the render at half the default pool's
+  // eight leases or below; the values, order, and role gating are unchanged.
+  const [iconVersion, faviconVersion, chathead, supportHours] = await Promise.all([
     getChatbotIconVersion(db),
     getDashboardFaviconVersion(db),
     getChatheadConfig(db),
     getSupportHours(db),
+  ]);
+  const [retentionDays, lastRun, embedOrigins, loginRetentionDays] = await Promise.all([
     getTranscriptRetentionDays(db),
     latestRetentionRun(store),
     getEmbedAllowlistOrigins(db),

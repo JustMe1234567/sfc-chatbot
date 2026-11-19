@@ -12,6 +12,7 @@ Set these in `.env.local` and the Vercel test project:
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe project key used only for Auth sessions. |
 | `SUPABASE_SECRET_KEY` | Server-only Auth administration key. Never expose or prefix with `NEXT_PUBLIC_`. |
 | `DATABASE_URL` | Transaction-pooler Postgres connection for the same project. |
+| `PG_POOL_MAX` | Postgres connection pool ceiling (default 8). Must exceed the Settings page's read concurrency — an authed render holds at most four reads at once (ticket 89) — or the render can starve the pool alongside sidebar prefetches and the needs-human poller. |
 | `CHATBOT_BASE_URL` | Exact app origin: localhost locally, Vercel test URL in Vercel. |
 | `CRON_SECRET` | Vercel maintenance-route bearer token. |
 
