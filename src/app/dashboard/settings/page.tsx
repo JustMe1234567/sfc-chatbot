@@ -16,8 +16,9 @@ import LoginRetentionForm from "./login-retention-form";
 import PasswordSettings from "./password-settings";
 import SupportHoursForm from "../notifications/support-hours-form";
 import RetentionForm from "../notifications/retention-form";
-import { getSupportHours, getLoginRetentionDays, getTranscriptRetentionDays } from "@/settings";
+import { getSupportHours, getLoginRetentionDays, getTranscriptRetentionDays, DEFAULT_RETENTION_DAYS } from "@/settings";
 import { latestRetentionRun } from "@/domain/retention";
+import { scheduleSummary } from "@/domain/hours";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
 
@@ -25,10 +26,14 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Settings" };
 
 /**
- * The branding settings page (ticket 70): every dashboard role can configure
- * the chatbot icon, the dashboard favicon, and the chathead appearance. The
- * page server-reads the effective values (versions included) so the forms
- * render what is live right now.
+ * The settings page: every dashboard role configures the chatbot icon, the
+ * dashboard favicon, and the chathead appearance (ticket 70) and its own
+ * password (ticket 82). Owners additionally configure the support hours,
+ * transcript retention, login-log retention, and embed allowlist; staff keep
+ * the read-only support-hours and transcript-retention summary they held on
+ * the notifications page (tickets 09/10, restored by ticket 88); editors
+ * see neither. The page server-reads the effective values (versions
+ * included) so the forms render what is live right now.
  */
 export default async function SettingsPage() {
   const staffHeaders = await headers();
@@ -86,6 +91,29 @@ export default async function SettingsPage() {
                 the card and their API requests are refused. */}
             <EmbedAllowlistSettings initialOrigins={embedOrigins} />
           </>
+        ) : null}
+        {guard.staff.role === "staff" ? (
+          // Ticket 88: staff keep the read-only summary tickets 09/10 gave
+          // them on the notifications page — the live values without any
+          // editing surface. The editing APIs stay owner-only.
+          <dl className={styles.alertSummaryGrid} aria-label="Current support hours and transcript retention">
+            <div>
+              <dt>Support hours</dt>
+              <dd>
+                {supportHours
+                  ? scheduleSummary(supportHours)
+                  : "Not configured; visitors receive the general follow-up message."}
+              </dd>
+            </div>
+            <div>
+              <dt>Transcript retention</dt>
+              <dd>
+                {retentionDays !== null
+                  ? `${retentionDays} days in History`
+                  : `${DEFAULT_RETENTION_DAYS} days in History (the default)`}
+              </dd>
+            </div>
+          </dl>
         ) : null}
         <BrandingSettings
           initial={{
