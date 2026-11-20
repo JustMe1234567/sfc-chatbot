@@ -184,3 +184,42 @@ query/queue bounds after reviewing the differential evidence, both-dialect
 suites, production build, and cert70 result. Ticket 89 is unblocked and
 records its previously blocked criterion as passing. No production deploy
 or production-data operation was performed as part of this approval.
+
+2026-11-20: **Review amendment — one actionable finding fixed.** A
+`/code-review 9ea8fcacc` rerun over the range including this ticket's
+commits (5e4df8391, 707bb7c97) found no hard standards violations on
+either axis. Recorded findings and their dispositions:
+
+- **FIXED — environment leak in `tests/postgres-pool-bounds.test.ts`:**
+  the test set `PG_QUERY_TIMEOUT`/`PG_QUEUE_TIMEOUT` to their 2 s values
+  and never restored them, so vitest worker state could inherit a 2 s
+  bound and flake later PG work with exactly the QUERY_TIMEOUT cancels
+  the `tests/helpers.ts` relaxation exists to prevent. The test now
+  captures each variable before overriding and restores the original
+  value — deleting the variable if it was originally absent — in a
+  `finally` that runs even when the test fails. Timeout assertions and
+  application behavior unchanged (`openPostgres` defaults stay 10 s).
+  Honest scoping: the repo's current per-file vitest isolation (68
+  workers spawned, one per file) already contained the leak; the fix
+  removes the dependency on that configuration (vitest's own output
+  advertises `isolate: false` as a future speedup that would otherwise
+  have exposed it).
+- Evidence-class caveats (recorded, not actioned): AC 1's hosted-pool
+  *recovery* evidence and ticket 89 AC 2's cert evidence live in
+  untracked scratch artifacts (`.scratch/t90-harness.mjs`,
+  `.scratch/t90-cert70.log`) because the tracker ignores transient
+  scratch files by design; the committed regression test pins bounded
+  rejection only, as its comment discloses.
+- Scope-creep notes (recorded, sanctioned): the session-pooler endpoint
+  switch and the added `queue_timeout` exceed the ticket's literal
+  "test the endpoints / evaluate query_timeout" text and are covered by
+  the owner's recorded approval above, which names the certified
+  session-pooler path and the harness-proven bounds.
+- Judgement-call smells from the review (helpers env mutation shape,
+  magic numbers in the bound arithmetic, four env reads in
+  `openPostgres`, status-label semantics, plus all previously parked
+  smells) were deliberately NOT addressed, per instruction.
+
+Verification of this amendment: focused bounds test 1/1 (12.3 s); full
+PostgreSQL suite 581 passed / 3 skipped; `npm run check` exit 0
+(SQLite 577 passed / 7 skipped, hygiene, typecheck, production build).

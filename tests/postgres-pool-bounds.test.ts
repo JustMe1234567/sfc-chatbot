@@ -78,42 +78,62 @@ describe("postgres pool bounds (ticket 90)", () => {
         : `${admin.username}@`;
       const proxyUrl = `postgresql://${auth}127.0.0.1:${port}/postgres`;
 
-      // Short bounds for the test itself; openPostgres reads env per call.
-      process.env.PG_QUERY_TIMEOUT = String(QUERY_TIMEOUT_S);
-      process.env.PG_QUEUE_TIMEOUT = String(QUERY_TIMEOUT_S);
-      const sql = openPostgres(proxyUrl);
-
-      const outcome = async (promise: Promise<unknown>) =>
-        Promise.race([
-          promise.then(
-            () => "settled" as const,
-            (error: unknown) => `rejected: ${String(error).slice(0, 80)}`,
-          ),
-          new Promise<"HUNG">((resolve) => setTimeout(() => resolve("HUNG"), BOUND_MS)),
-        ]);
-
+      // The overrides below must not leak into the shared worker: vitest
+      // reuses worker state, and a lingering 2 s bound would flake later PG
+      // work with exactly the QUERY_TIMEOUT cancels the helpers relaxation
+      // exists to prevent. Each original is restored — or deleted, if it
+      // was absent — in the finally, which runs even when the test fails.
+      const previousQueryTimeout = process.env.PG_QUERY_TIMEOUT;
+      const previousQueueTimeout = process.env.PG_QUEUE_TIMEOUT;
       try {
-        // Inside the relay window: handshake, auth, and one clean query.
-        const warm = await outcome(sql.unsafe("SELECT 1"));
-        expect(warm).toBe("settled");
+        // Short bounds for the test itself; openPostgres reads env per call.
+        process.env.PG_QUERY_TIMEOUT = String(QUERY_TIMEOUT_S);
+        process.env.PG_QUEUE_TIMEOUT = String(QUERY_TIMEOUT_S);
+        const sql = openPostgres(proxyUrl);
 
-        // Wait out the relay window, then hit the silent endpoint the way the
-        // hosted transaction pooler hits the app: singles after a wedge and a
-        // parallel burst — every query must reject within the bound.
-        await new Promise((resolve) => setTimeout(resolve, RELAY_WINDOW_MS + 500));
-        const single = await outcome(sql.unsafe("SELECT 1"));
-        expect(single).not.toBe("HUNG");
-        expect(String(single)).toMatch(/^rejected/);
+        const outcome = async (promise: Promise<unknown>) =>
+          Promise.race([
+            promise.then(
+              () => "settled" as const,
+              (error: unknown) => `rejected: ${String(error).slice(0, 80)}`,
+            ),
+            new Promise<"HUNG">((resolve) => setTimeout(() => resolve("HUNG"), BOUND_MS)),
+          ]);
 
-        const burst = await Promise.all(
-          Array.from({ length: 8 }, () => outcome(sql.unsafe("SELECT 1"))),
-        );
-        for (const one of burst) expect(one).not.toBe("HUNG");
+        try {
+          // Inside the relay window: handshake, auth, and one clean query.
+          const warm = await outcome(sql.unsafe("SELECT 1"));
+          expect(warm).toBe("settled");
+
+          // Wait out the relay window, then hit the silent endpoint the way the
+          // hosted transaction pooler hits the app: singles after a wedge and a
+          // parallel burst — every query must reject within the bound.
+          await new Promise((resolve) => setTimeout(resolve, RELAY_WINDOW_MS + 500));
+          const single = await outcome(sql.unsafe("SELECT 1"));
+          expect(single).not.toBe("HUNG");
+          expect(String(single)).toMatch(/^rejected/);
+
+          const burst = await Promise.all(
+            Array.from({ length: 8 }, () => outcome(sql.unsafe("SELECT 1"))),
+          );
+          for (const one of burst) expect(one).not.toBe("HUNG");
+        } finally {
+          await Promise.race([
+            sql.end({ timeout: 2 }),
+            new Promise((resolve) => setTimeout(resolve, 5000)),
+          ]).catch(() => {});
+        }
       } finally {
-        await Promise.race([
-          sql.end({ timeout: 2 }),
-          new Promise((resolve) => setTimeout(resolve, 5000)),
-        ]).catch(() => {});
+        if (previousQueryTimeout === undefined) {
+          delete process.env.PG_QUERY_TIMEOUT;
+        } else {
+          process.env.PG_QUERY_TIMEOUT = previousQueryTimeout;
+        }
+        if (previousQueueTimeout === undefined) {
+          delete process.env.PG_QUEUE_TIMEOUT;
+        } else {
+          process.env.PG_QUEUE_TIMEOUT = previousQueueTimeout;
+        }
       }
     },
     60_000,
