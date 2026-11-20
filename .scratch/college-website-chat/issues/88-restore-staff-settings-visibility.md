@@ -1,6 +1,6 @@
 # 88: Restore staff visibility of support hours and transcript retention on Settings
 
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -47,6 +47,11 @@ get a read-only summary. Restore that posture on the Settings page.
   redefining it.
 
 ## Comments
+
+2026-11-21: OWNER ACCEPTED / STATUS RECONCILIATION. The implemented and
+verified restoration recorded below is accepted. The stale `ready-for-agent`
+status is closed as `done`; no implementation change was made in this
+reconciliation.
 
 2026-11-20: Filed from the full-range code review of 9ea8fcacc..HEAD. The
 mechanics of the regression: at the review base the notifications page

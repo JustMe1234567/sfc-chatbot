@@ -1,6 +1,6 @@
 # 82: Remove TOTP/MFA from every staff account
 
-Status: ready-for-human
+Status: done
 Blocked by: 81 (landed — dac9be8d8)
 
 ## What to build
@@ -29,6 +29,11 @@ Take two-factor authentication out of the staff stack entirely — every account
 - `GLOSSARY.md` rewrites land with this ticket's commit: **Staff account** drops the authenticator-enrollment clause, **Staff credential reset** becomes password-only, **Authenticator recovery** is removed.
 
 ## Comments
+
+2026-11-21: OWNER ACCEPTED / STATUS RECONCILIATION. The implementation,
+amendments, hosted certification, production verification, and completed TOTP
+cleanup are accepted. The stale `ready-for-human` status is closed as `done`;
+no implementation change was made in this reconciliation.
 
 2026-11-19: Filed alongside ticket 81 from the user's request ("remove the mfa on every accounts or users"), sharpened through grill-with-docs. Settled decisions: total removal including owners (trade-off stated once — logs detect after the fact, TOTP prevents; the user chose visibility over prevention); full cleanup (factors deleted, columns dropped, reset surface gone); transfer eligibility becomes unconditional; legacy dead tables out of scope. Human step, not code: the owner deletes the Springfield entry from their authenticator app. Owners beyond the first keep coming from `bootstrap-owner` runs (`--username/--password/--name`, `DATABASE_URL` pointed at the deployed store) — "up to 3 owners" needs no new code; the user confirmed the ability is enough and no cap is enforced.
 

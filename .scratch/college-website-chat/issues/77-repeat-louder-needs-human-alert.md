@@ -1,6 +1,6 @@
 # 77: Repeat a louder alert while a conversation needs human attention
 
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -28,6 +28,10 @@ This ticket intentionally supersedes ticket 44's requirements that each attentio
 - Tests cover the 30-second interval, 6-second maximum duration, increased gain, coalescing of multiple waiting conversations, cancellation, mute/unmute behavior, and the non-repeating test button.
 
 ## Comments
+
+2026-11-21: OWNER ACCEPTED / STATUS RECONCILIATION. The implemented and
+reviewed result recorded below is accepted. The stale `ready-for-human` status
+is closed as `done`; no implementation change was made in this reconciliation.
 
 2026-11-19: Filed from the user's request for a louder, repeating notification whenever a conversation needs a human.
 
