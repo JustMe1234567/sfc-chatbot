@@ -15,7 +15,7 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
-import { signIn } from "./lib/shot-driver.mjs";
+import { assertDemoOriginEmbeddable, signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket29";
@@ -36,17 +36,7 @@ for (let attempt = 0; ; attempt++) {
 
 // Ticket 78 guard: the widget steps drive the demo page, which must be an
 // allowed widget host — this cert is dev-mode-only.
-{
-  const eligibility = await (
-    await fetch(`${BASE}/api/v1/embed-eligibility?origin=${encodeURIComponent(BASE)}`)
-  ).json();
-  if (eligibility.allowed !== true) {
-    throw new Error(
-      `the demo origin ${BASE} is not an allowed widget host on this server — under a production build the ticket-76 embed allowlist admits only allowlisted HTTPS origins. ` +
-        `Run \`next dev\` with CHATBOT_BASE_URL=${BASE} and re-run this cert against that origin.`,
-    );
-  }
-}
+await assertDemoOriginEmbeddable(BASE);
 
 // Any chatbot route initializes the service singleton (migrations + seed
 // rules); healthz alone does not — and the enrollment wipe below needs the
