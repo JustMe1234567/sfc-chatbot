@@ -17,6 +17,17 @@ export interface StaffContext {
 }
 
 /**
+ * The staff banned flag as stored across engines: BOOLEAN on Postgres,
+ * INTEGER 0/1 on SQLite, and the string "1" wherever a boolean round-trips
+ * through text. The dashboard, owner password resets, and credential
+ * recovery all refuse banned staff through this one predicate, so no site
+ * drifts back to a narrower shape table (ticket 96).
+ */
+export function isStaffBanned(value: unknown): boolean {
+  return value === true || value === 1 || value === "1";
+}
+
+/**
  * Resolves the current staff context from the session cookie on every
  * dashboard and staff API request: a valid server-side session, a verified
  * account, an active (not banned) account, and an allowed role. Sign-in is
@@ -52,7 +63,7 @@ export async function requireStaff(
      FROM staff_members WHERE "supabaseUserId" = ?`,
     identity.userId,
   );
-  if (!user || user.banned === true || user.banned === 1 || user.banned === "1") {
+  if (!user || isStaffBanned(user.banned)) {
     return {
       response: NextResponse.json(GENERIC_AUTH_ERROR, { status: 401 }),
     };

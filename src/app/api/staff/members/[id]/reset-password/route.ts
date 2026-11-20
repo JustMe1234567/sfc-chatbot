@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { audit } from "@/api/audit";
-import { requireStaff, sameOriginGuard } from "@/api/staff";
+import { isStaffBanned, requireStaff, sameOriginGuard } from "@/api/staff";
 import { getChatbotService } from "@/db/service";
 
 interface RouteContext {
@@ -41,7 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 404 },
     );
   }
-  if (target.role === "owner" || !target.supabaseUserId || target.banned === true || target.banned === 1) {
+  if (target.role === "owner" || !target.supabaseUserId || isStaffBanned(target.banned)) {
     return NextResponse.json(
       { error: { code: "invalid_target", message: "Only active staff and editor passwords can be reset here." } },
       { status: 400 },

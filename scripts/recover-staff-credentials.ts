@@ -1,5 +1,6 @@
 // Trusted credential recovery for an account whose owner cannot use the dashboard.
 // Run only after the documented out-of-band identity check.
+import { isStaffBanned } from "../src/api/staff";
 import { createSupabaseAuth } from "../src/auth/supabase-provider";
 import { postgresAppDatabase } from "../src/db/appDatabase";
 import { migratePostgres, openPostgres } from "../src/db/postgres";
@@ -45,7 +46,7 @@ try {
      FROM staff_members WHERE lower("username") = lower(?)`,
     username,
   );
-  if (!member?.supabaseUserId || member.banned === true || member.banned === 1) {
+  if (!member?.supabaseUserId || isStaffBanned(member.banned)) {
     throw new Error("No active linked staff account exists for that username.");
   }
 
