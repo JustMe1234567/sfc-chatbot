@@ -87,6 +87,19 @@ Run the full test suite against Postgres:
 CHATBOT_TEST_POSTGRES_URL="postgres://user:pass@host:5432/postgres" npm test
 ```
 
+Against this machine's local PostgreSQL cluster (port 5433), the suite runs
+as the `postgres` superuser:
+
+```bash
+CHATBOT_TEST_POSTGRES_URL="postgresql://postgres@127.0.0.1:5433/postgres" npm test
+```
+
+The suite provisions one database per test file (ticket 83), and on the
+local 5433 cluster the only role carrying CREATEDB is the `postgres`
+superuser. The `postgres.bml…` pooler-style role (created by the cert79
+session) answers `SELECT 1` fine but fails 38 test files with
+`permission denied to create database`.
+
 Scheduled maintenance (transcript retention + analytics expiry) runs through
 `GET /api/maintenance`, triggered daily by Vercel cron (`vercel.json`) with
 `CRON_SECRET`, or by ordinary staff dashboard traffic.
