@@ -2,6 +2,8 @@
 
 This runbook connects localhost and the Vercel test deployment to one dedicated Supabase test project. It transfers configuration only. The source database remains untouched, and production launch or WordPress traffic switching is a separate change.
 
+This single Supabase project (`bmlwasuvujkfchnbklls`) is shared with production: the production Vercel deployment serves the same database, where the production owner identity, live staff rows, and real login_events all live. Every mutation against it — owner bootstrap, certification identities, SQL deletes — is a production mutation and must be handled with production care. Certification recipes (cert70/81/82) bootstrap disposable identities on this shared project and fully clean them up afterward.
+
 ## 1. Required environment
 
 Set these in `.env.local` and the Vercel test project:
