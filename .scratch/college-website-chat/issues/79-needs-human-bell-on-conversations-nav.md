@@ -1,6 +1,6 @@
 # 79: Show a needs-human bell on the Conversations navigation item
 
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -29,6 +29,11 @@ Give the dashboard sidebar's **Conversations** navigation item a small bell indi
 - `GLOSSARY.md` gains a **Needs-human bell** entry.
 
 ## Comments
+
+2026-11-21: OWNER ACCEPTED / STATUS RECONCILIATION. The implemented, reviewed,
+and certified result recorded below is accepted. The stale `ready-for-human`
+status is closed as `done`; no implementation change was made in this
+reconciliation.
 
 2026-11-19: Filed from the user's request ("on this tab, there should be a small bell or like a warning svg … for the total chats that needs human"), sharpened through grill-with-docs. Settled decisions: the bell counts only the Needs-human set (ticket 77's alarm set, not Contact Me requests or New-message attention); the user dropped the counter during grilling — a bell without a number is enough; icon-corner placement, identical in collapsed and expanded; Needs-human green + accessible-name change; tiny boolean endpoint + 10s sidebar poll (the sidebar has no desk data outside the inbox page and nothing re-renders it while staff sit on another page, so even a show/hide signal needs one lightweight request).
 

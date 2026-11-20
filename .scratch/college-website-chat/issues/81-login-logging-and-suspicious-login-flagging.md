@@ -1,6 +1,6 @@
 # 81: Login logging, suspicious-login flagging, and an owner-only Logs tab
 
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -30,6 +30,11 @@ Make dashboard sign-ins observable: every attempt is logged, patterns are flagge
 - `GLOSSARY.md` gains **Login log**, **Suspicious login**, and **IP block** entries (written at filing time; land with this ticket's commit).
 
 ## Comments
+
+2026-11-21: OWNER ACCEPTED / STATUS RECONCILIATION. The implementation,
+amendments, review, and hosted certification recorded below are accepted. The
+stale `ready-for-human` status is closed as `done`; no implementation change
+was made in this reconciliation.
 
 2026-11-19: Filed from the user's request ("remove the mfa on every accounts or users. and do logs instead and flagging for suspicious logins and will only be visible on admin sides like the owner"), sharpened through grill-with-docs. Settled decisions: the block triggers only on non-staff usernames — the user refined it mid-grill so a correct username + password always signs in even from a blocked IP, which also dissolves the campus shared-IP lockout worry; no manual unblock; three deletion actions each with confirms; two views on one tab named "Logs" with a scroll/paper icon; detection-only flagging (no sound, no lock, no ack workflow); owner-configurable 90-day retention; owners only (no new admin role). Flag defaults (5/10min per-account, first-seen IP, 3/10min unknown) are stated defaults the user can adjust at review. Ordering settled: this ticket lands before ticket 82.
 
