@@ -68,10 +68,10 @@ tokens and reproduced identical findings.
   a reviewed-through convention (skill and tracker greps), and no
   `.out-of-scope/` KB exists yet, so no prior rejections apply.
 - Scope decisions are recorded in the body: the marker is a tracker
-convention; the review skill scopes its own reruns; the "user-level
-skill" option was misframed (the skill is repo-tracked under
-`.agents/skills/`, and the `.zcode/` mirror is untracked); an
-explicit fixed point always wins over the marker.
+  convention; the review skill scopes its own reruns; the "user-level
+  skill" option was misframed (the skill is repo-tracked under
+  `.agents/skills/`, and the `.zcode/` mirror is untracked); an
+  explicit fixed point always wins over the marker.
 
 2026-11-21: **Implemented.** Process/convention change only — no
 application code, tests, or scripts (the ticket excludes them, so the
@@ -126,6 +126,44 @@ by fast-forward (3bf002d21 → e51e73d34, PR #4's merge; zero content
 delta), so this work sits on latest main; it commits with explicit
 pathspecs (tracker doc, tracked skill, this record) so no other
 session's work rides along.
+
+2026-11-21: **Code review (both axes) — first run against this
+record.** The record carried no `Reviewed through:` marker, so the
+marker was ignored (absent) and the full range
+`e51e73d34...9b380d172` was reviewed — the fallback behavior this
+ticket specifies. Standards: 0 hard violations, 5 judgement calls.
+Spec: no missing requirements beyond one gap, no scope creep, and no
+wrongness on the four focus areas (fixed-point authority, fallback,
+narrowed-rerun scrutiny, findability). Two findings were fixed in
+9ac44b01c: the aggregate's one-line summary now states where the
+disposition re-check result lands on a narrowed run (spec finding),
+and the tracker bullet's dangling "since it" became "since that
+point" (standards finding). This commit also reverts whitespace
+churn the implementation commit introduced in the triage bullet
+above (four continuation lines lost their two-space indent;
+restored).
+
+Dispositions recorded (parked judgement calls, for re-verification
+by any future narrowed rerun):
+
+- The last-reviewed-point semantics appear in both the tracker doc
+  and skill step 3 — deliberate: the doc holds the convention, the
+  skill must operate inline mid-review.
+- The fixed-point-governs sentence appears in both the skill intro
+  and step 3 — deliberate: the intro is the discovery pointer, step 3
+  the binding rule.
+- The tracker marker bullet cross-references the skill's consumption
+  — intentional wayfinding per the triage decision.
+- `## Disposition re-check` (report heading) vs "disposition
+  re-verification" (activity name, the ticket's word) — acceptable:
+  the heading names the report section; the name matches the ticket.
+- `Status: done` sits outside the five triage roles — pre-existing
+  tracker-vocabulary gap; five prior records (incl. ticket 91)
+  already use `done`, and triage-labels.md invites editing the
+  tracker column. Vocabulary alignment belongs to a tracker-wide
+  change, not this ticket.
+
+Reviewed through: 9ac44b01c2581f129a5b901267a4981e27072620
 
 ## Agent Brief
 
