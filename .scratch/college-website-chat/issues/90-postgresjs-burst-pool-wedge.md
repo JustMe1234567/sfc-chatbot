@@ -1,6 +1,6 @@
 # 90: postgres.js/Supabase transaction-pooler burst traffic permanently wedges the application pool
 
-Status: needs-triage
+Status: ready-for-human
 
 ## What to build
 
@@ -177,3 +177,10 @@ until the user reviews the dependency bump (postgres.js 3.4.9 → 4.1.1 is
 a major-version jump; the suite and cert70 both validate it, and ticket
 89's decision point recommended exactly this upgrade). If approved as-is,
 this ticket can close and ticket 89's blocked AC is unblocked.
+
+2026-11-20: **Dependency change approved; ready for human review.** The
+owner approved the exact postgres.js 4.1.1 upgrade and the harness-proven
+query/queue bounds after reviewing the differential evidence, both-dialect
+suites, production build, and cert70 result. Ticket 89 is unblocked and
+records its previously blocked criterion as passing. No production deploy
+or production-data operation was performed as part of this approval.

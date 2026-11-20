@@ -1,6 +1,6 @@
 # 89: Settings page's 8 concurrent reads starve the Postgres pool
 
-Status: needs-triage
+Status: ready-for-human
 
 ## What to build
 
@@ -157,3 +157,14 @@ created mid-run (21:29/21:37 UTC) were **not** created by anything in this
 session (every credential this session used was cert-recon's) — likely a
 concurrent session or the user; left untouched. The cert server was
 stopped, port 4388 released, LOCALHOST.md updated.
+
+2026-11-20: **UNBLOCKED by ticket 90 and ready for human review.** The
+deeper postgres.js/Supabase transaction-pooler wedge was diagnosed and
+bounded in ticket 90: postgres.js 4.1.1 adds 10-second query/queue bounds,
+and the certified hosted-test path uses the session pooler. With that fix
+in place, cert70 passed at `PG_POOL_MAX=5` on a local production runtime
+connected only to the hosted Supabase test project. The Settings page
+completed without a bounded rejection, its settings rows were restored
+byte-identically, and the disposable certification identity and records
+were removed. Acceptance criterion 2 is therefore satisfied; all four
+criteria now pass.
