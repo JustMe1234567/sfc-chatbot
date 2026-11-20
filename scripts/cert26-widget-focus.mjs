@@ -78,6 +78,22 @@ async function activeInside() {
   });
 }
 
+// The frame holds focus only once the widget app has hydrated and run the
+// open handoff, and on the hosted-store dev server every Postgres roundtrip
+// costs an RTT, so that can land well after `.sfcw-frame-in` appears
+// (ticket 97: the direct assertion raced it deterministically there). Poll
+// for the expected focus state the way waitForWidgetFrame polls for the
+// frame: a slow-but-correct server passes, and a focus target that never
+// becomes the expected one still fails with the same message.
+async function waitForFocusInside(match, message) {
+  for (let attempt = 0; ; attempt++) {
+    const inside = await activeInside();
+    if (match(inside)) return inside;
+    if (attempt > 40) throw new Error(`cert 26 FAILED: ${message}`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
 async function activeInPage() {
   return page.evaluate(() => {
     const el = document.activeElement;
@@ -94,7 +110,10 @@ async function activeInPage() {
 await page.getByRole("button", { name: LAUNCHER }).click();
 await page.waitForSelector(".sfcw-frame-in");
 await waitForWidgetFrame();
-let inside = await activeInside();
+let inside = await waitForFocusInside(
+  (state) => state.label === CLOSE,
+  "mouse open with the contact gate focuses the close button",
+);
 assert(inside.label === CLOSE, "mouse open with the contact gate focuses the close button");
 assert(inside.ring === false, "mouse open shows no :focus-visible ring");
 await page.screenshot({ path: join(OUT, "cert26-mouse-open.png") });
