@@ -1,25 +1,24 @@
 import { postgresAppDatabase } from "../db/appDatabase";
 import { migratePostgres, openPostgres } from "../db/postgres";
-import { createOutboxTransport } from "../mail/outbox";
 import { appBaseUrl } from "../config";
 import { assertSupabaseConfigured, createSupabaseAuth } from "./supabase-provider";
 import { provisionStaffMember } from "./provision";
 
 export interface BootstrapOwnerInput {
-  email: string;
+  username: string;
+  password: string;
   name: string;
   databaseUrl: string;
 }
 
 export interface BootstrapOwnerResult {
   userId: string;
-  email: string;
+  username: string;
   role: string;
-  invitationStatus: "sent";
   store: string;
 }
 
-/** Invites the first owner into the configured Supabase test/production project. */
+/** Creates the first owner in the configured Supabase test/production project. */
 export async function bootstrapOwner(input: BootstrapOwnerInput): Promise<BootstrapOwnerResult> {
   assertSupabaseConfigured();
   const sql = openPostgres(input.databaseUrl);
@@ -28,11 +27,11 @@ export async function bootstrapOwner(input: BootstrapOwnerInput): Promise<Bootst
     const db = postgresAppDatabase(sql);
     const auth = createSupabaseAuth({
       db,
-      mail: createOutboxTransport(db),
       baseUrl: appBaseUrl(),
     });
     const owner = await provisionStaffMember(auth, db, {
-      email: input.email,
+      username: input.username,
+      password: input.password,
       name: input.name,
       role: "owner",
     });

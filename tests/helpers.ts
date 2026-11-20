@@ -5,6 +5,16 @@ import { randomUUID } from "node:crypto";
 
 export const TEST_ORIGIN = "http://chatbot.test";
 
+// Ticket 90: the app's pool bounds default to 10 s. The suite's PG mode
+// provisions one database per file (ticket 83) — 68 workers × CREATE
+// DATABASE + migrations on one local cluster — and that setup legitimately
+// exceeds 10 s per statement under full parallel contention, so the test
+// environment relaxes the bound. The bound's behavior itself (silent
+// endpoint ⇒ bounded rejection, never a hang) is pinned by
+// tests/postgres-pool-bounds.test.ts with short values.
+process.env.PG_QUERY_TIMEOUT ??= "60";
+process.env.PG_QUEUE_TIMEOUT ??= "60";
+
 /**
  * The Postgres backend for the whole suite (ticket 11): set
  * CHATBOT_TEST_POSTGRES_URL to a Postgres URL whose database acts as the
@@ -55,12 +65,20 @@ export function useTempDatabase(): string {
 /**
  * Postgres mode: creates the per-file database (dropping any leftover) before
  * the service singleton migrates it. No-op on SQLite. Called from
- * warmChatbotService so every file gets it for free.
+ * warmChatbotService so every file gets it for free — and safe to call
+ * again in the same process (a second warm call must not wipe the database
+ * the cached service singleton is already serving, which is exactly what a
+ * second DROP+CREATE did to ticket 74's describe-level re-warm).
  */
+let provisionedDbName: string | null = null;
+
 export async function provisionTestDatabase(): Promise<void> {
   const adminUrl = testPostgresUrl();
   const dbName = process.env.CHATBOT_TEST_PG_DBNAME;
   if (!adminUrl || !dbName) {
+    return;
+  }
+  if (provisionedDbName === dbName) {
     return;
   }
   const { withPostgres } = await import("../src/db/postgres");
@@ -69,6 +87,7 @@ export async function provisionTestDatabase(): Promise<void> {
     await sql.unsafe(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
     await sql.unsafe(`CREATE DATABASE ${dbName}`);
   });
+  provisionedDbName = dbName;
 }
 
 /**

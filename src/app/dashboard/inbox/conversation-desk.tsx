@@ -46,6 +46,9 @@ const ACTION_LABELS: Record<AuditView["action"], string> = {
   rule_restored: "restored an answer rule",
   rule_purged: "permanently deleted an answer rule",
   staff_invited: "invited a staff member",
+  staff_created: "created a staff account",
+  staff_password_reset: "reset a staff password",
+  staff_mfa_reset: "reset a staff authenticator",
   staff_disabled: "disabled a staff account",
 };
 
@@ -114,6 +117,13 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
         (event) => event.conversationId !== selectedId,
       )
     : [];
+  // The repeating needs-human alert (ticket 77) follows the live desk's
+  // state, not attention events: a viewed-but-unclaimed conversation still
+  // needs a human, and Incoming is exactly the desk's awaiting_staff list —
+  // one shared cycle however many conversations wait, and an attention
+  // event whose conversation is on this list sounds as the louder alert.
+  // History (no desk scan) never sounds.
+  const needsHumanIds = desk ? desk.incoming.map((item) => item.id) : [];
   // The selected conversation's open email/phone request (ticket 69): the
   // pane shows the persistent Contact Me chip and the Mark contacted action
   // until staff complete it. Viewing the transcript never clears it.
@@ -138,8 +148,8 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   const attentionTierCount = desk ? desk.active.filter((item) => item.attention).length : 0;
   const mayReassign =
     selected?.state === "claimed" && (claimedByMe || guard.staff.role === "owner");
-  // Transfer targets mirror the API's eligibility exactly: active, verified,
-  // second-factor-enrolled inbox members who don't already own it.
+  // Transfer targets mirror the API's eligibility exactly: active, verified
+  // inbox members who don't already own it.
   const transferTargets = selected
     ? (await listStaffMembers(db))
         .filter(
@@ -147,8 +157,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
             member.id !== selected.claimedBy &&
             (member.role === "owner" || member.role === "staff") &&
             !member.banned &&
-            member.emailVerified &&
-            member.twoFactorEnabled,
+            member.emailVerified,
         )
         .map((member) => ({ id: member.id, name: member.name }))
     : [];
@@ -184,7 +193,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 History
               </Link>
             </div>
-            <AttentionSounds events={attentionEvents} />
+            <AttentionSounds events={attentionEvents} needsHumanIds={needsHumanIds} />
             {desk ? (
               <>
                 <h2>

@@ -13,15 +13,15 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-history";
 const BEFORE = process.argv.includes("--before");
 const PORT = process.argv[3] && process.argv[3] !== "--before" ? process.argv[3] : "3213";
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/history-demo.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 let SEED_IDS = null;
 
@@ -38,17 +38,10 @@ for (let attempt = 0; ; attempt++) {
 // A clean slate for the pieces this ticket owns. Conversations cannot be
 // deleted (foreign keys), so reruns tolerate leftover rows: every count
 // assertion is relative to this run's own seeds, and a prior run's
-// backdated rows are swept by this run's form save.
+// backdated rows are swept by this run's form save. No enrollment wipe
+// (ticket 80): staff credentials live in hosted Supabase Auth, not a store
+// table, so the sign-in below requires a freshly bootstrapped owner.
 const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-} else {
-  console.log("no prior enrollment to wipe");
-}
 db.prepare("DELETE FROM settings WHERE key = 'transcript_retention_days'").run();
 db.prepare("DELETE FROM retention_runs").run();
 db.close();
@@ -67,31 +60,8 @@ page.on("pageerror", (error) => {
 });
 await page.setViewportSize({ width: 1280, height: 900 });
 
-// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// --- Sign the owner in through the real UI (password-only since 82). ------
+await signIn(page, BASE, USERNAME, PASSWORD);
 mkdirSync(OUT, { recursive: true });
 
 // --- Seed closed conversations through the real APIs. ---------------------
@@ -172,7 +142,7 @@ if (BEFORE) {
   // Pre-change documentation only: the old history page and the old
   // retention card ("kept indefinitely") before the ticket's changes.
   await page.screenshot({ path: join(OUT, "before-history-1280.png"), fullPage: true });
-  await page.goto(`${BASE}/dashboard/notifications`);
+  await page.goto(`${BASE}/dashboard/settings`);
   await page.waitForLoadState("domcontentloaded");
   await page.getByRole("heading", { name: "Transcript retention" }).waitFor({ timeout: 10000 });
   await page.screenshot({ path: join(OUT, "before-retention-card-1280.png"), fullPage: true });
@@ -263,7 +233,7 @@ if ((await nav.locator('[aria-current="true"]').count()) !== 1) {
 console.log("ok: keyboard navigation selects a row with visible focus semantics");
 
 // --- The retention form states the default and warns about permanence. -----
-await page.goto(`${BASE}/dashboard/notifications`);
+await page.goto(`${BASE}/dashboard/settings`);
 await page.getByRole("heading", { name: "Transcript retention" }).waitFor({ timeout: 10000 });
 const form = page.locator("form", { has: page.getByRole("heading", { name: "Transcript retention" }) });
 const placeholder = await page.locator("#retention-days").getAttribute("placeholder");
@@ -309,7 +279,7 @@ if (rowsAfter >= rowsBefore) {
 console.log("ok: the period save swept the expired transcript through the real endpoint");
 
 // --- Resetting to the default is honest and takes effect. ------------------
-await page.goto(`${BASE}/dashboard/notifications`);
+await page.goto(`${BASE}/dashboard/settings`);
 await page.getByRole("heading", { name: "Transcript retention" }).waitFor({ timeout: 10000 });
 await page.locator("form", { has: page.getByRole("heading", { name: "Transcript retention" }) })
   .getByRole("button", { name: "Reset to default" })
@@ -364,7 +334,7 @@ await shotAt(360, 800, historyUrl, "after-history-360");
 await shotAt(
   1280,
   900,
-  `${BASE}/dashboard/notifications`,
+  `${BASE}/dashboard/settings`,
   "after-retention-card-1280",
 );
 

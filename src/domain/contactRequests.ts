@@ -59,7 +59,7 @@ export function maskPhone(phone: string): string {
 /**
  * The bot's confirmation after a visitor requests contact by email or phone
  * (ticket 69): it names the medium with a masked version of the saved
- * destination, confirms staff were notified, and stays honest about
+ * destination, confirms the request was saved, and stays honest about
  * support hours — on duty (or unconfigured) it promises no timing; off duty
  * it names the schedule. Deterministic in `now` so tests can sit on
  * schedule boundaries. No chatbot message is added when staff complete the

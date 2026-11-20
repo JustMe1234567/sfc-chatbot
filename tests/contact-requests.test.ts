@@ -12,10 +12,9 @@ import {
 } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
   staffApiRequest,
+  signInAs,
 } from "./auth-helpers";
 
 /**
@@ -23,7 +22,7 @@ import {
  * The chat-start details stay temporary — a conversation is a saved contact
  * only once its visitor creates a contact request. A clicked Handoff Option
  * or typed Handoff phrase asks the persisted two-action confirmation; Yes
- * rides the existing waiting flow (one alert, Take over completes), No
+ * rides the existing waiting flow (one sound cue, Take over completes), No
  * offers Email and Phone, which leave the bot active with a masked
  * confirmation and the persistent red Contact Me until staff mark it
  * contacted. One open request per conversation, ever.
@@ -35,11 +34,6 @@ const STAFF_EMAIL = "requests-staff@example.edu";
 const STAFF_PASSWORD = "requests-staff-quiet-3k";
 const EDITOR_EMAIL = "requests-editor@example.edu";
 const EDITOR_PASSWORD = "requests-editor-ridge-9v";
-const ALERT_RECIPIENT = "desk-requests@example.edu";
-
-let ownerTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
-let editorTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function service(): Promise<Awaited<ReturnType<typeof import("../src/db/service").getChatbotService>>> {
   const { getChatbotService } = await import("../src/db/service");
@@ -74,14 +68,6 @@ function contactAlerts(conversationId: string): Promise<number> {
   );
 }
 
-async function mailsTo(address: string): Promise<number> {
-  return count(
-    "SELECT COUNT(*)::int AS n FROM mail_outbox WHERE to_address = ?",
-    "SELECT COUNT(*) AS n FROM mail_outbox WHERE to_address = ?",
-    address,
-  );
-}
-
 async function errorCode(response: Response): Promise<string | undefined> {
   return ((await response.json()) as { error?: { code?: string } }).error?.code;
 }
@@ -89,10 +75,9 @@ async function errorCode(response: Response): Promise<string | undefined> {
 async function staffJar(
   email: string,
   password: string,
-  totp: Awaited<ReturnType<typeof enrollTotp>>,
 ): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, email, password, totp);
+  await signInAs(jar, email, password);
   return jar;
 }
 
@@ -138,17 +123,6 @@ beforeAll(async () => {
   await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam", role: "staff" });
   await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  ownerTotp = await enrollTotp(new CookieJar(), OWNER_EMAIL, OWNER_PASSWORD);
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
-  editorTotp = await enrollTotp(new CookieJar(), EDITOR_EMAIL, EDITOR_PASSWORD);
-  const { db } = await service();
-  // Alert recipients configured up front: the request alerts deliver.
-  await db.run(
-    `INSERT INTO settings (key, value, updated_at) VALUES ('alert_recipients', ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    JSON.stringify([ALERT_RECIPIENT]),
-    new Date().toISOString(),
-  );
 });
 
 describe("temporary details are not saved contacts (ticket 69)", () => {
@@ -211,10 +185,10 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     expect(request?.medium).toBe("email");
     // The email/phone request alerts under its own type; the escalation
     // alert belongs to the chat path, which this flow never entered.
-    expect(await contactAlerts(conversation.id)).toBe(1);
+    expect(await contactAlerts(conversation.id)).toBe(0);
     expect(await escalationAlerts(conversation.id)).toBe(0);
 
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const deskResponse = await staffApiRequest(owner, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {
       active: { id: string; contactRequest: { medium: string } | null }[];
@@ -277,7 +251,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
 
     const { store } = await service();
     expect(await store.listContactRequests(conversation.id)).toHaveLength(1);
-    expect(await contactAlerts(conversation.id)).toBe(1);
+    expect(await contactAlerts(conversation.id)).toBe(0);
   });
 
   it("lets staff Mark contacted complete it — owners and staff, not editors — and allows a later request", async () => {
@@ -287,10 +261,10 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     await askRaw(conversation, JSON.stringify({ choice: "contact-email" }));
 
     // Editors are refused (403 by role), owners and staff are not.
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD, editorTotp);
+    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
     expect((await staffPost(editor, conversation.id, "mark-contacted")).status).toBe(403);
 
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     const marked = await staffPost(staff, conversation.id, "mark-contacted");
     expect(marked.status).toBe(200);
     const body = (await marked.json()) as {
@@ -331,7 +305,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
   });
 
   it("refuses Mark contacted with nothing open, and never completes another conversation's request", async () => {
-    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
+    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
     const conversation = await startConversation();
     expect((await staffPost(jar, conversation.id, "mark-contacted")).status).toBe(409);
 
@@ -349,73 +323,15 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     expect((await store.getOpenContactRequest(target.id))?.status).toBe("open");
   });
 
-  it("sends the contact alert exactly once even when delivery fails first", async () => {
-    // No recipients configured: the request still leaves a pending row, and
-    // configuring recipients later delivers it exactly once (retry path).
-    const { db } = await service();
-    await db.run("DELETE FROM settings WHERE key = 'alert_recipients'");
-    // Whatever earlier tests mailed, this request must add nothing while no
-    // recipient exists, and exactly one mail after the retry delivers.
-    const mailsBefore = await mailsTo(ALERT_RECIPIENT);
+  it("creates sound attention without email delivery records", async () => {
     const conversation = await startConversation();
     await ask(conversation, "I want to talk to a person about the fees.");
     await askRaw(conversation, JSON.stringify({ choice: "handoff-no" }));
     await askRaw(conversation, JSON.stringify({ choice: "contact-phone" }));
-    expect(await contactAlerts(conversation.id)).toBe(1);
-    expect(await mailsTo(ALERT_RECIPIENT)).toBe(mailsBefore);
-
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD, ownerTotp);
-    const { PUT } = await import("../src/app/api/staff/settings/alert-recipients/route");
-    const saved = await PUT(
-      new Request(`${TEST_ORIGIN}/api/staff/settings/alert-recipients`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          cookie: owner.header(),
-          origin: TEST_ORIGIN,
-        },
-        body: JSON.stringify({ recipients: [ALERT_RECIPIENT] }),
-      }),
-    );
-    expect(saved.status).toBe(200);
-
-    const { GET } = await import("../src/app/api/staff/notifications/route");
-    const listResponse = await GET(
-      new Request(`${TEST_ORIGIN}/api/staff/notifications`, {
-        headers: { cookie: owner.header() },
-      }),
-    );
-    const list = (await listResponse.json()) as {
-      notifications: { id: string; conversationId: string; status: string }[];
-    };
-    const pending = list.notifications.find(
-      (item) => item.conversationId === conversation.id && item.status === "pending",
-    );
-    expect(pending?.id).toBeTruthy();
-    const retry = await import("../src/app/api/staff/notifications/[id]/retry/route");
-    const delivered = await retry.POST(
-      new Request(`${TEST_ORIGIN}/api/staff/notifications/${pending!.id}/retry`, {
-        method: "POST",
-        headers: { cookie: owner.header(), origin: TEST_ORIGIN },
-      }),
-      { params: Promise.resolve({ id: pending!.id }) },
-    );
-    expect(delivered.status).toBe(200);
-    expect(await mailsTo(ALERT_RECIPIENT)).toBe(mailsBefore + 1);
-    expect(await contactAlerts(conversation.id)).toBe(1);
-
-    // Restore recipients for the other tests' file state.
-    await PUT(
-      new Request(`${TEST_ORIGIN}/api/staff/settings/alert-recipients`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          cookie: owner.header(),
-          origin: TEST_ORIGIN,
-        },
-        body: JSON.stringify({ recipients: [ALERT_RECIPIENT] }),
-      }),
-    );
+    expect(await contactAlerts(conversation.id)).toBe(0);
+    const { store } = await service();
+    const desk = await store.getConversation(conversation.id);
+    expect(desk?.attentionAt).not.toBeNull();
   });
 });
 
@@ -432,10 +348,10 @@ describe("the unknown-question handoff (tickets 37/69)", () => {
     const { store } = await service();
     expect(await store.listContactRequests(conversation.id)).toHaveLength(1);
     expect((await store.getOpenContactRequest(conversation.id))?.medium).toBe("chat");
-    expect(await escalationAlerts(conversation.id)).toBe(1);
+    expect(await escalationAlerts(conversation.id)).toBe(0);
 
     // Take over completes the Chat request.
-    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+    const jar = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     expect((await staffPost(jar, conversation.id, "claim")).status).toBe(200);
     expect(await store.getOpenContactRequest(conversation.id)).toBeNull();
     expect((await store.listContactRequests(conversation.id))[0]?.status).toBe("completed");

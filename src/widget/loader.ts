@@ -4,8 +4,17 @@
  * Embedded on the college WordPress site with a single script tag. The loader
  * only renders a launcher button and a cross-origin iframe pointing at the
  * chatbot origin, so the visitor session credential lives in iframe-origin
- * session storage — never in WordPress page storage — and no API call or
- * secret ever happens in the WordPress page context.
+ * session storage — never in WordPress page storage — and no secret ever
+ * happens in the WordPress page context.
+ *
+ * Ticket 76 narrows that one exception: before anything renders, the loader
+ * asks the chatbot server whether this page's origin may host the widget.
+ * That check is credential-free and returns a single boolean; a denied or
+ * unverifiable page is left completely untouched — no style, launcher,
+ * iframe, or visitor-facing error. Enforcement does not rest on this call:
+ * the frame response's frame-ancestors policy is computed server-side from
+ * the same allowlist, so a modified or copied loader cannot authorize an
+ * unauthorized parent.
  */
 
 const BOOT_MARKER = "sfc-chatbot-widget-v1";
@@ -44,18 +53,64 @@ const STYLES = `
 @media (max-width:480px){.sfcw-frame{right:8px;left:8px;bottom:calc(8px + var(--sfcw-h,64px) + 8px);width:calc(100vw - 16px);height:calc(100vh - 88px)}}
 `;
 
-function boot(): void {
-  // Load once, even if the script tag is duplicated on a page.
+/**
+ * The pre-render authorization check (ticket 76): the loader asks the
+ * chatbot server whether this page's origin may host the widget before it
+ * touches the page at all. The answer is one boolean; a refusal, a network
+ * failure, or any unverifiable answer all read as denied — the host page is
+ * left exactly as it was.
+ */
+const ELIGIBILITY_PATH = "/api/v1/embed-eligibility";
+
+/** Generic on purpose: a diagnostic that named the decision's details would
+    leak where the allowlist's edges are. */
+const DENIED_DIAGNOSTIC = "The chat widget is not available on this page.";
+
+async function checkEligibility(base: string): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `${base}${ELIGIBILITY_PATH}?origin=${encodeURIComponent(window.location.origin)}`,
+      { credentials: "omit" },
+    );
+    if (!response.ok) {
+      return false;
+    }
+    const payload = (await response.json()) as { allowed?: unknown };
+    return payload.allowed === true;
+  } catch {
+    return false;
+  }
+}
+
+async function boot(baseScript: HTMLScriptElement | null): Promise<void> {
+  // Load once, even if the script tag is duplicated on a page. The marker
+  // attribute goes on the script tag itself before the check so a second
+  // tag never starts a second eligibility request; it is not widget chrome
+  // and renders nothing.
   if (document.querySelector(`.${BOOT_MARKER}`)) {
     return;
   }
-  const currentScript = document.currentScript as HTMLScriptElement | null;
-  if (currentScript) {
-    currentScript.dataset.sfcChatbot = "1";
+  if (baseScript) {
+    baseScript.dataset.sfcChatbot = "1";
   }
 
-  const base = new URL(currentScript?.src ?? document.baseURI, document.baseURI).origin;
+  // The chatbot origin comes from the script tag's own address, never from
+  // the host page: a deferred boot runs after parsing, when
+  // document.currentScript is null, so the element is captured at script
+  // execution time (ticket 76's cross-origin cert caught the host-origin
+  // fallback this check replaces).
+  const base = new URL(baseScript?.src ?? document.baseURI, document.baseURI).origin;
 
+  // No style, launcher, iframe, or error appears until eligibility is
+  // confirmed — a denied page must be left untouched (ticket 76).
+  if (!(await checkEligibility(base))) {
+    console.info(DENIED_DIAGNOSTIC);
+    return;
+  }
+  render(base);
+}
+
+function render(base: string): void {
   const style = document.createElement("style");
   style.textContent = STYLES;
   document.head.appendChild(style);
@@ -184,7 +239,9 @@ function boot(): void {
       // loader itself makes no API calls (the security property the embed
       // pins guard), so the widget surface that already talks to the
       // chatbot origin forwards the public values here. A missing or junk
-      // message leaves the bundled defaults already painted.
+      // message leaves the bundled defaults already painted. (Ticket 76
+      // narrows this property: the pre-render eligibility check above is
+      // the loader's one exception, still credential-free and boolean.)
       const payload = (event.data as { config?: unknown } | null)?.config;
       if (typeof payload !== "object" || payload === null) {
         return;
@@ -228,8 +285,15 @@ function boot(): void {
   });
 }
 
+// The executing script tag is captured now, before any deferral: inside a
+// DOMContentLoaded handler document.currentScript is null, and the base must
+// stay the chatbot origin the tag names — never the host page's own origin.
+const bootScript = document.currentScript as HTMLScriptElement | null;
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot, { once: true });
+  document.addEventListener("DOMContentLoaded", () => {
+    void boot(bootScript);
+  }, { once: true });
 } else {
-  boot();
+  void boot(bootScript);
 }

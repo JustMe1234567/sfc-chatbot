@@ -1,4 +1,3 @@
-import { TOTP, URI } from "otpauth";
 import { randomUUID } from "node:crypto";
 import { countQuery, TEST_ORIGIN, useTempDatabase } from "./helpers";
 import { registerFakeStaff } from "./fake-auth-provider";
@@ -37,7 +36,7 @@ let requestCounter = 0;
 export async function authRequest(
   jar: CookieJar | null,
   path: string,
-  options: { method?: "GET" | "POST"; body?: unknown; ip?: string } = {},
+  options: { method?: "GET" | "POST"; body?: unknown; ip?: string; userAgent?: string } = {},
 ): Promise<Response> {
   const { POST, GET } = await import("../src/app/api/auth/[...all]/route");
   const method = options.method ?? "POST";
@@ -48,6 +47,10 @@ export async function authRequest(
     "Content-Type": "application/json",
     "x-forwarded-for": ip,
     origin: TEST_ORIGIN,
+    // The login log captures the browser's user agent (ticket 81); a fixed
+    // synthetic value keeps those assertions deterministic, overridable per
+    // request when a test proves the pass-through.
+    "user-agent": options.userAgent ?? "sfc-test-suite/1",
   };
   const cookie = jar?.header();
   if (cookie) {
@@ -90,82 +93,46 @@ export async function provisionStaff(input: {
   const { db } = await getChatbotService();
   const userId = randomUUID();
   const authUserId = randomUUID();
+  const username = input.email.split("@")[0]!.toLowerCase();
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO staff_members
-     ("id", "name", "email", "emailVerified", "createdAt", "updatedAt", "role",
-      "banned", "twoFactorEnabled", "supabaseUserId", "invitationStatus")
+     ("id", "name", "email", "username", "emailVerified", "createdAt", "updatedAt", "role",
+      "banned", "supabaseUserId", "invitationStatus")
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     userId,
     input.name,
-    input.email.toLowerCase(),
+    `${userId}@staff.invalid`,
+    username,
     true,
     now,
     now,
     input.role ?? "staff",
-    false,
     false,
     authUserId,
     "accepted",
   );
   registerFakeStaff({
     userId: authUserId,
-    email: input.email,
+    username,
     name: input.name,
     password: input.password,
   });
   return { userId, email: input.email, role: input.role ?? "staff" };
 }
 
-/** Full second-factor enrollment for a provisioned, verified staff member. */
-export async function enrollTotp(
+/** Password-only sign-in, leaving the jar holding a dashboard session. */
+export async function signInAs(
   jar: CookieJar,
-  email: string,
+  login: string,
   password: string,
-): Promise<TOTP> {
-  const signIn = await authRequest(jar, "/api/auth/sign-in/email", {
-    body: { email, password },
+): Promise<void> {
+  const username = login.includes("@") ? login.split("@")[0]!.toLowerCase() : login.toLowerCase();
+  const signIn = await authRequest(jar, "/api/auth/sign-in/username", {
+    body: { username, password },
   });
   if (!signIn.ok) {
-    throw new Error(`enroll sign-in failed: ${signIn.status} ${await signIn.text()}`);
-  }
-  const enable = await authRequest(jar, "/api/auth/two-factor/enable", {
-    body: { password, method: "totp", issuer: "Springfield College chat" },
-  });
-  const enabled = (await enable.json()) as { totpURI?: string };
-  if (!enable.ok || !enabled.totpURI) {
-    throw new Error(`totp enable failed: ${enable.status} ${JSON.stringify(enabled)}`);
-  }
-  const totp = URI.parse(enabled.totpURI) as TOTP;
-  const verify = await authRequest(jar, "/api/auth/two-factor/verify-totp", {
-    body: { code: totp.generate() },
-  });
-  if (!verify.ok) {
-    throw new Error(`totp verify failed: ${verify.status} ${await verify.text()}`);
-  }
-  await authRequest(jar, "/api/auth/sign-out");
-  return totp;
-}
-
-/** Password + TOTP sign-in, leaving the jar holding a dashboard session. */
-export async function signInWithTotp(
-  jar: CookieJar,
-  email: string,
-  password: string,
-  totp: TOTP,
-): Promise<void> {
-  const signIn = await authRequest(jar, "/api/auth/sign-in/email", {
-    body: { email, password },
-  });
-  const result = (await signIn.json()) as { twoFactorRedirect?: boolean };
-  if (!signIn.ok || !result.twoFactorRedirect) {
-    throw new Error(`expected two-factor challenge: ${signIn.status} ${JSON.stringify(result)}`);
-  }
-  const verify = await authRequest(jar, "/api/auth/two-factor/verify-totp", {
-    body: { code: totp.generate() },
-  });
-  if (!verify.ok) {
-    throw new Error(`totp sign-in failed: ${verify.status} ${await verify.text()}`);
+    throw new Error(`sign-in failed: ${signIn.status} ${await signIn.text()}`);
   }
 }
 

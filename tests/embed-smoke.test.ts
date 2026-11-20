@@ -23,11 +23,26 @@ describe("WordPress embed smoke check", () => {
     expect(script).toContain("sfcw:close");
     expect(script).toContain("@media (max-width:480px)");
     expect(script).toContain("aria-expanded");
-    // The loader runs inside the WordPress page: no API calls, no credential
-    // handling, no page storage access may live there.
+    // The loader runs inside the WordPress page: no credential handling and
+    // no page storage access may live there. (Ticket 76 narrows the old
+    // "no API calls at all" property to exactly one credential-free,
+    // boolean-only pre-render ask — the eligibility check, pinned in the
+    // ticket-76 test below.)
     expect(script).not.toContain("localStorage");
     expect(script).not.toContain("sessionStorage");
-    expect(script).not.toContain("api/v1");
+    expect(script).not.toContain("document.cookie");
+  });
+
+  it("asks the chatbot server before touching the host page (ticket 76)", async () => {
+    const script = await readFile(path.join(repoRoot(), "public/widget/v1.js"), "utf8");
+    // The eligibility ask is the loader's only API surface in the shipped
+    // asset. The full loader contract — no DOM mutation before the check,
+    // the generic diagnostic, the credential-free fetch, the base-origin
+    // capture — lives with the ticket in tests/embed-allowlist.test.ts;
+    // this smoke pin holds only the shipped-artifact fact.
+    expect(script).toContain("/api/v1/embed-eligibility");
+    expect(script.match(/api\/v1/g)).toHaveLength(1);
+    expect(script).not.toContain("springfieldcollege");
   });
 
   it("keeps the launcher available as an honest open and close toggle (ticket 35)", async () => {

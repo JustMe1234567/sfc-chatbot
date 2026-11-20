@@ -8,15 +8,17 @@
     "node": ">=22"
   },
   "scripts": {
+    "check": "npm run hygiene && npm run typecheck && npm test && npm run build",
     "dev": "npm run build:widget && next dev",
     "start": "npm run build:widget && next start",
     "build": "npm run build:widget && next build",
     "typecheck": "tsc --noEmit",
     "build:widget": "tsx scripts/build-widget.ts",
     "bootstrap:owner": "tsx scripts/bootstrap-owner.ts",
-    "recover:staff": "tsx scripts/recover-staff-mfa.ts",
+    "recover:staff": "tsx scripts/recover-staff-credentials.ts",
     "config:export": "tsx scripts/export-configuration.ts",
     "config:import": "tsx scripts/import-configuration.ts",
+    "hygiene": "node scripts/check-repository-hygiene.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -38,7 +40,7 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "next": "^16.4.2",
-    "postgres": "^3.4.9",
+    "postgres": "4.1.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   }

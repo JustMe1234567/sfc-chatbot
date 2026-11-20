@@ -35,7 +35,10 @@ The in-dashboard signal that a conversation has something new for staff — a fr
 The conversation desk's three-tier coloring (ticket 44, re-colored in ticket 66): Needs human (an escalation waiting for a claim, green) outranks New message (standing attention, red) outranks Active (a live bot or claimed chat with nothing unread, yellow). Every tier pairs its color with visible text or a dot carrying an accessible name, applied consistently to list rows, badges, counts, and the selected conversation's header. History rows are the archive and carry no treatment.
 
 **Notification sound**:
-The desk's optional cue (ticket 44): one short tone when a conversation newly needs staff — at most once per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
+The desk's alert (tickets 44, 77): a buzzer-like alert — one-second buzzes on and off across a 6-second window — when a conversation needs staff. While any live desk conversation sits in Needs human, the alert repeats every 30 seconds — measured from the start of one alert to the start of the next — and stops the moment the state clears or sounds are muted; unmuting with a conversation still waiting restarts the cycle. Ordinary new-message attention keeps 44's behavior: one soft chime cue per attention episode per staff browser, anchored at the instant the episode began. Muting is per-browser and never hides the visual indicators; audio blocked before the first interaction plays one late cue instead of a backlog.
+
+**Needs-human bell**:
+The dashboard-wide visual indicator (ticket 79): a bell on the Conversations navigation item, shown exactly while at least one live desk conversation sits in Needs human and hidden the moment the state clears. It carries no count — presence is the message — wears the Needs-human green from the status treatment (the bright graphic variant, since the rail is dark), and the navigation item's accessible name says needs human while it shows. It is visible from every dashboard page, in the expanded rail, the compact icon rail, and the mobile drawer.
 
 **Take over**:
 The staff-facing label for claiming (ticket 45) — the atomic assignment of a waiting conversation to exactly one staff member. Product copy says Take over/Taking over; the domain keeps claim/claimed in state values, API paths, and audit action ids.
@@ -56,16 +59,30 @@ A visitor's explicit ask to be reached (ticket 69), in one of three media: **Cha
 The message history shared by a visitor, the bot, and any administrator who takes over.
 
 **Staff account**:
-The named dashboard membership of a college employee. It becomes active only after an emailed invitation is accepted and an authenticator is enrolled; its permissions depend on the assigned owner, staff, or editor role.
+The named dashboard membership of a college employee. An owner assigns its username, initial password, and owner/staff/editor role; the password alone admits the dashboard (ticket 82 removed the second factor).
 
-**Staff invitation**:
-An owner-issued, single-recipient email that lets a named employee create the password for a provisioned staff account. Retrying an invitation never changes the employee's name or role.
+**Owner**:
+The highest-privilege staff role, responsible for security-sensitive dashboard configuration and staff administration.
+_Avoid_: Superadmin, administrator
 
-**Authenticator recovery**:
-The controlled process for a staff member who has lost their authenticator. A trusted operator verifies the person, revokes their sessions and old factor, then grants a short recovery window before mandatory reenrollment.
+**Staff credential reset**:
+An owner-issued password reset for an existing staff account. It revokes every session; the member signs back in with the new password.
+
+**Login log**:
+The complete owner-held record of dashboard sign-in attempts (ticket 81): every success, failure, and blocked attempt, each with the attempted username, outcome, reason, client IP, browser user agent, and time. Owners may delete entries individually, in checkbox-selected ranges, or all at once; the login retention period removes the rest.
+
+**Suspicious login**:
+A login event flagged for owner review because it matches a suspicious pattern — repeated password failures against one staff account from one IP, a successful sign-in from an IP that account has never used before, or repeated attempts against usernames that don't exist or belong to disabled accounts. Flagging is detection only: it never blocks, sounds, or locks anything; flagged events surface in the Logs tab's suspicious view.
+
+**IP block**:
+The temporary rejection of sign-in attempts that use a non-staff username from one client IP (ticket 81): ten such failures within a rolling ten minutes block that IP's non-staff-username attempts (unknown or disabled accounts) for one hour, with no manual release. Attempts with a valid staff username are never blocked — a correct password still signs in from a blocked IP.
 
 **Visitor session**:
 The temporary identity that lets one public visitor resume and read their own conversation without creating a staff account.
+
+**Embed allowlist**:
+The owner-managed set of website origins whose every page may host the chatbot widget. Production chat is available only inside an allowed website; local development origins and standalone testing are permitted separately and never become production entries.
+_Avoid_: Script API key, domain whitelist
 
 **Presence**:
 Whether a visitor is still on the page, judged from how recently their credential made an authorized request. Distinct from **analytics presence**, which needs no credential.

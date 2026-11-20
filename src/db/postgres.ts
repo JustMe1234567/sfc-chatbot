@@ -13,12 +13,28 @@ const POSTGRES_MIGRATIONS_DIR = path.join(repoRoot(), "migrations", "postgres");
  * Opens the Postgres connection for a Supabase-style DATABASE_URL. Prepared
  * statements are off by default: the serverless-friendly Supabase pooler
  * (transaction mode) rejects them, and the cost is negligible for this
- * application's query shapes.
+ * application's query shapes. Handshakes to the hosted pooler can stall
+ * (observed ~60s windows where every new connection hangs), so login gets a
+ * short timeout: the pool discards the hung connect and retries instead of
+ * queueing the whole app behind it.
+ *
+ * The hosted transaction pooler can also silently stop answering queries on
+ * established sockets under bursty multi-socket load while the server side
+ * stays idle (ticket 90). Without an in-flight bound, every socket the stall
+ * touches holds its lease forever and the whole pool wedges with zero errors.
+ * `query_timeout`/`queue_timeout` (postgres.js ≥ 4.1) turn that wedge into a
+ * bounded rejection per query, after which the pool opens fresh sockets and
+ * recovers. Ten seconds is far above this application's warm query times
+ * (well under a second, even across the WAN) and far below the hosted
+ * statement timeout.
  */
 export function openPostgres(url: string): PostgresSql {
   return postgres(url, {
     prepare: process.env.PG_PREPARE === "true",
     max: Number(process.env.PG_POOL_MAX ?? 8),
+    connect_timeout: 10,
+    query_timeout: Number(process.env.PG_QUERY_TIMEOUT ?? 10),
+    queue_timeout: Number(process.env.PG_QUEUE_TIMEOUT ?? 10),
   });
 }
 
@@ -32,7 +48,6 @@ export async function migratePostgres(sql: PostgresSql): Promise<void> {
     name TEXT PRIMARY KEY,
     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);
-
   const applied = new Set(
     (await sql.unsafe<{ name: string }[]>("SELECT name FROM _migrations")).map(
       (row) => row.name,

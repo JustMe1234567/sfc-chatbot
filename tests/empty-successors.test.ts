@@ -12,7 +12,7 @@ import {
   warmChatbotService,
   type ConversationStart,
 } from "./helpers";
-import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-helpers";
+import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
 
 /**
  * Ticket 73: conversations without a visitor-authored message — a
@@ -27,8 +27,6 @@ import { CookieJar, enrollTotp, provisionStaff, signInWithTotp } from "./auth-he
 
 const STAFF_EMAIL = "desk-helper@example.edu";
 const STAFF_PASSWORD = "desk-helper-meadow-6t";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 // The direct-link test drives the real page component: capture redirect()
 // instead of following it. headers() serves the staff session cookie.
@@ -68,12 +66,11 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Dee" });
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 async function staffJar(): Promise<CookieJar> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   return jar;
 }
 

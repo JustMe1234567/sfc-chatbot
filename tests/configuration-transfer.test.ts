@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { sqliteAppDatabase } from "../src/db/appDatabase";
+import { sqliteAppDatabase, type AppDatabase } from "../src/db/appDatabase";
 import { openDatabase } from "../src/db/sqlite";
 import {
   exportConfiguration,
@@ -14,6 +14,36 @@ function database(label: string) {
   const file = path.join(mkdtempSync(path.join(tmpdir(), `sfc-${label}-`)), "test.db");
   const raw = openDatabase(file);
   return { raw, db: sqliteAppDatabase(raw) };
+}
+
+/** Deterministic logical snapshot of the source's configuration tables, read
+ *  through the AppDatabase interface. WAL keeps database-file bytes unstable,
+ *  so immutability is proven by comparing ordered rows, not file bytes (and
+ *  `DatabaseSync.serialize()` does not exist on Node 22). */
+async function sourceSnapshot(db: AppDatabase) {
+  const [rules, settings] = await Promise.all([
+    db.all<{
+      id: string;
+      topic: string;
+      response: string;
+      link: string | null;
+      phrases: string;
+      keywords: string | null;
+      status: string;
+      updated_at: string;
+      published_by: string | null;
+      reviewed_at: string | null;
+      trashed_at: string | null;
+    }>(
+      `SELECT id, topic, response, link, phrases, keywords, status, updated_at,
+       published_by, reviewed_at, trashed_at
+       FROM answer_rules ORDER BY id`,
+    ),
+    db.all<{ key: string; value: string; updated_at: string }>(
+      "SELECT key, value, updated_at FROM settings ORDER BY key",
+    ),
+  ]);
+  return { rules, settings };
 }
 
 describe("configuration-only transfer", () => {
@@ -60,7 +90,7 @@ describe("configuration-only transfer", () => {
         "2026-01-04T00:00:00.000Z",
       );
 
-      const before = source.raw.serialize();
+      const before = await sourceSnapshot(source.db);
       const bundle = await exportConfiguration(source.db);
       await importConfiguration(target.db, bundle);
       await expect(validateImportedConfiguration(target.db, bundle)).resolves.toBeUndefined();
@@ -72,7 +102,7 @@ describe("configuration-only transfer", () => {
         { id: "rule-first", status: "published", published_by: null },
         { id: "rule-second", status: "draft", published_by: null },
       ]);
-      expect(source.raw.serialize()).toEqual(before);
+      expect(await sourceSnapshot(source.db)).toEqual(before);
       await expect(importConfiguration(target.db, bundle)).rejects.toThrow(/already in use/i);
     } finally {
       source.raw.close();

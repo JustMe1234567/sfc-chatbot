@@ -10,14 +10,14 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-emails";
 const PORT = process.argv[3] ?? "3215";
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/emails-demo.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 const PAGE_URL = `${BASE}/dashboard/emails`;
 
@@ -69,16 +69,11 @@ for (let attempt = 0; ; attempt++) {
 const warm = await fetch(`${BASE}/api/v1/topics`);
 if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
 
-// A clean slate for the pieces this script owns: enrollment and every
-// conversation (this demo database exists for this script alone).
+// A clean slate for the pieces this script owns: every conversation (this
+// demo database exists for this script alone). No enrollment wipe
+// (ticket 80): staff credentials live in hosted Supabase Auth, not a store
+// table, so the sign-in below requires a freshly bootstrapped owner.
 const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-}
 db.prepare("DELETE FROM conversations").run();
 db.close();
 
@@ -92,31 +87,8 @@ page.on("pageerror", (error) => {
 });
 await page.setViewportSize({ width: 1280, height: 900 });
 
-// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// --- Sign the owner in through the real UI (password-only since 82). ------
+await signIn(page, BASE, USERNAME, PASSWORD);
 mkdirSync(OUT, { recursive: true });
 
 // --- Seed 12 email rows; the pager's first page must lead with visitor11. -

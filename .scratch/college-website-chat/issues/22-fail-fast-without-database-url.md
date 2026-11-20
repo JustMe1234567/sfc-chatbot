@@ -1,0 +1,17 @@
+# 22: Fail fast when production runs without DATABASE_URL
+
+**Status:** ready-for-human
+**Priority:** P2 — blocker for browser testing
+**Found by:** pre-testing audit 2026-10-30 (docs/config pass; verified directly)
+
+**What to build:** Without `DATABASE_URL`, `getChatbotService()` silently falls back to SQLite (`src/db/service.ts:89-94`) at `process.env.CHATBOT_DB ?? path.join(repoRoot(), "chatbot.db")` (`src/config.ts:24-25`). On Vercel the filesystem is read-only and `repoRoot()` resolves relative to the compiled bundle, so the first request crashes with a confusing error instead of a clear configuration message. SQLite must remain a *local development* default, not a production fallback.
+
+- [ ] When the app runs in a production/serverless environment (`NODE_ENV=production` or an explicit `CHATBOT_REQUIRE_DATABASE_URL=1` the deployment sets) and no `DATABASE_URL`/`POSTGRES_URL` is configured, startup fails with an error naming the missing variable and pointing at `docs/deployment.md`.
+- [ ] Local `next dev` and the SQLite test suite are unaffected.
+- [ ] `docs/deployment.md` states the requirement.
+
+## Comments
+
+2026-10-30: Filed from the audit. Verified: the fallback chain across `src/db/service.ts:33-42, 86-98`, `src/config.ts:24-34`, `src/paths.ts`. Related: issue 19 (bootstrap must honor the same store selection).
+
+2026-11-11: Implemented in commit 8b7efa1. The policy is a pure env guard `assertConfiguredDatabaseUrl()` in `src/config.ts`: no `DATABASE_URL`/`POSTGRES_URL` + (`NODE_ENV=production` or `CHATBOT_REQUIRE_DATABASE_URL=1`, exact string) → throws naming `DATABASE_URL` (with `POSTGRES_URL` accepted), the read-only-filesystem reason, and `docs/deployment.md`. Applied at two layers: (1) `src/instrumentation.ts` `register()` (nodejs-runtime gated, dynamic import per the convention docs) — a production boot now fails BEFORE the server serves: verified live, `next start` without a URL logs "Failed to prepare server: … Set DATABASE_URL per docs/deployment.md." and health checks never come up (Next keeps the process alive after a failed instrumentation hook, but nothing is served — the deployment visibly fails at startup); (2) `getChatbotService()` calls the same guard at its fallback seam as defense in depth (first DB request also 500s with the same message — verified live). Acceptance boxes: (1) done as above; (2) local `next dev` + SQLite suite unaffected — guard no-ops outside production/forced, vitest runs NODE_ENV=test, full suite 447 passed / 3 skipped across 54 files, and `npm run build` stays green locally without a URL (build does not invoke the hook); (3) `docs/deployment.md` DATABASE_URL row now states the requirement and the opt-in `CHATBOT_REQUIRE_DATABASE_URL=1` toggle. Tests: `tests/production-db-guard.test.ts` (6 — prod throws naming var+doc, POSTGRES_URL-alone passes, forced toggle enforces outside prod, toggle is exact "1", dev/test keep the fallback, and the service seam rejects). Notes for review: the error message distinguishes the forced variant by appending "(CHATBOT_REQUIRE_DATABASE_URL=1)"; future prod-mode cert scripts that relied on SQLite `next start` must now set `DATABASE_URL` to a local Postgres (the ticket's intent — SQLite is dev-only) or use `next dev`; live positive boot with a real Postgres URL was not run (local cluster needs credentials only the user has) — the with-URL path is covered by the unit guard tests and PG-mode suite.

@@ -4,6 +4,7 @@ import { sweepTranscripts } from "@/domain/retention";
 import { expireAnalytics } from "@/domain/analytics";
 import { sweepExpiredTrash } from "@/domain/answerLifecycle";
 import { pruneRateLimitWindows } from "@/domain/limits";
+import { sweepLoginEvents } from "@/domain/loginLog";
 import { trustedOrigins } from "@/config";
 
 /** Constant-time bearer comparison for the network-visible cron secret. */
@@ -48,11 +49,14 @@ export async function GET(request: Request) {
   // Spent shared rate-limit windows (ticket 24) are pure debris once they
   // can no longer recur.
   const rateLimitWindows = await pruneRateLimitWindows(db);
+  // Login events (ticket 81) age out on the owner's retention period.
+  const loginEvents = await sweepLoginEvents(db);
   return NextResponse.json({
     ok: true,
     removedConversations: transcripts?.removedConversations ?? null,
     analyticsRemoved: analytics,
     answersPurged: trash?.purgedAnswers ?? null,
     rateLimitWindowsRemoved: rateLimitWindows,
+    loginEventsRemoved: loginEvents,
   });
 }

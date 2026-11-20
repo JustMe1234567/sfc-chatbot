@@ -1,30 +1,28 @@
 // Ticket 17 verification + screenshots (headless Chromium, one-off).
 // Seeds analytics data over the public APIs, signs the scratch owner in
-// through the real UI (TOTP enroll), opens the widget so the page itself
+// through the real UI, opens the widget so the page itself
 // beats presence, then captures the analytics page at three widths.
 // Usage: node scripts/analytics-shots.mjs <outdir> [port]
+// Dev-mode only (ticket 78): under a production build the ticket-76 embed
+// allowlist denies the loopback demo origin — the probe below fails fast
+// (skipped along with the widget step by SKIP_WIDGET=1).
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import process from "node:process";
-import { enrollAndSignIn, freshTotpSlate, waitForServer } from "./lib/shot-driver.mjs";
+import { assertDemoOriginEmbeddable, signIn, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-after";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3123"}`;
-const EMAIL = process.env.SHOT_EMAIL ?? "owner@example.edu";
+const USERNAME = process.env.SHOT_USERNAME ?? "owner";
 const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-analytics-check-11";
-const DB_PATH =
-  process.env.CHATBOT_DB ?? ".scratch/college-website-chat/analytics-demo.db";
 
 await waitForServer(BASE);
 
-// A clean enrollment slate (same as design-shots): wipe any TOTP enrollment
-// left by an earlier partial run, since twoFactor.enable rejects while a
-// factor is already active.
-if (freshTotpSlate(DB_PATH, EMAIL)) {
-  console.log("wiped prior enrollment for", EMAIL);
-}
+// The optional widget step drives the demo page, so the origin must be an
+// allowed widget host (ticket 78): dev-mode only — under a production build
+// the embed allowlist denies the loopback demo origin and this fails fast.
+if (process.env.SKIP_WIDGET !== "1") await assertDemoOriginEmbeddable(BASE);
 
 // --- Seed: two live browsers, three chats, two escalations. ---------------
 async function presence(browserId) {
@@ -80,7 +78,7 @@ for (const [text, expectEscalation] of [
   escalations.push(conversation);
 }
 
-// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
+// --- Sign the owner in through the real UI (password-only since 82). ------
 const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();
@@ -102,7 +100,7 @@ page.on("response", async (response) => {
 });
 await page.setViewportSize({ width: 1280, height: 800 });
 
-await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 

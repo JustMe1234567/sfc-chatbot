@@ -7,6 +7,10 @@ import {
   type ResolvedChatheadConfig,
 } from "./domain/branding";
 import { normalizeText } from "./domain/matcher";
+import {
+  DEFAULT_EMBED_ALLOWLIST_ORIGIN,
+  normalizeEmbedOrigin,
+} from "./domain/embedAllowlist";
 import type { SupportHours } from "./domain/types";
 import { DEFAULT_WELCOME_MESSAGE, isValidWelcomeMessage } from "./domain/welcome";
 
@@ -31,9 +35,6 @@ export async function setSetting(db: AppDatabase, key: string, value: string): P
   );
 }
 
-const ALERT_RECIPIENTS_KEY = "alert_recipients";
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** A string-list setting; a corrupt value reads as empty rather than throwing. */
 async function getStringListSetting(db: AppDatabase, key: string): Promise<string[]> {
   const raw = await getSetting(db, key);
@@ -46,33 +47,6 @@ async function getStringListSetting(db: AppDatabase, key: string): Promise<strin
   } catch {
     return [];
   }
-}
-
-export function getAlertRecipients(db: AppDatabase): Promise<string[]> {
-  return getStringListSetting(db, ALERT_RECIPIENTS_KEY);
-}
-
-export async function setAlertRecipients(db: AppDatabase, recipients: string[]): Promise<void> {
-  await setSetting(db, ALERT_RECIPIENTS_KEY, JSON.stringify(recipients));
-}
-
-export function isValidRecipientList(recipients: unknown): recipients is string[] {
-  return (
-    Array.isArray(recipients) &&
-    recipients.length > 0 &&
-    recipients.length <= 10 &&
-    recipients.every((item) => typeof item === "string" && EMAIL_PATTERN.test(item))
-  );
-}
-
-/**
- * The single-address half of the list rule (ticket 54): the stacked
- * recipient boxes validate each entry inline as it is added or edited,
- * with the whole-list PUT and `isValidRecipientList` still the final
- * authority.
- */
-export function isValidRecipientEmail(value: string): boolean {
-  return EMAIL_PATTERN.test(value);
 }
 
 const ESCALATION_PHRASES_KEY = "escalation_phrases";
@@ -157,6 +131,78 @@ export async function seedHandoffOptions(db: AppDatabase): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Embed allowlist (ticket 76): the owner-managed set of exact website origins
+// whose pages may host the chatbot widget. One JSON row distinguishes
+// never-configured from explicitly empty: an absent row seeds the Springfield
+// College origin on boot, while a saved "[]" stays empty across restarts and
+// upgrades. Enforcement reads fail closed — a corrupt row allows nothing.
+
+const EMBED_ALLOWLIST_KEY = "embed_allowlist";
+
+export type EmbedAllowlistSetting =
+  | { kind: "unconfigured" }
+  | { kind: "invalid" }
+  | { kind: "set"; origins: string[] };
+
+export async function readEmbedAllowlist(db: AppDatabase): Promise<EmbedAllowlistSetting> {
+  const raw = await getSetting(db, EMBED_ALLOWLIST_KEY);
+  if (raw === null) {
+    return { kind: "unconfigured" };
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return { kind: "invalid" };
+    }
+    const origins: string[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== "string") {
+        return { kind: "invalid" };
+      }
+      // Entries were validated at write time; a hand-edited row must never
+      // smuggle a non-HTTPS or wildcard origin into enforcement, so any
+      // entry that fails the rules disqualifies the whole row.
+      const normalized = normalizeEmbedOrigin(entry);
+      if (!normalized.ok) {
+        return { kind: "invalid" };
+      }
+      if (!origins.includes(normalized.origin)) {
+        origins.push(normalized.origin);
+      }
+    }
+    return { kind: "set", origins };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+/**
+ * The origins enforcement sees right now: the stored list when one was
+ * saved, the Springfield College seed while genuinely unconfigured, and
+ * nothing when the row is corrupt — fail closed, never accidental access.
+ */
+export async function getEmbedAllowlistOrigins(db: AppDatabase): Promise<string[]> {
+  const setting = await readEmbedAllowlist(db);
+  if (setting.kind === "unconfigured") {
+    return [DEFAULT_EMBED_ALLOWLIST_ORIGIN];
+  }
+  return setting.kind === "set" ? setting.origins : [];
+}
+
+/** Writes the full list; an empty list is a deliberate save and persists. */
+export async function setEmbedAllowlist(db: AppDatabase, origins: string[]): Promise<void> {
+  await setSetting(db, EMBED_ALLOWLIST_KEY, JSON.stringify(origins));
+}
+
+/** Insert-if-absent, mirroring the other seeds: the owner owns the value
+ *  from the first boot, so restarts never reseed a deliberately empty list. */
+export async function seedEmbedAllowlist(db: AppDatabase): Promise<void> {
+  if ((await getSetting(db, EMBED_ALLOWLIST_KEY)) === null) {
+    await setEmbedAllowlist(db, [DEFAULT_EMBED_ALLOWLIST_ORIGIN]);
+  }
+}
+
 const TRANSCRIPT_RETENTION_KEY = "transcript_retention_days";
 
 export const MIN_RETENTION_DAYS = 1;
@@ -221,6 +267,46 @@ export function isValidRetentionDays(input: unknown): input is number {
     input >= MIN_RETENTION_DAYS &&
     input <= MAX_RETENTION_DAYS
   );
+}
+
+const LOGIN_RETENTION_KEY = "login_retention_days";
+
+/**
+ * How many days of login events (ticket 81) are kept before the daily
+ * maintenance pass removes them. The default matches analytics: a generous
+ * review window for the owner, still bounded. The transcript pattern is
+ * mirrored in full — three read states, with a corrupt value refusing the
+ * sweep rather than deleting on a bad value.
+ */
+export const DEFAULT_LOGIN_RETENTION_DAYS = 90;
+
+export type LoginRetentionSetting =
+  | { kind: "absent" }
+  | { kind: "invalid"; raw: string }
+  | { kind: "set"; days: number };
+
+export async function readLoginRetention(db: AppDatabase): Promise<LoginRetentionSetting> {
+  const raw = await getSetting(db, LOGIN_RETENTION_KEY);
+  if (raw === null) {
+    return { kind: "absent" };
+  }
+  const parsed = Number(raw);
+  return isValidRetentionDays(parsed) ? { kind: "set", days: parsed } : { kind: "invalid", raw };
+}
+
+/** The configured login retention period in days, or null while unset. */
+export async function getLoginRetentionDays(db: AppDatabase): Promise<number | null> {
+  const setting = await readLoginRetention(db);
+  return setting.kind === "set" ? setting.days : null;
+}
+
+/** Sets the period; null resets it to the 90-day default. */
+export async function setLoginRetentionDays(db: AppDatabase, days: number | null): Promise<void> {
+  if (days === null) {
+    await db.run("DELETE FROM settings WHERE key = ?", LOGIN_RETENTION_KEY);
+    return;
+  }
+  await setSetting(db, LOGIN_RETENTION_KEY, String(days));
 }
 
 const SUPPORT_HOURS_KEY = "support_hours";

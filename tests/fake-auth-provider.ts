@@ -1,35 +1,35 @@
 import { randomUUID } from "node:crypto";
-import { TOTP } from "otpauth";
 import type {
   AuthDependencies,
   AuthIdentity,
   AuthProvider,
 } from "../src/auth/provider";
+import { publicClientKey } from "../src/api/clientKey";
+import {
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "../src/domain/loginLog";
 
 const COOKIE = "sfc_test_auth";
 
 interface FakeUser {
   id: string;
-  email: string;
+  username: string;
   name: string;
   password: string | null;
   confirmed: boolean;
   banned: boolean;
-  factorId: string | null;
-  totp: TOTP | null;
 }
 
 interface FakeSession {
   id: string;
   userId: string;
-  aal: "aal1" | "aal2";
   expiresAt: number;
-  recoveryToken?: string;
 }
 
 export interface FakeStaffRegistration {
   userId: string;
-  email: string;
+  username: string;
   name: string;
   password: string;
   confirmed?: boolean;
@@ -38,27 +38,23 @@ export interface FakeStaffRegistration {
 class FakeAuthProvider implements AuthProvider {
   readonly users = new Map<string, FakeUser>();
   readonly sessions = new Map<string, FakeSession>();
-  readonly resetTokens = new Map<string, { userId: string; used: boolean }>();
-  readonly inviteTokens = new Map<string, { userId: string; used: boolean }>();
-  readonly failedSignIns = new Map<string, number>();
 
   constructor(private readonly dependencies: AuthDependencies) {}
 
   register(input: FakeStaffRegistration): void {
     this.users.set(input.userId, {
       id: input.userId,
-      email: input.email.toLowerCase(),
+      username: input.username.toLowerCase(),
       name: input.name,
       password: input.password,
       confirmed: input.confirmed ?? true,
       banned: false,
-      factorId: null,
-      totp: null,
     });
   }
 
-  expire(email: string): void {
-    const user = [...this.users.values()].find((candidate) => candidate.email === email.toLowerCase());
+  expire(login: string): void {
+    const username = login.includes("@") ? login.split("@")[0]!.toLowerCase() : login.toLowerCase();
+    const user = [...this.users.values()].find((candidate) => candidate.username === username);
     if (!user) return;
     for (const session of this.sessions.values()) {
       if (session.userId === user.id) session.expiresAt = 0;
@@ -107,10 +103,8 @@ class FakeAuthProvider implements AuthProvider {
     return {
       userId: user.id,
       sessionId: session.id,
-      email: user.email,
+      email: `${user.id}@staff.invalid`,
       emailVerified: user.confirmed,
-      aal: session.aal,
-      mfaEnrolled: user.totp !== null,
     };
   }
 
@@ -138,82 +132,92 @@ class FakeAuthProvider implements AuthProvider {
       ? ((await request.json().catch(() => null)) as Record<string, unknown> | null)
       : null;
 
-    if (request.method === "POST" && path === "sign-in/email") {
-      const email = typeof body?.email === "string" ? body.email.toLowerCase() : "";
+    if (request.method === "POST" && path === "sign-in/username") {
+      const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
       const password = typeof body?.password === "string" ? body.password : "";
-      const user = [...this.users.values()].find((candidate) => candidate.email === email);
-      const staff = user
-        ? await this.dependencies.db.get<{ banned: unknown; emailVerified: unknown }>(
-            `SELECT banned, "emailVerified" FROM staff_members WHERE "supabaseUserId" = ?`,
-            user.id,
-          )
-        : null;
+      if (!username || !password) return this.error("Username and password are required.");
+      const staff = await this.dependencies.db.get<{ banned: unknown; emailVerified: unknown; supabaseUserId: string | null }>(
+        `SELECT banned, "emailVerified", "supabaseUserId" FROM staff_members WHERE lower("username") = lower(?)`,
+        username,
+      );
+      const user = staff?.supabaseUserId ? this.users.get(staff.supabaseUserId) : null;
       const verified = staff?.emailVerified === true || staff?.emailVerified === 1;
       const banned = staff?.banned === true || staff?.banned === 1;
-      if (!user || user.password !== password || user.banned || banned || !user.confirmed || !verified) {
-        const client = request.headers.get("x-forwarded-for") ?? "unknown";
-        const failures = (this.failedSignIns.get(client) ?? 0) + 1;
-        this.failedSignIns.set(client, failures);
-        if (failures > 10) return this.error("Too many attempts. Try again later.", 429);
-        return this.error("Email or password is incorrect.", 401);
+      const ip = publicClientKey(request);
+      const userAgent = request.headers.get("user-agent");
+      // The real provider's classification, mirrored branch for branch
+      // (ticket 81 parity): whether the attempted username belongs to a live
+      // staff account decides which criteria feed and who may be blocked.
+      // The active-block decision is the keyed transaction's, made at the
+      // authoritative point — not a pre-read (ticket 81 second amendment).
+      // Every rejection below is the identical generic failure: a blocked
+      // attacker must not learn which usernames are real from the status
+      // code.
+      if (!user) {
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "unknown_username",
+          usernameIsStaff: false,
+        });
+        return this.error("Username or password is incorrect.", 401);
       }
+      if (banned || user.banned) {
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "disabled_account",
+          usernameIsStaff: false,
+        });
+        return this.error("Username or password is incorrect.", 401);
+      }
+      if (user.password !== password) {
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "invalid_password",
+          usernameIsStaff: true,
+        });
+        return this.error("Username or password is incorrect.", 401);
+      }
+      if (!user.confirmed || !verified) {
+        await recordLoginFailure(this.dependencies.db, {
+          username,
+          ip,
+          userAgent,
+          reason: "disabled_account",
+          usernameIsStaff: true,
+        });
+        return this.error("Username or password is incorrect.", 401);
+      }
+      await recordLoginSuccess(this.dependencies.db, { username, ip, userAgent });
       const token = randomUUID();
       this.sessions.set(token, {
         id: randomUUID(),
         userId: user.id,
-        aal: "aal1",
         expiresAt: Date.now() + 60 * 60 * 1000,
       });
-      return this.response({ twoFactorRedirect: user.totp !== null }, 200, token);
+      return this.response({ success: true }, 200, token);
     }
 
     if (request.method === "GET" && path === "get-session") {
       const identity = await this.authenticate(request.headers);
       if (!identity) return this.response(null);
       const user = this.users.get(identity.userId)!;
-      return this.response({
-        user: { id: user.id, email: user.email, name: user.name, twoFactorEnabled: Boolean(user.totp) },
-        aal: identity.aal,
-      });
-    }
-
-    if (request.method === "POST" && path === "two-factor/enable") {
-      const session = this.session(request.headers);
-      const user = session ? this.users.get(session.userId) : null;
-      if (!user) return this.error("Sign in required.", 401);
-      user.factorId = randomUUID();
-      user.totp = new TOTP({
-        issuer: "Springfield College chat",
-        label: user.email,
-        algorithm: "SHA1",
-        digits: 6,
-        period: 30,
-      });
-      return this.response({
-        totpURI: user.totp.toString(),
-        qrCode: "",
-        factorId: user.factorId,
-      });
-    }
-
-    if (request.method === "POST" && path === "two-factor/verify-totp") {
-      const token = this.token(request.headers);
-      const session = token ? this.sessions.get(token) : null;
-      const user = session ? this.users.get(session.userId) : null;
-      const code = typeof body?.code === "string" ? body.code : "";
-      if (!session || !user?.totp || user.totp.validate({ token: code, window: 1 }) === null) {
-        return this.error("The authenticator code is invalid.", 401);
-      }
-      session.aal = "aal2";
-      await this.dependencies.db.run(
-        `UPDATE staff_members SET "twoFactorEnabled" = ?, "emailVerified" = ?, "updatedAt" = ?
-         WHERE "supabaseUserId" = ?`,
-        true,
-        true,
-        new Date().toISOString(),
-        user.id,
+      const staff = await this.dependencies.db.get<{ username: string; name: string }>(
+        `SELECT "username", "name" FROM staff_members WHERE "supabaseUserId" = ?`,
+        identity.userId,
       );
-      return this.response({ success: true }, 200, token ?? undefined);
+      return this.response({
+        user: {
+          id: user.id,
+          username: staff?.username ?? user.username,
+          name: staff?.name ?? user.name,
+        },
+      });
     }
 
     if (request.method === "POST" && path === "sign-out") {
@@ -222,116 +226,42 @@ class FakeAuthProvider implements AuthProvider {
       return this.response({ success: true }, 200, "");
     }
 
-    if (request.method === "POST" && path === "forget-password") {
-      const email = typeof body?.email === "string" ? body.email.toLowerCase() : "";
-      const user = [...this.users.values()].find((candidate) => candidate.email === email && !candidate.banned);
-      if (user) {
-        const token = randomUUID().replace(/-/g, "");
-        this.resetTokens.set(token, { userId: user.id, used: false });
-        await this.dependencies.mail.send({
-          to: user.email,
-          subject: "Reset your Springfield College chat password",
-          body: `${this.dependencies.baseUrl}/api/auth/confirm?token_hash=${token}&type=recovery`,
-        });
-      }
-      return this.response({ success: true });
-    }
-
-    if (request.method === "GET" && path === "confirm") {
-      const url = new URL(request.url);
-      const token = url.searchParams.get("token_hash") ?? "";
-      const type = url.searchParams.get("type");
-      const recovery = this.resetTokens.get(token);
-      const invitation = this.inviteTokens.get(token);
-      const grant = type === "recovery" ? recovery : type === "invite" ? invitation : null;
-      if (!grant || grant.used) {
-        return this.error("This authentication link is invalid or expired.");
-      }
-      grant.used = true;
-      const user = this.users.get(grant.userId);
-      if (!user) return this.error("This authentication link is invalid or expired.");
-      user.confirmed = true;
-      const sessionToken = randomUUID();
-      this.sessions.set(sessionToken, {
-        id: randomUUID(),
-        userId: grant.userId,
-        aal: "aal1",
-        expiresAt: Date.now() + 60 * 60 * 1000,
-        ...(type === "recovery" ? { recoveryToken: token } : {}),
-      });
-      return new Response(null, {
-        status: 303,
-        headers: {
-          Location: `${this.dependencies.baseUrl}${type === "invite" ? "/dashboard/accept-invitation" : "/dashboard/reset-password"}`,
-          "Set-Cookie": `${COOKIE}=${sessionToken}; Path=/; HttpOnly; SameSite=Lax`,
-          "Cache-Control": "private, no-store",
-        },
-      });
-    }
-
-    if (request.method === "POST" && path === "set-password") {
-      const session = this.session(request.headers);
+    if (request.method === "POST" && path === "change-password") {
+      const token = this.token(request.headers);
+      const session = token ? this.sessions.get(token) : null;
       const user = session ? this.users.get(session.userId) : null;
       const password = typeof body?.newPassword === "string" ? body.newPassword : "";
       if (!session || !user || password.length < 10) {
-        return this.error("Password must be at least 10 characters.");
+        return this.error("Sign in required.", 401);
       }
+      // Ticket 82 review amendment: a self-service change revokes no
+      // sessions — parity with the real provider, which attaches no cookie
+      // either. Only the reset path wipes.
       user.password = password;
-      await this.dependencies.db.run(
-        `UPDATE staff_members
-         SET "emailVerified" = ?, "invitationStatus" = 'accepted', "updatedAt" = ?
-         WHERE "supabaseUserId" = ?`,
-        true,
-        new Date().toISOString(),
-        user.id,
-      );
-      return this.response({ success: true });
-    }
-
-    if (request.method === "POST" && path === "reset-password") {
-      const token = this.token(request.headers);
-      const session = token ? this.sessions.get(token) : null;
-      const password = typeof body?.newPassword === "string" ? body.newPassword : "";
-      const user = session ? this.users.get(session.userId) : null;
-      if (!session || session.aal !== "aal2" || !user || password.length < 10) {
-        return this.error("Verify your authenticator before changing the password.", 403);
-      }
-      user.password = password;
-      await this.revokeAll(user.id);
-      return this.response({ success: true }, 200, "");
+      return this.response({ success: true }, 200);
     }
 
     return this.response({ error: { code: "not_found", message: "Authentication route not found." } }, 404);
   }
 
-  async invite(email: string, name: string): Promise<{ userId: string }> {
-    const existing = [...this.users.values()].find((candidate) => candidate.email === email.toLowerCase());
-    if (existing?.confirmed) throw new Error("An accepted Supabase Auth user already exists for this email.");
-    if (existing) {
-      this.users.delete(existing.id);
-      for (const [token, invitation] of this.inviteTokens) {
-        if (invitation.userId === existing.id) this.inviteTokens.delete(token);
-      }
-    }
+  async createAccount(staffId: string, name: string, password: string): Promise<{ userId: string }> {
     const userId = randomUUID();
     this.users.set(userId, {
       id: userId,
-      email: email.toLowerCase(),
+      username: staffId,
       name,
-      password: null,
-      confirmed: false,
+      password,
+      confirmed: true,
       banned: false,
-      factorId: null,
-      totp: null,
-    });
-    const token = randomUUID().replace(/-/g, "");
-    this.inviteTokens.set(token, { userId, used: false });
-    await this.dependencies.mail.send({
-      to: email,
-      subject: "Springfield College chat staff invitation",
-      body: `${this.dependencies.baseUrl}/api/auth/confirm?token_hash=${token}&type=invite`,
     });
     return { userId };
+  }
+
+  async resetPassword(userId: string, password: string): Promise<void> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("Staff account not found.");
+    user.password = password;
+    await this.revokeAll(userId);
   }
 
   async revokeAll(userId: string): Promise<void> {

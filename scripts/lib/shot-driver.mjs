@@ -1,9 +1,9 @@
-// Shared driver for the screenshot scripts (ticket 33): the healthz wait,
-// the fresh-TOTP enrollment slate, and the enroll-and-sign-in flow through
-// the real UI, so each shot script starts at its own capture work instead
-// of re-implementing the bootstrap.
-import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
+// Shared driver for the screenshot scripts (ticket 33): the healthz wait
+// and the sign-in flow through the real UI, so each shot script starts at
+// its own capture work instead of re-implementing the bootstrap.
+// Ticket 80: staff sign-in is username + password verified by hosted
+// Supabase Auth — staff rows live in staff_members — and ticket 82 made
+// that the whole flow: no enrollment stage exists any more.
 
 /** Waits until the server answers /api/healthz, or throws. */
 export async function waitForServer(base) {
@@ -19,70 +19,63 @@ export async function waitForServer(base) {
 }
 
 /**
- * A clean enrollment slate for the screenshot owner: wipes any prior TOTP
- * enrollment and sessions the owner left behind — the script enrolls fresh
- * each run, and twoFactor.enable rejects while a factor is already active.
- * Returns whether an owner existed to wipe.
+ * Fail-fast guard for the demo-page widget steps (ticket 78): ticket 76's
+ * production embed allowlist admits only allowlisted HTTPS origins, so under
+ * a production build the loopback demo origin is denied and every launcher
+ * wait would time out opaquely. Outside production the trusted application
+ * origins keep the demo origin embeddable — these steps are dev-mode-only,
+ * and this probe turns the denial into a clear instruction.
  */
-export function freshTotpSlate(dbPath, email) {
-  const db = new DatabaseSync(dbPath);
-  const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(email);
-  if (owner) {
-    db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-    db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-    db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
+export async function assertDemoOriginEmbeddable(base) {
+  const response = await fetch(`${base}/api/v1/embed-eligibility?origin=${encodeURIComponent(base)}`);
+  if (!response.ok) {
+    throw new Error(`the embed eligibility probe failed: ${response.status}`);
   }
-  db.close();
-  return owner !== undefined;
+  const body = await response.json();
+  if (body.allowed !== true) {
+    throw new Error(
+      `the demo origin ${base} is not an allowed widget host on this server — ` +
+        "under a production build the ticket-76 embed allowlist admits only allowlisted HTTPS origins. " +
+        `These widget steps are dev-mode-only: run \`next dev\` with CHATBOT_BASE_URL=${base} and re-run against that origin.`,
+    );
+  }
 }
 
 /**
- * Enrolls the owner's TOTP through the real UI and signs in with the full
- * password + code flow, landing on the dashboard inbox. A password-only
- * session reaches /dashboard/enroll directly (the login page's code stage
- * presumes an existing token); enrollment signs out, so the second pass is
- * a complete sign-in. Returns the enrolled TOTP generator — callers that
- * sign in again (reduced-motion passes) reuse it.
+ * Signs the staff member in through the real login page (single-stage
+ * username + password since ticket 82), landing on the dashboard inbox.
+ * `afterCredentials` (cert79's scratch-store substrate) runs once the
+ * sign-in answer has set the auth cookies but before the dashboard is
+ * opened: its store writes must exist before the first staff page's
+ * session join.
  */
-export async function enrollAndSignIn(page, base, email, password) {
+export async function signIn(page, base, username, password, afterCredentials) {
   await page.goto(`${base}/dashboard/login`);
   await page.waitForLoadState("domcontentloaded");
-  await page.fill("#email", email);
+  await page.fill("#username", username);
   await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForTimeout(3000);
-  await page.goto(`${base}/dashboard/enroll`);
-  await page.waitForLoadState("domcontentloaded");
-  await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("code", { timeout: 15000 });
-  const secret = (await page.textContent("code")).trim();
-  // URI.parse is the code path the test suite proves correct; a bare
-  // Secret({b32}) decodes better-auth's ASCII-string secrets differently.
-  const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-  await page.fill("#email", email);
-  await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 15000 });
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-  console.log("signed in; enrollment complete");
-  return totp;
-}
-
-/** Re-signed-in helper for passes that reuse an enrolled TOTP. */
-export async function signInWithTotp(page, base, email, password, totp) {
-  await page.goto(`${base}/dashboard/login`);
-  await page.waitForLoadState("domcontentloaded");
-  await page.fill("#email", email);
-  await page.fill("#password", password);
-  await page.click("button[type=submit]");
-  await page.waitForSelector("#totp", { timeout: 15000 });
-  await page.fill("#totp", totp.generate());
-  await page.click("button[type=submit]");
-  await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+  if (afterCredentials) {
+    const answered = page.waitForResponse((response) =>
+      response.url().includes("/api/auth/sign-in/username"),
+    );
+    await page.click("button[type=submit]");
+    await answered;
+    await afterCredentials();
+    // The page's own post-sign-in redirect may already have bounced off the
+    // inbox (the hook's store writes land after that first staff-page join),
+    // so navigate with a retry past that bounce rather than one-shot.
+    for (let attempt = 0; ; attempt++) {
+      await page.goto(`${base}/dashboard/inbox`).catch(() => {});
+      try {
+        await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
+        break;
+      } catch {
+        if (attempt >= 2) throw new Error("the dashboard never accepted the seeded session");
+      }
+    }
+  } else {
+    await page.click("button[type=submit]");
+    await page.waitForURL("**/dashboard/inbox", { timeout: 60000 });
+  }
+  console.log("signed in");
 }

@@ -1,14 +1,14 @@
-// Design-ticket screenshot driver (ticket 13): enrolls and signs the owner in
-// through the real UI in headless Chromium, then captures the staff surfaces
+// Design-ticket screenshot driver (ticket 13): signs the owner in through
+// the real UI in headless Chromium, then captures the staff surfaces
 // at three viewport widths. Usage: node scripts/design-shots.mjs <outdir> [port]
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { enrollAndSignIn, freshTotpSlate, waitForServer } from "./lib/shot-driver.mjs";
+import { signIn, waitForServer } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3122"}`;
-const EMAIL = process.env.SHOT_EMAIL ?? "owner@example.edu";
+const USERNAME = process.env.SHOT_USERNAME ?? "owner";
 const PASSWORD = process.env.SHOT_PASSWORD ?? "owner-design-check-83";
 const WIDTHS = [
   [1280, 800, "desktop"],
@@ -18,16 +18,12 @@ const WIDTHS = [
 
 await waitForServer(BASE);
 
-// The enrollment flow needs a clean slate: wipe any prior TOTP enrollment
-// for the screenshot owner (the script enrolls fresh each run).
-freshTotpSlate("chatbot.db", EMAIL);
-
 const browser = await chromium.launch();
 const context = await browser.newContext();
 const page = await context.newPage();
 await page.setViewportSize({ width: 1280, height: 800 });
 
-await enrollAndSignIn(page, BASE, EMAIL, PASSWORD);
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 mkdirSync(OUT, { recursive: true });
 async function shot(path, name) {
@@ -55,7 +51,7 @@ for (const [width, height, label] of WIDTHS) {
     console.log("captured", `after-conversation-${label}`);
   }
   await shot("/dashboard/answers", `after-answers-${label}`);
-  await shot("/dashboard/notifications", `after-alerts-${label}`);
+  await shot("/dashboard/settings", `after-settings-${label}`);
   await shot("/dashboard/staff", `after-staff-${label}`);
 }
 // The signed-out screens, in a clean context.

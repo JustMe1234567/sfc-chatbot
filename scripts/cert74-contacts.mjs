@@ -13,13 +13,13 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket74";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3236"}`;
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -93,31 +93,9 @@ async function shot(name) {
 }
 
 // ===========================================================================
-// Owner sign-in with fresh TOTP enrollment (scratch db).
+// Owner sign-in (scratch db, password-only flow since ticket 82).
 // ===========================================================================
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const totp = URI.parse(`otpauth://totp/x?secret=${(await page.textContent("code")).trim()}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 // ===========================================================================
 // The redesigned page: single heading, pill, search, table.

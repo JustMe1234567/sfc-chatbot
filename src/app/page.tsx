@@ -1,12 +1,8 @@
+import { redirect } from "next/navigation";
+
+/** The site root is the staff dashboard: signed-out visitors chain straight
+ * to the login screen via /dashboard's own auth redirect. The WordPress
+ * embed demo stays reachable at /demo/wordpress-test-page.html. */
 export default function Home() {
-  return (
-    <main style={{ maxWidth: "42rem", margin: "2rem auto", padding: "0 1rem" }}>
-      <h1>Springfield College chatbot</h1>
-      <p>
-        The chat widget is embedded on the college WordPress site. A local demo
-        page reproduces that embed:{" "}
-        <a href="/demo/wordpress-test-page.html">open the WordPress test page</a>.
-      </p>
-    </main>
-  );
+  redirect("/dashboard");
 }

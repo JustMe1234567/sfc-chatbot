@@ -12,6 +12,10 @@ Use the five default triage roles as `Status:` values in local issue files. See 
 
 Use a single-context layout with `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Shared localhost state
+
+Before starting or visiting the local app, read `LOCALHOST.md`. Verify the recorded port before starting another server, and update that file whenever the local server is started, stopped, or found stale.
+
 ## Working style
 
 - **Build exactly what the ticket asks — nothing more.** Don't fix unrelated code, refactor untouched modules, upgrade dependencies, or "improve" anything nobody asked for, even if it looks wrong. File a ticket for it instead.

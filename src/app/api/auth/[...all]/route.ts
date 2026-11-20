@@ -1,7 +1,8 @@
 import { getChatbotService } from "@/db/service";
 
 async function handle(request: Request): Promise<Response> {
-  const response = await (await getChatbotService()).auth.handle(request);
+  const service = await getChatbotService();
+  const response = await service.auth.handle(request);
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }

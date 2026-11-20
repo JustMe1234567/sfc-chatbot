@@ -18,9 +18,8 @@ import {
 } from "../src/domain/branding";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 import { repoRoot } from "../src/paths";
 import { TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
@@ -59,15 +58,14 @@ function webPBytes(): Uint8Array {
 }
 
 /**
- * Provisions the staff member, enrolls their second factor, and leaves the
- * jar holding a dashboard session (the house provisioning sequence).
+ * Provisions the staff member and leaves the jar holding a dashboard
+ * session (the house provisioning sequence).
  */
-async function signInAs(role: "owner" | "staff" | "editor", label: string): Promise<CookieJar> {
+async function provisionedSession(role: "owner" | "staff" | "editor", label: string): Promise<CookieJar> {
   const jar = new CookieJar();
   const email = `${label}-${role}@example.edu`;
   await provisionStaff({ email, password: "Branding2026!", name: `Branding ${role}`, role });
-  const totp = await enrollTotp(jar, email, "Branding2026!");
-  await signInWithTotp(jar, email, "Branding2026!", totp);
+  await signInAs(jar, email, "Branding2026!");
   return jar;
 }
 
@@ -284,7 +282,7 @@ describe("branding settings API (ticket 70)", () => {
   it("accepts a valid upload from every dashboard role", async () => {
     const png = await bundledPngBytes();
     for (const role of ["owner", "staff", "editor"] as const) {
-      const jar = await signInAs(role, "matrix");
+      const jar = await provisionedSession(role, "matrix");
       const put = await staffPut("chatbot-icon", jar, { image: pngDataUrl(png) });
       expect(put.status, `${role} upload`).toBe(200);
       expect(((await put.json()) as { ok?: boolean }).ok).toBe(true);
@@ -292,7 +290,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("rejects SVG, disguised, oversized, and corrupt uploads without saving", async () => {
-    const jar = await signInAs("owner", "validator");
+    const jar = await provisionedSession("owner", "validator");
     const attempts: [string, unknown][] = [
       ["svg", { image: svgDataUrl() }],
       ["corrupt base64", { image: "data:image/png;base64,####" }],
@@ -319,7 +317,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("applies an accepted upload to the public read and asset route", async () => {
-    const jar = await signInAs("staff", "apply");
+    const jar = await provisionedSession("staff", "apply");
     const png = await bundledPngBytes();
     const put = await staffPut("chatbot-icon", jar, { image: pngDataUrl(png) });
     expect(put.status).toBe(200);
@@ -341,7 +339,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("keeps the two images independent on reset", async () => {
-    const jar = await signInAs("editor", "independent");
+    const jar = await provisionedSession("editor", "independent");
     const png = await bundledPngBytes();
     await staffPut("chatbot-icon", jar, { image: pngDataUrl(png) });
     await staffPut("dashboard-favicon", jar, { image: pngDataUrl(png) });
@@ -366,7 +364,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("validates the chathead config, blocks saves that do not fit, and resets (ticket 71)", async () => {
-    const jar = await signInAs("staff", "chathead");
+    const jar = await provisionedSession("staff", "chathead");
 
     // A pre-71-shaped body (no dimensions) stays valid: the public read
     // derives the outer size, preserving deployed chatheads.
@@ -495,12 +493,16 @@ describe("branding settings API (ticket 70)", () => {
     expect(content).toContain('chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png"');
     expect(content).toContain('postMessage({ type: "sfcw:branding", config }, "*")');
     // The loader applies branding only from the frame's forwarded message —
-    // it never calls the API from the college page context — and sizes the
-    // launcher from the resolved width and height, with the corner radius
-    // at 25% of the smaller dimension (ticket 71) and the frame hanging
-    // above the configured height.
+    // branding itself never calls the API from the college page context —
+    // and sizes the launcher from the resolved width and height, with the
+    // corner radius at 25% of the smaller dimension (ticket 71) and the
+    // frame hanging above the configured height. (Ticket 76 narrows the
+    // loader's "no API calls" property to exactly one credential-free
+    // pre-render ask — the eligibility check — so the pin counts that one
+    // path instead of forbidding the prefix.)
     const loader = await readFile(path.join(repoRoot(), "src/widget/loader.ts"), "utf8");
-    expect(loader).not.toContain("/api/v1/");
+    expect(loader).toContain("/api/v1/embed-eligibility");
+    expect(loader.match(/api\/v1\//g)).toHaveLength(1);
     expect(loader).toContain('type === "sfcw:branding"');
     expect(loader).toContain("width:var(--sfcw-w,64px);height:var(--sfcw-h,64px)");
     expect(loader).toContain("border-radius:calc(min(var(--sfcw-w,64px),var(--sfcw-h,64px)) * .25)");

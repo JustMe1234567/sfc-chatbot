@@ -41,8 +41,16 @@ database (the spec's controlled-test-store seam). The restart test spawns
 ## How the widget is embedded
 
 - `public/widget/v1.js` (built from `src/widget/loader.ts`) is the only thing
-  WordPress loads. It renders a launcher button and a cross-origin iframe at
-  `/widget/frame`; it makes no API calls and never touches page storage.
+  WordPress loads. Before rendering anything it makes exactly one API call:
+  `GET /api/v1/embed-eligibility` asks whether the host page's origin is
+  allowed. The request sends no visitor credential, and the response is only
+  an allow/deny result — never the allowlist. A denial, or any failure to
+  confirm eligibility, leaves the page untouched: no launcher, iframe, style,
+  or visitor-facing error. When allowed, it renders a launcher button and a
+  cross-origin iframe at `/widget/frame`; the loader never touches page
+  storage. The iframe response independently enforces a `frame-ancestors`
+  policy derived from the owner-managed embed allowlist (see
+  [ADR-0005](docs/adr/0005-owner-managed-embed-authorization.md)).
 - The visitor session credential lives in chatbot-origin `sessionStorage`
   inside the iframe — never in WordPress `localStorage` — and expires
   server-side after 24 hours.
@@ -51,15 +59,18 @@ database (the spec's controlled-test-store seam). The restart test spawns
 
 ## Staff dashboard and authentication
 
-Staff access is invite-only and second-factor protected:
+Staff access is owner-managed, and sign-in is username and password for
+every role — single-stage, no second factor (ADR-0006; ticket 81's login
+log, suspicious-login flagging, and IP block are the compensating
+controls):
 
 ```bash
-npm run bootstrap:owner -- --email owner@example.edu --name 'Owner'
+npm run bootstrap:owner -- --username owner --password 'choose-10+-characters' --name 'Owner'
 npm run dev
 ```
 
-Open <http://localhost:3000/dashboard>. The owner follows the emailed invite,
-creates a password, and enrolls TOTP. Supabase Auth owns credentials and
+Open <http://localhost:3000/dashboard>. The owner signs in with the username
+and password provided at bootstrap. Supabase Auth owns credentials and
 sessions; `staff_members` owns application roles and disablement. Only the
 project URL and publishable key are public. The secret key and database URL
 remain server-only.
@@ -68,7 +79,7 @@ remain server-only.
 
 `DATABASE_URL` names the same Supabase project as the Auth URL. The Postgres
 schema is applied automatically. `docs/deployment.md` covers project setup,
-configuration-only transfer, owner invitation, recovery, and test deployment.
+configuration-only transfer, owner setup, credential recovery, and test deployment.
 
 Run the full test suite against Postgres:
 
@@ -92,7 +103,6 @@ Scheduled maintenance (transcript retention + analytics expiry) runs through
 | `src/store/` | SQLite and Postgres stores behind the `Store` port, shared row mappers, and seed content |
 | `src/db/` | Backend connections (SQLite + Postgres), portable query surface, versioned migration runners, service singleton |
 | `src/widget/` | Loader script bundled to `public/widget/v1.js` |
-| `src/mail/` | Development mail transport (mail_outbox table) |
 | `migrations/` | Versioned SQL schema migrations (SQLite and `postgres/`) |
 | `public/demo/` | WordPress-style test page for the embed |
 | `wordpress/` | Optional mu-plugin that enqueues the loader site-wide |

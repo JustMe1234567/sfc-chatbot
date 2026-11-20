@@ -3,22 +3,19 @@ import { sqliteAppDatabase, postgresAppDatabase, type AppDatabase } from "./appD
 import { createSqliteStore } from "../store/sqliteStore";
 import { createPostgresStore } from "../store/postgresStore";
 import { seedAnswerRules } from "../store/seed";
-import { seedEscalationPhrases, seedHandoffOptions } from "../settings";
+import { seedEmbedAllowlist, seedEscalationPhrases, seedHandoffOptions } from "../settings";
 import { migratePostgres, openPostgres, type PostgresSql } from "./postgres";
 import type { AuthProvider } from "../auth/provider";
 import { assertSupabaseConfigured, createSupabaseAuth } from "../auth/supabase-provider";
-import { createMailTransportFromEnv } from "../mail/transport";
-import type { MailTransport } from "../mail/outbox";
 import { appBaseUrl, appDatabaseUrl, appDbPath, assertConfiguredDatabaseUrl } from "../config";
 import type { Store } from "../domain/types";
 import type { DatabaseSync } from "node:sqlite";
 
 export interface ChatbotService {
   store: Store;
-  /** The portable query surface for settings, notifications, and staff admin. */
+  /** The portable query surface for settings and staff administration. */
   db: AppDatabase;
   auth: AuthProvider;
-  mail: MailTransport;
 }
 
 let servicePromise: Promise<ChatbotService> | null = null;
@@ -38,13 +35,12 @@ async function buildSqliteService(): Promise<ChatbotService> {
   await seedAnswerRules(store);
   await seedEscalationPhrases(appDb);
   await seedHandoffOptions(appDb);
-  const mail = createMailTransportFromEnv(appDb);
+  await seedEmbedAllowlist(appDb);
   const auth = createSupabaseAuth({
     db: appDb,
-    mail,
     baseUrl: appBaseUrl(),
   });
-  return { store, db: appDb, auth, mail };
+  return { store, db: appDb, auth };
 }
 
 async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
@@ -54,13 +50,12 @@ async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
   await seedAnswerRules(store);
   await seedEscalationPhrases(appDb);
   await seedHandoffOptions(appDb);
-  const mail = createMailTransportFromEnv(appDb);
+  await seedEmbedAllowlist(appDb);
   const auth = createSupabaseAuth({
     db: appDb,
-    mail,
     baseUrl: appBaseUrl(),
   });
-  return { store, db: appDb, auth, mail };
+  return { store, db: appDb, auth };
 }
 
 /**

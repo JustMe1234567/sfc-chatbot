@@ -16,3 +16,23 @@ coverage/
 *.sqlite3-*
 .DS_Store
 .next-*.log
+
+.vercel
+.env*
+
+# Local implementation and certification debris. The issue tracker,
+# approved specs, and reference evidence under these two directories remain
+# versioned; transient top-level scratch files and worktrees do not.
+.scratch/*
+!.scratch/college-website-chat/
+!.scratch/college-website-chat/**
+!.scratch/supabase-auth/
+!.scratch/supabase-auth/**
+.scratch/college-website-chat/*.db
+.scratch/college-website-chat/*.db-*
+.scratch/college-website-chat/*.db-shm
+.scratch/college-website-chat/*.db-wal
+
+# Installed host-skill copies are machine tooling, not application source.
+.agents/skills/design-taste-frontend/
+.agents/skills/ui-ux-pro-max/

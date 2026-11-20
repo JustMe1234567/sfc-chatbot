@@ -22,14 +22,15 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
     const header = await readHeader();
     // The NAV table is the single seam ticket 53 coordinates against: labels,
     // hrefs, and role subsets must be byte-identical to the top bar's.
-    // Ticket 53 adds its own sixth entry (Visitor emails) without touching
-    // these five rows.
+    // Visitor contacts and Settings retain their existing role filters.
     for (const row of [
       '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] }',
       '{ area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] }',
       '{ area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] }',
       '{ area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] }',
-      '{ area: "alerts", href: "/dashboard/notifications", label: "Email alerts", roles: ["owner", "staff"] }',
+      '{ area: "logs", href: "/dashboard/logs", label: "Logs", roles: ["owner"] }',
+      '{ area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["owner", "staff"] }',
+      '{ area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["owner", "staff", "editor"] }',
     ]) {
       expect(header, row).toContain(row);
     }
@@ -40,9 +41,10 @@ describe("the sidebar keeps the navigation contract (ticket 52)", () => {
 
   it("renders a hand-authored inline SVG icon per area, with no icon library", async () => {
     const header = await readHeader();
-    // One shared Mark wrapper renders the inline SVG; the seven area
-    // entries (ticket 53 added the envelope, ticket 70 the gear) supply
-    // their own paths, plus the toggle chevron and menu marks.
+    // One shared Mark wrapper renders the inline SVG; the eight area
+    // entries (ticket 53 added contacts, ticket 70 the gear, ticket 81 the
+    // Logs scroll) supply their own paths, plus the toggle chevron and menu
+    // marks.
     const marks = (header.match(/<Mark>/g) ?? []).length;
     expect(marks).toBe(7);
     expect(header).toMatch(/function Mark/);

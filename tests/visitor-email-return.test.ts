@@ -15,9 +15,8 @@ import {
 } from "./helpers";
 import {
   CookieJar,
-  enrollTotp,
   provisionStaff,
-  signInWithTotp,
+  signInAs,
 } from "./auth-helpers";
 import { repoRoot } from "../src/paths";
 
@@ -32,8 +31,6 @@ import { repoRoot } from "../src/paths";
 
 const STAFF_EMAIL = "alice@example.edu";
 const STAFF_PASSWORD = "alice-return-harbor-61";
-
-let staffTotp: Awaited<ReturnType<typeof enrollTotp>>;
 
 async function count(postgresSql: string, sqliteSql: string, ...params: string[]): Promise<number> {
   const { getChatbotService } = await import("../src/db/service");
@@ -57,7 +54,7 @@ async function redeem(rawToken: string): Promise<Response> {
 
 async function staffClaimReply(conversationId: string, replyText: string): Promise<Response> {
   const jar = new CookieJar();
-  await signInWithTotp(jar, STAFF_EMAIL, STAFF_PASSWORD, staffTotp);
+  await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
   const claimRoute = await import("../src/app/api/staff/conversations/[id]/claim/route");
   await claimRoute.POST(
     new Request(`${TEST_ORIGIN}/api/staff/conversations/${conversationId}/claim`, {
@@ -113,7 +110,6 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Alice" });
-  staffTotp = await enrollTotp(new CookieJar(), STAFF_EMAIL, STAFF_PASSWORD);
 });
 
 describe("the optional handoff email request is gone", () => {
@@ -167,7 +163,7 @@ describe("a staff reply never emails the visitor a return link", () => {
     expect(body.messages.at(-1)?.role).toBe("staff");
   });
 
-  it("still sends the staff escalation alert exactly as before", async () => {
+  it("uses dashboard attention without creating a staff email delivery", async () => {
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
     const before = await count(
@@ -180,12 +176,12 @@ describe("a staff reply never emails the visitor a return link", () => {
         "SELECT COUNT(*)::int AS n FROM notifications WHERE type = 'escalation_alert'",
         "SELECT COUNT(*) AS n FROM notifications WHERE type = 'escalation_alert'",
       ),
-    ).toBe(before + 1);
-    const row = (await db.get<{ conversation_id: string }>(
+    ).toBe(before);
+    const row = await db.get<{ conversation_id: string }>(
       "SELECT conversation_id FROM notifications WHERE type = 'escalation_alert' AND conversation_id = ?",
       conversation.id,
-    )) as { conversation_id: string };
-    expect(row.conversation_id).toBe(conversation.id);
+    );
+    expect(row).toBeUndefined();
   });
 });
 

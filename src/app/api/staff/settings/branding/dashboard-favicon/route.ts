@@ -11,7 +11,7 @@ import { getChatbotService } from "@/db/service";
 /**
  * The dashboard favicon setting (ticket 70): a validated base64 data URL or
  * null to reset to the bundled crest. The asset is referenced only by the
- * dashboard layouts' metadata — login, enrollment, and the authenticated
+ * dashboard layouts' metadata — the login page and the authenticated
  * admin pages — and never by the public demo or the widget.
  */
 export async function PUT(request: Request) {

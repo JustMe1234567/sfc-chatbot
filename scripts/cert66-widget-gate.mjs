@@ -3,24 +3,26 @@
 // real widget on the demo page — form first, server-side rejection of a bad
 // phone, accepted details opening the chat, the gate returning after Clear
 // chat, and a direct-API bypass attempt against a legacy conversation —
-// then signs the owner in through the real UI (fresh TOTP enrollment) to
+// then signs the owner in through the real UI to
 // assert "Name · state" rows, the fallback label, the green/yellow/red tier
 // colors by computed style, and the Visitor emails page's new copy.
 // Usage: node scripts/cert66-widget-gate.mjs <outdir> [port]
+// Dev-mode only (ticket 78): under a production build the ticket-76 embed
+// allowlist denies the loopback demo origin — the probe below fails fast.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket66";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3222"}`;
 const DB_PATH =
   process.env.CHATBOT_DB ?? ".scratch/college-website-chat/ticket66.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -33,22 +35,28 @@ for (let attempt = 0; ; attempt++) {
   }
 }
 
+// Ticket 78 guard: the widget steps drive the demo page, which must be an
+// allowed widget host — this cert is dev-mode-only.
+{
+  const eligibility = await (
+    await fetch(`${BASE}/api/v1/embed-eligibility?origin=${encodeURIComponent(BASE)}`)
+  ).json();
+  if (eligibility.allowed !== true) {
+    throw new Error(
+      `the demo origin ${BASE} is not an allowed widget host on this server — under a production build the ticket-76 embed allowlist admits only allowlisted HTTPS origins. ` +
+        `Run \`next dev\` with CHATBOT_BASE_URL=${BASE} and re-run this cert against that origin.`,
+    );
+  }
+}
+
 // Any chatbot route initializes the service singleton (migrations + seed
-// rules); healthz alone does not — and the enrollment wipe below needs the
-// tables.
+// rules); healthz alone does not.
 const topicsResponse = await fetch(`${BASE}/api/v1/topics`);
 if (!topicsResponse.ok) throw new Error(`topics fetch failed: ${topicsResponse.status}`);
 
-// A clean enrollment slate (same as the other screenshot scripts).
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-}
-db.close();
+// No local enrollment wipe (ticket 80): staff credentials live in hosted
+// Supabase Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner for the sign-in below.
 
 const CONTACT = {
   fullName: "Jane Doe",
@@ -297,31 +305,8 @@ if ((await (await postMessage(claimedChat, { text: "Claim test: please let me sp
 }
 const legacyHistory = await seedLegacyConversation("closed", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
 
-// Sign the owner in through the real UI (fresh TOTP enrollment).
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// Sign the owner in through the real UI (password-only since ticket 82).
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 const list = page.getByRole("navigation", { name: "Conversation list" });
 await list.waitFor({ timeout: 10000 });

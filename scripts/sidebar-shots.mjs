@@ -8,15 +8,13 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT = process.argv[2] ?? ".scratch/college-website-chat/references/shots-sidebar";
 const PORT = process.argv[3] ?? "3216";
 const BASE = `http://127.0.0.1:${PORT}`;
-const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/history51.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -29,22 +27,12 @@ for (let attempt = 0; ; attempt++) {
   }
 }
 
-// Initialize the service (healthz alone does not migrate the database), then
-// wipe only enrollment. Conversations are irrelevant to the chrome.
+// Initialize the service (healthz alone does not migrate the database).
+// Conversations are irrelevant to the chrome, and no enrollment wipe exists
+// (ticket 80): staff credentials live in hosted Supabase Auth, not a store
+// table, so the sign-in below requires a freshly bootstrapped owner.
 const warm = await fetch(`${BASE}/api/v1/topics`);
 if (!warm.ok) throw new Error(`topics fetch failed: ${warm.status}`);
-
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-} else {
-  console.log("no prior enrollment to wipe");
-}
-db.close();
 
 const browser = await chromium.launch();
 const context = await browser.newContext();
@@ -56,31 +44,8 @@ page.on("pageerror", (error) => {
 });
 await page.setViewportSize({ width: 1280, height: 900 });
 
-// --- Sign the owner in through the real UI (fresh TOTP enrollment). ------
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+// --- Sign the owner in through the real UI (password-only since 82). ------
+await signIn(page, BASE, USERNAME, PASSWORD);
 mkdirSync(OUT, { recursive: true });
 // Start every run from the compact default, then explicitly expand for the
 // desktop navigation checks.
@@ -99,7 +64,7 @@ await page.waitForTimeout(350);
 
 // --- The desktop rail: brand, five items, icons, active state. ------------
 const labels = await railNav.locator(".sideItem, [class*='sideItem']").allInnerTexts();
-const expected = ["Conversations", "Analytics", "Answers", "Staff", "Email alerts"];
+const expected = ["Conversations", "Visitor contacts", "Analytics", "Answers", "Staff", "Settings"];
 const flat = labels.map((text) => text.replace(/\s+/g, " ").trim());
 for (const item of expected) {
   if (!flat.some((text) => text.includes(item))) {

@@ -1,34 +1,24 @@
-# Hosted Supabase staff authentication
+# Supabase Auth implementation spec
 
-Status: needs-info
+Status: implemented locally; hosted test-project verification recorded 2026-11-20 (tickets 70/81/82 certs on a local production runtime against the hosted test project — see ticket 82's evidence comment); Vercel-hosted verification still pending
 
-Approved 2026-11-14: replace Better Auth with Supabase Auth; staff-only email/password, invitation-only, mandatory TOTP for owner/staff/editor. Preserve current permissions, immediate disabling, reset/global logout revocation, and visitor credentials. Localhost and Vercel test deployment use a dedicated hosted test project. Production launch is excluded. Source database remains intact: transfer only answer rules, settings (including handoff options/phrases), and branding into a fresh target; no identities, conversations, contacts, audit, analytics, notification, session, or rate-limit records.
+Approved direction: replace Better Auth with Supabase Auth using owner-managed usernames and passwords. Sign-in is single-stage username+password for every role — the mandatory TOTP requirement is gone (ticket 82; ADR-0006 records the posture change, with ticket 81's login log, suspicious flagging, and IP block as the compensating controls). Public signup, invitation email, password-recovery email, SMTP, Resend, and chat-alert email are not used. Localhost and the Vercel test deployment share a dedicated hosted test project. Production launch remains excluded.
 
-## Delivery graph
+## Interfaces and behavior
 
-1. Core: provider boundary, staff schema, config validation, SSR cookies, trusted authorization, invitations, revocation, bootstrap.
-2. UI (depends on core interface): existing styled login/enroll, invitation/recovery, MFA and logout; owner invitation status instead of passwords.
-3. Configuration transfer (independent): read-only export, fresh-target import, validation and tests, preserve source.
-4. Tests/docs/integration (depends on core interface; final checks depend on all): test-only provider, adapt existing authorization tests, docs/ADR, hosted verification.
+- `staff_members` owns the public username, name, role, disabled state, and unique Supabase user link. Existing application staff IDs remain text. The legacy non-null email field contains an internal synthetic identifier and is not displayed or used for delivery.
+- POST `/api/auth/sign-in/username` accepts `{username,password}` and is the whole sign-in flow — no enrollment page, no challenge stage. Every protected request verifies a current Supabase session, its backing session row, and the linked active staff record; no second-factor state is consulted (ticket 82).
+- Owners create staff/editor accounts with `{name,username,password,role}`. Usernames are unique case-insensitively and match `[a-z0-9._-]{3,32}`; passwords retain the 10-character minimum.
+- An owner-issued password reset revokes every session (ADR-0006 carries that clause forward). Staff may change their own password from Settings with only a live session, and a self-service change revokes no sessions (ticket 82 review amendment). No MFA exists anywhere, so no MFA reset exists. Lost-owner recovery uses the trusted CLI after operator identity verification.
+- Visitor credentials remain independent of Supabase Auth. Chat escalation raises the existing dashboard attention/sound signal and creates no mail or notification-delivery record.
+- Application data remains behind Next.js APIs and direct Postgres. Supabase Data API is disabled and roles never come from user metadata.
 
-## Shared interfaces for implementers
+## Data transfer and environments
 
-- `src/auth/provider.ts`: AuthIdentity has `userId` (Supabase user ID), `sessionId`, `email`, `emailVerified`, `aal: 'aal1'|'aal2'`, `mfaEnrolled`. AuthProvider has `authenticate(headers)`, `handle(request)`, `invite(email, name): Promise<{ userId: string }>`, `revokeAll(userId)`, `disable(userId)`. Live and test providers implement this boundary. Test adapter is installed from Vitest setup only, never selected via environment configuration in a running app.
-- `ChatbotService.auth` becomes AuthProvider. `src/auth/server.ts` retains role constants/types but no Better Auth.
-- Application staff table `staff_members` keeps current camelCase fields (`id`, `name`, `email`, `role`, `banned`, `emailVerified`, `twoFactorEnabled`, `createdAt`, `updatedAt`) plus nullable unique `supabaseUserId` and `invitationStatus` ('pending'|'sent'|'accepted'). New IDs are UUID strings; existing application staff references remain text.
-- Auth HTTP endpoints: POST `/api/auth/sign-in/email` {email,password} -> {twoFactorRedirect:boolean}; GET `/api/auth/get-session` -> {user:{id,email,name,twoFactorEnabled},aal}|null; POST `/api/auth/two-factor/enable` -> {totpURI,qrCode,factorId}; POST `/api/auth/two-factor/verify-totp` {code,factorId?} -> success; POST `/api/auth/sign-out` ends current session; POST `/api/auth/forget-password` {email} -> generic success; POST `/api/auth/reset-password` {newPassword} -> success then sign-in; POST `/api/auth/set-password` {newPassword} for invitation. Minimum 10 chars. GET `/api/auth/confirm?token_hash=...&type=invite|recovery` verifies OTP and redirects ONLY to fixed `/dashboard/accept-invitation` or `/dashboard/reset-password`. Password recovery must require enrolled MFA before password change. All unsafe app endpoints enforce existing same-origin guard; all auth responses private/no-store.
-- Browser auth client can be a fetch facade in existing `src/lib/auth-client.ts`; server handles Supabase SSR cookies. Keep endpoint responses explicit; no Better Auth packages in runtime.
-- Existing owner POST `/api/staff/members` input stays {name,email,role}; output {member,invitationStatus:'sent'}, no initialPassword. Same email with pending invite is retried, but cannot change role or name or reactivate disabled/accepted accounts.
-- Configuration transfer must use direct source read-only connection, never `getChatbotService` or migrating/openDatabase helpers on source. Do not edit package.json in subagents; report needed scripts to root.
+Configuration export/import includes ordered answer rules, publication state, settings, handoff phrases/options, and branding, with obsolete staff attribution cleared. It excludes staff/Auth identities, sessions, conversations, contacts, audit/history, notifications, analytics, and rate limits. Import refuses a used target and leaves the source untouched.
+
+Required configuration is the matching project URL, publishable key, server-only secret key, transaction-pooler database URL, and exact app origin. Localhost and Vercel callback origins are explicit; arbitrary redirects are not accepted.
 
 ## Verification
 
-Provider and staff API seams test all roles, invalid/stale/unverified/aal1 identities, immediate disable/reset/logout, invite retries, recovery MFA, cookie handling and CSRF. Preserve SQLite/Postgres application coverage with a test-only provider. Real integration uses disposable users and data in explicitly identified hosted test project; never production. Verify configured URLs/keys/database match, SMTP, localhost and Vercel browser flows, Data API disabled. No hosted credentials currently available: do not claim this acceptance step passed without evidence.
-
-## Documentation
-
-Record ADR superseding offline Better Auth choice, update staff-account terms, environment example, deployment runbook and ticket 11. Trusted CLI invites first owner; dashboard cannot create owners. Resend SMTP for Auth; chat alerts unchanged. Operator-assisted MFA recovery with identity verification and session revocation. Archive old source intact; migrate configuration with obsolete staff attribution cleared.
-
-## Comments
-
-- 2026-11-15: Local implementation, isolated-provider tests, production build, migrations, configuration-transfer tooling, ADR, glossary, and deployment runbook are complete. Hosted acceptance is waiting for the dedicated Supabase test project URL/credentials, Vercel test project URL, and first-owner email. Secrets must be configured in local/Vercel environment settings, not added to this issue.
+Local isolated tests use the provider substitute and cover account creation, wrong passwords, single-stage sign-in with no second factor, refresh/reload, every role, unprovisioned users, forged/cross-origin requests, immediate disablement, owner-issued password reset with full session revocation, self-service password change without revocation, session revocation, configuration transfer, and sound-only escalation. Hosted verification must repeat the staff and visitor flows with disposable records and clean up only IDs created by that run. No hosted acceptance claim is made until those checks are recorded.

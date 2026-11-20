@@ -1,7 +1,7 @@
 // Ticket 28 certification (headless Chromium, one-off): dashboard a11y. On a
 // production build against a scratch Postgres database (isolated from the
-// dev server's data), signs the bootstrapped owner in through the real UI
-// with fresh TOTP enrollment, then verifies the two ticket behaviors with
+// dev server's data), signs the bootstrapped owner in through the real UI,
+// then verifies the two ticket behaviors with
 // keyboard-driven interaction: the analytics period switch completes the
 // tabs pattern (roving tabindex, arrow keys move selection AND focus with
 // wrap, Home/End, one owned panel named by the active tab, and the report
@@ -13,13 +13,13 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket28";
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3234"}`;
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -88,32 +88,9 @@ async function shot(name) {
 }
 
 // ===========================================================================
-// Owner sign-in with fresh TOTP enrollment (scratch db has no enrollment).
+// Owner sign-in (scratch db, password-only flow since ticket 82).
 // ===========================================================================
-await page.goto(`${BASE}/dashboard/login`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForTimeout(3000);
-await page.goto(`${BASE}/dashboard/enroll`);
-await page.waitForLoadState("domcontentloaded");
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 15000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 // ===========================================================================
 // The analytics period switch: keyboard-only tabs pattern.

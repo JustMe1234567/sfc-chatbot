@@ -1,6 +1,6 @@
 // Ticket 29 certification (headless Chromium, one-off): the widget and
 // dashboard accessibility polish batch. Signs the owner in through the real
-// UI (fresh scratch database, fresh TOTP enrollment), Tab-walks the
+// UI (fresh scratch database), Tab-walks the
 // dashboard to prove the skip link is the first focusable element and jumps
 // to the content, asserts the per-route document titles, then drives the
 // widget: the contact email's autocomplete attribute (the audit's box the
@@ -9,19 +9,19 @@
 // the seeded admissions answer's external link carrying its visually
 // hidden "opens in a new tab" warning. Usage:
 // node scripts/cert29-a11y-polish.mjs <outdir> [port]
+// Dev-mode only (ticket 78): under a production build the ticket-76 embed
+// allowlist denies the loopback demo origin — the probe below fails fast.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { TOTP, URI } from "otpauth";
 import process from "node:process";
+import { signIn } from "./lib/shot-driver.mjs";
 
 const OUT =
   process.argv[2] ?? ".scratch/college-website-chat/references/ticket29";
 mkdirSync(OUT, { recursive: true });
 const BASE = `http://127.0.0.1:${process.argv[3] ?? "3233"}`;
-const DB_PATH = process.env.CHATBOT_DB ?? ".scratch/college-website-chat/ticket29-cert.db";
-const EMAIL = "owner@example.edu";
+const USERNAME = "owner";
 const PASSWORD = "Springfield2026!";
 
 for (let attempt = 0; ; attempt++) {
@@ -31,6 +31,20 @@ for (let attempt = 0; ; attempt++) {
   } catch {
     if (attempt > 40) throw new Error("server never came up");
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
+// Ticket 78 guard: the widget steps drive the demo page, which must be an
+// allowed widget host — this cert is dev-mode-only.
+{
+  const eligibility = await (
+    await fetch(`${BASE}/api/v1/embed-eligibility?origin=${encodeURIComponent(BASE)}`)
+  ).json();
+  if (eligibility.allowed !== true) {
+    throw new Error(
+      `the demo origin ${BASE} is not an allowed widget host on this server — under a production build the ticket-76 embed allowlist admits only allowlisted HTTPS origins. ` +
+        `Run \`next dev\` with CHATBOT_BASE_URL=${BASE} and re-run this cert against that origin.`,
+    );
   }
 }
 
@@ -47,16 +61,9 @@ function assert(condition, message) {
   console.log(`ok: ${message}`);
 }
 
-// A clean enrollment slate (same as the other screenshot scripts).
-const db = new DatabaseSync(DB_PATH);
-const owner = db.prepare('SELECT id FROM "user" WHERE email = ?').get(EMAIL);
-if (owner) {
-  db.prepare("DELETE FROM twoFactor WHERE userId = ?").run(owner.id);
-  db.prepare('UPDATE "user" SET "twoFactorEnabled" = 0 WHERE id = ?').run(owner.id);
-  db.prepare('DELETE FROM "session" WHERE "userId" = ?').run(owner.id);
-  console.log("wiped prior enrollment for", EMAIL);
-}
-db.close();
+// No local enrollment wipe (ticket 80): staff credentials live in hosted
+// Supabase Auth, not a store table, so this cert simply requires a freshly
+// bootstrapped owner for the sign-in below.
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -79,31 +86,10 @@ assert(
   "login page titles itself through the dashboard template",
 );
 
-// Owner sign-in with fresh TOTP enrollment (established flow). The first
-// visit cold-compiles each route on a dev server, so waits key on URLs and
+// Owner sign-in (password-only since ticket 82). The first visit
+// cold-compiles each route on a dev server, so waits key on URLs and
 // generous element timeouts rather than fixed sleeps.
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await Promise.all([
-  page.waitForURL("**/dashboard/enroll", { timeout: 60000 }),
-  page.click("button[type=submit]"),
-]);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("code", { timeout: 60000 });
-const secret = (await page.textContent("code")).trim();
-const totp = URI.parse(`otpauth://totp/x?secret=${secret}`);
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/login", { timeout: 15000 });
-await page.fill("#email", EMAIL);
-await page.fill("#password", PASSWORD);
-await page.click("button[type=submit]");
-await page.waitForSelector("#totp", { timeout: 15000 });
-await page.fill("#totp", totp.generate());
-await page.click("button[type=submit]");
-await page.waitForURL("**/dashboard/inbox", { timeout: 15000 });
-console.log("signed in; enrollment complete");
+await signIn(page, BASE, USERNAME, PASSWORD);
 
 async function expectTitle(title) {
   const actual = await page.title();
@@ -134,8 +120,7 @@ const routes = [
   ["/dashboard/answers", "Answers"],
   ["/dashboard/answers/new", "New rule"],
   ["/dashboard/analytics", "Analytics"],
-  ["/dashboard/emails", "Email alerts"],
-  ["/dashboard/notifications", "Notifications"],
+  ["/dashboard/settings", "Settings"],
   ["/dashboard/staff", "Staff"],
 ];
 for (const [route, title] of routes) {
