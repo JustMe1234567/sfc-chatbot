@@ -1,6 +1,6 @@
 # 89: Settings page's 8 concurrent reads starve the Postgres pool
 
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -168,3 +168,36 @@ completed without a bounded rejection, its settings rows were restored
 byte-identically, and the disposable certification identity and records
 were removed. Acceptance criterion 2 is therefore satisfied; all four
 criteria now pass.
+
+2026-11-20: **COMPLETE.** Status set to `done` — a terminal marker outside
+the five triage roles (none of which means complete), added per the
+owner's instruction. The full chain this ticket needed is now in
+production:
+
+- **Production deployment reference:** PR #1 merged `codex/supabase-auth`
+  (through 2edc487fc) into `main` as 701710c77; Vercel deployed it as
+  `sfc-chatbot-brko0x0il` (production, ● Ready, 30 s build, created
+  2026-11-20 16:23 +0800, functions in hnd1 — the queued region flip went
+  live), aliased to the canonical https://sfc-chatbot-iota.vercel.app.
+- **cert70 success:** passed at `PG_POOL_MAX=5` on the local production
+  runtime against the hosted store (ticket 90 session, exit 0, zero
+  bounded rejections, settings rows restored byte-identically) — the
+  acceptance criterion this ticket was filed against, and the one that
+  blocked its first two attempts, now passes.
+- **Smoke-test result (live on -iota, post-merge deployment):**
+  `/api/healthz` 200; `/` 307 → `/dashboard`; `/dashboard` 307 → login
+  (guard); `/dashboard/settings` unauthenticated renders the designed
+  empty shell — "This page requires an authorized staff session." — with
+  zero settings content in the response body (the "forbidden" strings in
+  the HTML are Next.js framework serialization keys, not page content).
+  Live *authenticated* render was not driven: the production owner's
+  password is user-held. Authed evidence stands on the committed
+  concurrency test (≤ 4 concurrent reads, both dialects, both roles) and
+  cert70's authenticated Settings render on the same store.
+- **TOTP cleanup (recorded as reported by the owner, corroborated
+  read-only):** 2 auth users scanned, 1 verified TOTP factor removed; a
+  second pass removed 0. Read-only check of the shared project
+  (bmlwasuvujkfchnbklls): `auth.users` = 2, `auth.mfa_factors` = 0 rows.
+  One `login_events` row was created by the smoke's single wrong-credential
+  probe (by design, ticket 81); the IP-failure counter ticked 1/10 — no
+  block.

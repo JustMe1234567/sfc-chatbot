@@ -1,6 +1,6 @@
 # 90: postgres.js/Supabase transaction-pooler burst traffic permanently wedges the application pool
 
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -223,3 +223,38 @@ either axis. Recorded findings and their dispositions:
 Verification of this amendment: focused bounds test 1/1 (12.3 s); full
 PostgreSQL suite 581 passed / 3 skipped; `npm run check` exit 0
 (SQLite 577 passed / 7 skipped, hygiene, typecheck, production build).
+
+2026-11-20: **COMPLETE.** Status set to `done` — a terminal marker outside
+the five triage roles (none of which means complete), added per the
+owner's instruction. Post-merge production verification:
+
+- **Production deployment reference:** PR #1 merged `codex/supabase-auth`
+  (through 2edc487fc) into `main` as 701710c77; Vercel deployed it as
+  `sfc-chatbot-brko0x0il` (production, ● Ready, 30 s build, created
+  2026-11-20 16:23 +0800, functions in hnd1 — the region queued in
+  vercel.json since ticket 86 is now live), aliased to the canonical
+  https://sfc-chatbot-iota.vercel.app. The deployed code carries this
+  ticket's whole fix: postgres.js 4.1.1 with `query_timeout`/`queue_timeout`
+  (10 s defaults) and the session-pooler `DATABASE_URL` production has used
+  since 2026-11-19.
+- **cert70 success:** passed at `PG_POOL_MAX=5` on the local production
+  runtime (exit 0, zero `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` events during the
+  entire browser-driven run, settings rows restored byte-identically) —
+  the criterion that blocked ticket 89 twice.
+- **Smoke-test result (live on -iota, post-merge deployment):**
+  `/api/healthz` 200; `/` 307 → `/dashboard`; `/dashboard` 307 → login.
+  Password-only login verified at the surface: the login page renders a
+  username+password form with zero authenticator/totp/two-factor/enroll
+  markers; `/dashboard/enroll` answers 404; `POST /api/auth/two-factor/enable`
+  answers 404; the sign-in API answered a single wrong-credential probe
+  with 401 `authentication_failed` and the masked generic message — no
+  `twoFactorRedirect` shape, no second stage. A full credentialed sign-in
+  was not driven: the production owner's password is user-held.
+  `/dashboard/settings` and `/dashboard/logs` unauthenticated render the
+  designed empty authorized-session shell with zero content leakage.
+- **TOTP cleanup (recorded as reported by the owner, corroborated
+  read-only):** 2 auth users scanned, 1 verified TOTP factor removed; the
+  second pass removed 0. Read-only check of the shared project
+  (bmlwasuvujkfchnbklls): `auth.users` = 2, `auth.mfa_factors` = 0 rows.
+  The probe wrote 1 `login_events` row (by design); IP counter 1/10, no
+  block.
