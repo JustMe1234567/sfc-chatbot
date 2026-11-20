@@ -10,6 +10,8 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
 
 Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
 
+A rerun can narrow to the delta since the ticket record's last `Reviewed through:` marker (step 3); a user-supplied fixed point always governs the range start.
+
 The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
 
 ## Process
@@ -31,7 +33,21 @@ Look for the originating spec, in this order:
 3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
 4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
 
-### 3. Identify the standards sources
+### 3. Check the ticket record for a reviewed-through marker
+
+If the spec source is a ticket record in the tracker, read it for `Reviewed through: <sha>` lines (the tracker's reviewed-through convention; see the tracker doc). The last such line in the record is the **last-reviewed point**. A user-supplied fixed point always governs the range start: a marker only ever narrows an already-reviewed span inside the requested range, never widens it.
+
+The marker narrows the review only when all of these hold:
+
+- it resolves (`git rev-parse <sha>` succeeds);
+- it is an ancestor of, or equal to, HEAD (`git merge-base --is-ancestor <sha> HEAD`);
+- it lies inside the requested range: strictly after the merge-base of the fixed point and HEAD (`git merge-base <fixed-point> HEAD`), so the range contains an already-reviewed prefix to skip.
+
+Narrowed run: the sub-agent diff command becomes `git diff <marker>...HEAD` and the commit list `git log <marker>..HEAD --oneline`; the aggregate gains a disposition re-verification (step 6). If the marker equals HEAD the delta is empty: there are no new commits to review, and only the disposition re-verification runs.
+
+Otherwise — no marker, an unresolvable sha, a non-ancestor of HEAD, or one outside the requested range — ignore the marker: run the full-range review exactly as the rest of this skill specifies, and state in the final report that the marker was ignored and why.
+
+### 4. Identify the standards sources
 
 Search the repo for every file that documents how code should be written. When `CODING_STANDARDS.md` or `CONTRIBUTING.md` exists, it must be on the list.
 
@@ -55,29 +71,39 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man**: a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest**: a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Spawn both sub-agents in parallel
+### 5. Spawn both sub-agents in parallel
 
 Issue both sub-agent calls together, in the foreground, and aggregate the reports they return.
 
 **Standards sub-agent prompt** should include:
 
-- The full diff command and commit list.
-- The list of standards-source files you found in step 3, **plus the smell baseline from step 3** pasted in full (the sub-agent has no other access to it).
+- The diff command and commit list (the marker-narrowed delta when step 3 narrowed the run).
+- The list of standards-source files you found in step 4, **plus the smell baseline from step 4** pasted in full (the sub-agent has no other access to it).
 - The brief: "Report, per file/hunk where relevant, (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls: documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words."
 
 **Spec sub-agent prompt** should include:
 
-- The diff command and commit list.
+- The diff command and commit list (the marker-narrowed delta when step 3 narrowed the run).
 - The path or fetched contents of the spec.
 - The brief: "Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words."
 
 If the spec is missing, skip the Spec sub-agent and note this in the final report.
 
-### 5. Aggregate
+### 6. Aggregate
 
 Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Do **not** merge or rerank findings, because the two axes are deliberately separate (see _Why two axes_).
 
+On a narrowed run (step 3), also re-verify the ticket record's dispositions: collect every disposition — parked judgement call, accepted deviation, wontfix-style note — recorded in the record's comments at or after the last marker line, and check each still holds in the current code: the cited shape still exists, and the delta contradicts none of its rationale. Present the result under `## Disposition re-check`; a disposition that no longer holds counts as a finding; one that still holds is not re-reported.
+
 End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes: that's the reranking the separation exists to prevent.
+
+### 7. Record the reviewed-through marker
+
+When the run completed against a ticket record, record its outcome in that record: a review (or amendment) comment under `## Comments`, ending with the line
+
+    Reviewed through: <HEAD sha>
+
+recording the HEAD the review covered, so the next rerun can narrow to the delta (step 3). With no ticket record there is nothing to mark: skip this step.
 
 ## Why two axes
 

@@ -9,6 +9,7 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
 - Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- Review and amendment comments may carry a `Reviewed through: <sha>` line recording the HEAD sha a completed review covered. The last such line in a record is its last-reviewed point; the code-review skill consumes it to narrow reruns to the delta since it. It is review provenance only and never changes a ticket's `Status:`
 
 ## When a skill says "publish to the issue tracker"
 

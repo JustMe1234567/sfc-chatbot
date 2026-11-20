@@ -1,6 +1,6 @@
 # 93: Delta-based code-review reruns, anchored on a recorded last-reviewed SHA
 
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -68,10 +68,64 @@ tokens and reproduced identical findings.
   a reviewed-through convention (skill and tracker greps), and no
   `.out-of-scope/` KB exists yet, so no prior rejections apply.
 - Scope decisions are recorded in the body: the marker is a tracker
-  convention; the review skill scopes its own reruns; the "user-level
-  skill" option was misframed (the skill is repo-tracked under
-  `.agents/skills/`, and the `.zcode/` mirror is untracked); an
-  explicit fixed point always wins over the marker.
+convention; the review skill scopes its own reruns; the "user-level
+skill" option was misframed (the skill is repo-tracked under
+`.agents/skills/`, and the `.zcode/` mirror is untracked); an
+explicit fixed point always wins over the marker.
+
+2026-11-21: **Implemented.** Process/convention change only — no
+application code, tests, or scripts (the ticket excludes them, so the
+verification below is a documented-behavior walk, not a suite). The
+tracker conventions (`docs/agents/issue-tracker.md`) now carry the
+marker: review and amendment comments may carry a
+`Reviewed through: <sha>` line recording the HEAD sha a completed
+review covered; the last such line in a record is its last-reviewed
+point; it is review provenance only and never changes `Status:` — so
+the last-reviewed SHA is findable from the record alone. The tracked
+review skill (`.agents/skills/code-review/SKILL.md`) consumes and
+records the marker. New step 3 reads the originating ticket record's
+last marker and requires all three validity conditions — it resolves
+(`git rev-parse`), it is an ancestor of or equal to HEAD
+(`git merge-base --is-ancestor`), and it lies strictly inside the
+user-requested range (after `git merge-base <fixed-point> HEAD`) — so
+a user-supplied fixed point always governs the range start and a
+marker only ever narrows an already-reviewed span. A usable marker
+switches the sub-agent diff command to `git diff <marker>...HEAD`
+(commit list `git log <marker>..HEAD --oneline`) with briefs and
+scrutiny unchanged, and the empty-delta case (marker = HEAD) runs the
+re-verification alone. The aggregate (step 6) gains the disposition
+re-check: every disposition recorded in the record's comments at or
+after the last marker line — the marker's own comment included, since
+those are the dispositions the delta can invalidate — is cheaply
+verified against current code (the cited shape exists, the delta
+contradicts none of its rationale); stale ones count as findings
+under `## Disposition re-check`, holding ones are not re-reported.
+Missing, unresolvable, non-ancestor, or outside-range markers fall
+back to today's full-range review with a stated ignore note. New
+step 7 records the marker: the run's review/amendment comment on the
+record ends with `Reviewed through: <HEAD sha>`; with no ticket
+record there is nothing to mark. Steps renumbered (old 3/4/5 →
+4/5/6) and both sub-agent prompt lines state the diff command may be
+marker-narrowed. The `.zcode/` mirror ends byte-identical (cmp exit
+0) — on this machine it is in fact a hard link to the tracked file
+(same inode), so parity is structural; the mirror is gitignored
+(.gitignore:1) and stays out of commits. Mirror consolidation stays
+deferred (retro finding 6); ticket 94 untouched.
+
+Verification: behavioral walk of every acceptance scenario against
+the edited skill text: no marker ⇒ full range; unresolvable sha ⇒
+full range plus stated ignore; non-ancestor of HEAD ⇒ same; marker
+at or before the fixed point's merge-base (outside the requested
+range) ⇒ same; valid marker ⇒ sub-agent commands cover only
+`<marker>...HEAD` at fresh-commit scrutiny plus the aggregate
+re-check; marker = HEAD ⇒ empty delta with re-verification only.
+Acceptance checkboxes ticked in the brief. `cmp` confirms the mirror
+is byte-identical and `git check-ignore` confirms it stays out of
+commits. Before the edit, the branch was reconciled with origin/main
+by fast-forward (3bf002d21 → e51e73d34, PR #4's merge; zero content
+delta), so this work sits on latest main; it commits with explicit
+pathspecs (tracker doc, tracked skill, this record) so no other
+session's work rides along.
 
 ## Agent Brief
 
@@ -117,17 +171,17 @@ and reproduces identical findings.
   elsewhere; only parity is this ticket's job).
 
 **Acceptance criteria:**
-- [ ] The tracker conventions document the `Reviewed through: <sha>`
+- [x] The tracker conventions document the `Reviewed through: <sha>`
       marker line.
-- [ ] A review run that completes against a ticket record leaves the
+- [x] A review run that completes against a ticket record leaves the
       marker recorded in that record.
-- [ ] A rerun over a marked record reviews only commits after the
+- [x] A rerun over a marked record reviews only commits after the
       marker, with fresh-commit scrutiny, plus a disposition
       re-verification pass.
-- [ ] The last-reviewed SHA is findable from the ticket record alone.
-- [ ] A missing or invalid marker produces today's full-range behavior
+- [x] The last-reviewed SHA is findable from the ticket record alone.
+- [x] A missing or invalid marker produces today's full-range behavior
       plus a stated ignore note.
-- [ ] The tracked skill and its `.zcode/` mirror are identical after
+- [x] The tracked skill and its `.zcode/` mirror are identical after
       the change.
 
 **Out of scope:**
