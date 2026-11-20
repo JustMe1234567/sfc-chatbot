@@ -258,3 +258,25 @@ owner's instruction. Post-merge production verification:
   (bmlwasuvujkfchnbklls): `auth.users` = 2, `auth.mfa_factors` = 0 rows.
   The probe wrote 1 `login_events` row (by design); IP counter 1/10, no
   block.
+
+2026-11-20: **Retro disposition.** The session retro surfaced seven
+environment findings; dispositioned as follows. Filed: (1) ready-for-agent
+ticket 91 — document the exact local PostgreSQL-suite command
+(`postgresql://postgres@127.0.0.1:5433/postgres`) and its
+CREATEDB/superuser trap (a wrong-role run lost 38 files to "permission
+denied to create database"); (2) ready-for-agent ticket 92 — the
+deployment docs must state that the named Supabase project is shared
+with production and mutations there are production mutations; (3)
+needs-triage ticket 93 — delta-based code-review reruns anchored on a
+`Reviewed through: <sha>` ticket-record marker (three reruns re-scanned
+a 343-file diff for one-to-two-commit deltas); (4) needs-triage ticket
+94 — the seven repeatedly parked judgement calls consolidated for
+disposition, no fixes. Deferred, no tickets: (5) a mechanical
+env-hygiene check for tests — the bounds-test leak is already fixed and
+the capture/restore pattern is recorded in the test itself, while a
+setupFiles guard would also fire on the deliberate `??=` mutations in
+`tests/helpers.ts`; (6) the mirrored `.zcode/skills/` + `.agents/skills/`
+directories, which double every skill listing in agent context —
+consolidation is the owner's call. Agent-local, no repository change:
+(7) trimming the agent's own project-state memory file. Nothing from
+the retro was implemented in this pass.
