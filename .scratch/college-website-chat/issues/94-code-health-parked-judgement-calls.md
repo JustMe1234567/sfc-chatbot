@@ -1,6 +1,6 @@
 # 94: Consolidate the seven parked code-health judgement calls
 
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -98,3 +98,131 @@ acceptance criteria).
 ticket 93's "recorded dispositions hold" anchor — once 93's
 reviewed-through convention lands, rerun reviews re-verify against
 this record instead of re-finding the seven.
+
+## Dispositions (human decision session, 2026-11-21)
+
+All seven items were re-verified against the tree at 70d78e216 before
+each decision. Decisions made interactively with the owner; one item
+at a time, each recorded before the next was presented.
+
+**Item 1 — settings.ts Divergent Change: ACCEPTED AS-IS.**
+Verified: 52 top-level exports across 566 lines covering ~10 settings
+domains. Owner accepted the smell with no fix: a split is a large
+zero-behavior-change refactor (every settings consumer imports this
+one path) with real regression surface and no ticket driving it. If a
+future ticket makes editing this file genuinely painful, that ticket
+carves out only the domain it touches. Future reruns suppress this
+finding against this record.
+
+**Item 2 — REASON_MESSAGES twin: ACCEPTED AS-IS.**
+Verified: server copy at src/domain/embedAllowlist.ts:96 (terse
+fragments), client copy at
+src/app/dashboard/settings/embed-allowlist-settings.tsx:14 (fuller
+sentences) over the same four EmbedOriginError keys. Owner accepted
+the divergence as deliberate voice, not accidental drift: the client
+copy is instructional UX, the server copy an echo fragment. Both
+records are typed Record<EmbedOriginError, string>, so key parity is
+compiler-enforced — only wording can drift, and any unification would
+change user-visible text or the API contract, which no ticket asks
+for. Future reruns suppress this finding against this record.
+
+**Item 3 — cert-script embed-guard duplication: FIX APPROVED →
+ticket 95.**
+Verified — with a correction to this ticket's own triage note: the
+note claims cert29/66/67 import `assertDemoOriginEmbeddable` and only
+cert26/27 inline a copy. Direct verification shows **no cert script
+imports that export** (cert29/66/67 import only `signIn` from the
+lib), and **all five cert scripts (26/27/29/66/67) inline the probe**,
+each without the `response.ok` check and with drifted error text. The
+original five-script claim was correct; the narrowing was the error.
+Owner approved the fix on the corrected five-script scope: each
+inline block becomes `await assertDemoOriginEmbeddable(BASE)` plus
+the existing lib import pattern (as analytics/motion/topics-shots
+already do). Filed as ticket 95
+(`95-cert-scripts-import-shared-embed-guard.md`). Rationale: real
+drift with a concrete failure mode (non-2xx probe response → opaque
+SyntaxError instead of the lib's clear instruction), one-line change
+per script, dev-tooling only. Future reruns suppress this finding
+against this record and ticket 95.
+
+**Item 4 — ban-check re-inlined twice: FIX APPROVED → ticket 96.**
+Verified exactly as filed: the canonical triple variant
+(`true` / `1` / `"1"`) at src/api/staff.ts:56; the reset-password
+route (src/app/api/staff/members/[id]/reset-password/route.ts:44) and
+the recover-staff-credentials script (scripts/recover-staff-credentials.ts:48)
+each check only `true`/`1`, dropping the string-`"1"` shape the
+canonical check was widened for. Owner approved the fix: one shared
+predicate used at all three sites, pinned by a unit test over the
+value shapes. Rationale: the only drift of the seven that sits on a
+security-relevant predicate — a banned member whose flag arrives as
+`"1"` would pass both re-inlined checks (password reset, credential
+recovery). Unlikely under postgres.js booleans, but cheap to close.
+Filed as ticket 96 (`96-shared-staff-banned-predicate.md`). Future
+reruns suppress this finding against this record and ticket 96.
+
+**Item 5 — logs-workspace.tsx repeats: ACCEPTED AS-IS.**
+Verified: four `toLocaleString("en-GB")` occurrences (lines 199, 297,
+300, 316) and the inline `onViewTablistKeyDown` re-implementing the
+analytics period tablist's arrows-with-wrap + Home/End contract.
+Owner accepted both: the two handlers are deliberately different
+(analytics stands down while loading; logs swaps client-side with no
+load), so a shared helper would be speculative abstraction; and the
+en-GB duplication is dashboard-wide (15+ sites across contacts,
+answers, inbox, notifications), so the honest fix would be a larger
+cross-cutting ticket than this item as filed — not worth approving
+piecemeal for one file. Risks are cosmetic (format inconsistency,
+a11y-fix drift). If dashboard-wide timestamp consistency ever
+matters, file it as its own explicitly-scoped ticket. Future reruns
+suppress this finding against this record.
+
+**Item 6 — "four = half of pool 8" bound in three places: ACCEPTED
+AS-IS.**
+Verified: the bound is stated at src/app/dashboard/settings/page.tsx:49-53
+(code comment above the two read groups), docs/deployment.md:17
+(`PG_POOL_MAX` row, already cross-referencing ticket 89), and
+tests/settings-page-read-concurrency.test.ts:163-167 (comment plus
+the enforceable `toBeLessThanOrEqual(4)` assertion). Owner accepted:
+prose facts cannot be DRYed without worse indirection (an operator
+needs the number stated in the doc, not a pointer to hunt for), the
+test assertion is the enforceable anchor against behavior drift, and
+the code comment lives directly above the lines that would change it.
+Residual risk is a batching change that updates the test but not the
+doc row — a one-line review catch. Future reruns suppress this
+finding against this record.
+
+**Item 7 — JSON.stringify prop pins: ACCEPTED AS-IS.**
+Verified: three `JSON.stringify(tree)` pins at lines 176, 192, and
+202 of tests/settings-page-read-concurrency.test.ts, with positive
+assertions on serialized prop syntax (e.g.
+`"initialHours":{"timeZone":"America/Chicago"`, which requires
+`timeZone` to be the first serialized key) and negative
+`not.toContain` guards. Owner accepted: the whole-tree containment is
+fit for the security-relevant negative assertions ("must not appear
+anywhere" is exactly ticket 88's contract), the positives' intent
+("delivers every seeded setting, batched or not, wherever it lands")
+tolerates location-agnostic matching, and no false failure has
+actually occurred since ticket 89 wrote the pins — brittleness is
+latent, not active. Closest call of the accepted set; if a harmless
+refactor ever trips these pins, the same ticket that trips them can
+move the assertions to extracted values. Future reruns suppress this
+finding against this record.
+
+## Disposition summary
+
+| Item | Disposition | Follow-up |
+| ---- | ----------- | --------- |
+| 1. settings.ts Divergent Change | accepted-as-is | — |
+| 2. REASON_MESSAGES twin | accepted-as-is | — |
+| 3. cert-script embed-guard duplication (corrected: five scripts) | fix approved | ticket 95 |
+| 4. ban-check re-inlined twice | fix approved | ticket 96 |
+| 5. logs-workspace.tsx repeats | accepted-as-is | — |
+| 6. four-of-eight bound in three places | accepted-as-is | — |
+| 7. JSON.stringify prop pins | accepted-as-is | — |
+
+All seven items carry an explicit recorded disposition (2026-11-21,
+human decision session): five accepted-as-is with suppression against
+this record, two fix approvals filed as their own narrowly scoped
+follow-up tickets (95, 96). Nothing was fixed inside this ticket, per
+its acceptance criteria. The re-enumeration loop this ticket existed
+to end is closed: reruns re-verify against this record via ticket 93's
+reviewed-through anchor instead of re-finding the seven.
