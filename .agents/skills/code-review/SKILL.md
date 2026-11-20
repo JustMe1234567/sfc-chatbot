@@ -95,7 +95,7 @@ Present the two reports under `## Standards` and `## Spec` headings, verbatim or
 
 On a narrowed run (step 3), also re-verify the ticket record's dispositions: collect every disposition — parked judgement call, accepted deviation, wontfix-style note — recorded in the record's comments at or after the last marker line, and check each still holds in the current code: the cited shape still exists, and the delta contradicts none of its rationale. Present the result under `## Disposition re-check`; a disposition that no longer holds counts as a finding; one that still holds is not re-reported.
 
-End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes: that's the reranking the separation exists to prevent.
+End with a one-line summary: total findings per axis, the worst issue _within each axis_ (if any), and — on a narrowed run — the disposition re-check result. Don't pick a single winner across axes: that's the reranking the separation exists to prevent.
 
 ### 7. Record the reviewed-through marker
 
