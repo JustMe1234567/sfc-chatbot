@@ -11,8 +11,10 @@ Set these in `.env.local` and the Vercel test project:
 | `NEXT_PUBLIC_SUPABASE_URL` | Dedicated test-project URL. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe project key used only for Auth sessions. |
 | `SUPABASE_SECRET_KEY` | Server-only Auth administration key. Never expose or prefix with `NEXT_PUBLIC_`. |
-| `DATABASE_URL` | Transaction-pooler Postgres connection for the same project. |
+| `DATABASE_URL` | Session-pooler Postgres connection (port 5432) for the same project. The transaction pooler (6543) intermittently stops answering queries on established connections under bursty load while the server side stays idle (ticket 90); the session pooler does not. |
 | `PG_POOL_MAX` | Postgres connection pool ceiling (default 8). Must exceed the Settings page's read concurrency — an authed render holds at most four reads at once (ticket 89) — or the render can starve the pool alongside sidebar prefetches and the needs-human poller. |
+| `PG_QUERY_TIMEOUT` | Seconds before an in-flight query is canceled and rejected (default 10, postgres.js ≥ 4.1). The hosted pooler can silently stop answering individual queries; without this bound every affected connection holds its lease forever and the whole pool wedges (ticket 90). Well above this app's warm query times, far below the hosted statement timeout. |
+| `PG_QUEUE_TIMEOUT` | Seconds before a query still waiting for a pool connection rejects (default 10). Complements `PG_QUERY_TIMEOUT`: bounds queue pileups so a stall surfaces as an error instead of a hung render. |
 | `CHATBOT_BASE_URL` | Exact app origin: localhost locally, Vercel test URL in Vercel. |
 | `CRON_SECRET` | Vercel maintenance-route bearer token. |
 

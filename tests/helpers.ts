@@ -5,6 +5,16 @@ import { randomUUID } from "node:crypto";
 
 export const TEST_ORIGIN = "http://chatbot.test";
 
+// Ticket 90: the app's pool bounds default to 10 s. The suite's PG mode
+// provisions one database per file (ticket 83) — 68 workers × CREATE
+// DATABASE + migrations on one local cluster — and that setup legitimately
+// exceeds 10 s per statement under full parallel contention, so the test
+// environment relaxes the bound. The bound's behavior itself (silent
+// endpoint ⇒ bounded rejection, never a hang) is pinned by
+// tests/postgres-pool-bounds.test.ts with short values.
+process.env.PG_QUERY_TIMEOUT ??= "60";
+process.env.PG_QUEUE_TIMEOUT ??= "60";
+
 /**
  * The Postgres backend for the whole suite (ticket 11): set
  * CHATBOT_TEST_POSTGRES_URL to a Postgres URL whose database acts as the
