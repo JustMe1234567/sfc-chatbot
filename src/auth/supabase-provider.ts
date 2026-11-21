@@ -156,6 +156,48 @@ async function findAuthUserByEmail(admin: SupabaseClient, email: string): Promis
   return null;
 }
 
+/**
+ * Ticket-90 weather, live on the transaction pooler (2026-11-22, ticket
+ * 100): the hosted pooler intermittently stalls queries until ticket 90's
+ * 10 s bound cancels them, and `requireStaff` swallows any
+ * `authenticate()` throw as "unauthenticated" — a stalled session read
+ * looked exactly like a logged-out staff member. The session lookup is a
+ * pure SELECT, so a single retry on a transient failure is safe: a fresh
+ * socket almost always lands as the window clears (typical recovery ≈ one
+ * bound plus one fast query; worst case ≈ two bounds). Non-transient
+ * errors rethrow unchanged, and a second transient failure propagates — a
+ * genuinely dead window must not loop here.
+ */
+const TRANSIENT_DB_CODES = new Set([
+  "QUERY_TIMEOUT",
+  "QUEUE_TIMEOUT",
+  "CONNECT_TIMEOUT",
+  "57014", // canceling statement due to user request — the bounds' SQLSTATE
+  "53300", // too many connections — pooler pressure
+  "08000", "08001", "08002", "08003", "08004", "08006", // connection_exception class
+]);
+
+function isTransientDbError(error: unknown): boolean {
+  const err = error as { code?: string; cause?: { code?: string }; message?: string };
+  return Boolean(
+    (err?.code && TRANSIENT_DB_CODES.has(err.code)) ||
+      (err?.cause?.code && TRANSIENT_DB_CODES.has(err.cause.code)) ||
+      /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|socket hang up/i.test(String(err?.message ?? "")),
+  );
+}
+
+export async function withTransientDbRetry<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (!isTransientDbError(error)) {
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return read();
+  }
+}
+
 export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider {
   const configuration = supabaseConfiguration();
   const admin = createClient(configuration.url, configuration.secretKey, {
@@ -182,11 +224,12 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
     // not been revoked and that the linked user remains valid. Keeping this
     // in one database round trip avoids an Auth network request on every
     // one-second inbox refresh while preserving immediate revocation.
-    const currentSession = await dependencies.db.get<{
-      email: string | null;
-      emailConfirmedAt: string | null;
-    }>(
-      `SELECT u.email,
+    const currentSession = await withTransientDbRetry(() =>
+      dependencies.db.get<{
+        email: string | null;
+        emailConfirmedAt: string | null;
+      }>(
+        `SELECT u.email,
               u.email_confirmed_at AS "emailConfirmedAt"
        FROM auth.sessions s
        JOIN auth.users u ON u.id = s.user_id
@@ -194,8 +237,9 @@ export function createSupabaseAuth(dependencies: AuthDependencies): AuthProvider
          AND (s.not_after IS NULL OR s.not_after > CURRENT_TIMESTAMP)
          AND u.deleted_at IS NULL
          AND (u.banned_until IS NULL OR u.banned_until < CURRENT_TIMESTAMP)`,
-      claims.session_id,
-      claims.sub,
+        claims.session_id,
+        claims.sub,
+      ),
     );
     if (!currentSession) return null;
     return {
