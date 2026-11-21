@@ -5,6 +5,8 @@
  * leak into terminal logs, npm output, commits, or reports.
  */
 
+import { StringDecoder } from "node:string_decoder";
+
 export interface SecureInputStreams {
   input: NodeJS.ReadableStream;
   output: NodeJS.WritableStream;
@@ -39,6 +41,9 @@ function readHiddenFromTty(
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let secret = "";
+    // Keystrokes arrive per-chunk; a multi-byte character split across two
+    // chunks must not decode as two mangled halves.
+    const decoder = new StringDecoder("utf8");
     const setRawMode = input.setRawMode?.bind(input);
     setRawMode?.(true);
     const cleanup = () => {
@@ -47,7 +52,7 @@ function readHiddenFromTty(
       setRawMode?.(false);
     };
     const onData = (chunk: Buffer | string) => {
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      const text = decoder.write(chunk);
       for (const character of text) {
         if (character === "\r" || character === "\n") {
           cleanup();

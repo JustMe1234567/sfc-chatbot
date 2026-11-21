@@ -59,6 +59,17 @@ describe("hidden password input (ticket 98)", () => {
     expect(input.setRawModeCalls).toEqual([true, false]);
   });
 
+  test("a multi-byte keystroke split across chunks decodes whole", async () => {
+    const input = fakeTty();
+    const output = collectingSink();
+    const pending = readHiddenLine({ input, output }, "Enter the new password: ");
+    input.write(Buffer.from([0x70, 0x61, 0xc3])); // "pa" + the first byte of "é"
+    input.write(Buffer.from([0xa9, 0x73, 0x0d])); // the second byte of "é" + "s" + Enter
+    expect(await pending).toBe("paés");
+    expect(output.written).toBe("Enter the new password: \r\n");
+    expect(input.setRawModeCalls).toEqual([true, false]);
+  });
+
   test("Ctrl-C cancels entry and restores the terminal", async () => {
     const input = fakeTty();
     const output = collectingSink();

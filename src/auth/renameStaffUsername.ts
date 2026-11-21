@@ -3,9 +3,9 @@ import { postgresAppDatabase, type AppDatabase } from "../db/appDatabase";
 import { migratePostgres, openPostgres } from "../db/postgres";
 
 /**
- * The application's existing username rule, shared verbatim by the members
- * POST route and the recover:staff command: 3-32 characters of a-z, 0-9,
- * dot, underscore, or hyphen after trim + lowercase.
+ * The application's existing username rule — the same shape the members
+ * POST route and the recover:staff command each enforce: 3-32 characters
+ * of a-z, 0-9, dot, underscore, or hyphen after trim + lowercase.
  */
 const STAFF_USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
 

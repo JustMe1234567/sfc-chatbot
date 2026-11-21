@@ -18,15 +18,16 @@ function readFlag(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
+const USAGE =
+  "Usage: npm run recover:staff -- --username <username> [--password <10+ characters> | omit it to enter the password at a hidden prompt] --identity-verified (DATABASE_URL is required)";
+
 const username = readFlag("username")?.trim().toLowerCase();
 const passwordFlag = readFlag("password");
 const identityVerified = process.argv.includes("--identity-verified");
 const databaseUrl = appDatabaseUrl();
 
 if (!username || !/^[a-z0-9._-]{3,32}$/.test(username) || !identityVerified || !databaseUrl) {
-  console.error(
-    "Usage: npm run recover:staff -- --username <username> [--password <10+ characters> | omit it to enter the password at a hidden prompt] --identity-verified (DATABASE_URL is required)",
-  );
+  console.error(USAGE);
   process.exit(1);
 }
 
@@ -38,9 +39,7 @@ const password =
   ));
 
 if (!password || password.length < 10) {
-  console.error(
-    "Usage: npm run recover:staff -- --username <username> [--password <10+ characters> | omit it to enter the password at a hidden prompt] --identity-verified (DATABASE_URL is required)",
-  );
+  console.error(USAGE);
   process.exit(1);
 }
 
