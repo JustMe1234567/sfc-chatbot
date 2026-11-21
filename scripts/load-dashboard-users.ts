@@ -30,11 +30,13 @@
 //      failure shape it guards against.
 //
 // Usage:
-//   npm run load:dashboard -- [--admin postgresql://postgres@127.0.0.1:5433/postgres]
-//                             [--users 8] [--iterations 3] [--instances 3]
-//                             [--pool-max 4] [--control]
+//   npm run load:dashboard -- [--admin postgresql://postgres@127.0.0.1:5433/postgres] [--control]
 //
-// The default target is this machine's local trust-auth cluster (ticket 91).
+// The load shape is fixed — 8 users × 3 renders across 3 instance pools at
+// the app's shipped per-instance ceiling (8 under --control, the
+// pre-ticket-99 default) — so the run demonstrates exactly the
+// configuration that ships, not a parameterized family of them. The
+// default target is this machine's local trust-auth cluster (ticket 91).
 // Nothing here touches production: the scratch database is dropped on exit,
 // the role is kept (the ticket-79 precedent), and no credentials are
 // printed or stored.
@@ -64,14 +66,15 @@ function readFlag(name: string): string | undefined {
 }
 
 const adminUrl = readFlag("admin") ?? "postgresql://postgres@127.0.0.1:5433/postgres";
-// At least eight active dashboard users (ticket 99's criterion).
-const users = Math.max(8, Number(readFlag("users") ?? 8));
-const iterations = Math.max(1, Number(readFlag("iterations") ?? 3));
-const instances = Math.max(1, Number(readFlag("instances") ?? 3));
 const control = process.argv.includes("--control");
-// The app's conservative per-instance ceiling (ticket 99). The control pins
-// the pre-ticket-99 default of 8.
-const poolMax = control ? 8 : Number(readFlag("pool-max") ?? 4);
+// The ticket 99 demonstration shape: at least eight active dashboard users,
+// three iterations each, spread over three instance pools.
+const USERS = 8;
+const ITERATIONS = 3;
+const INSTANCES = 3;
+// The shipped per-instance ceiling; the control pins the pre-ticket-99
+// default of 8.
+const POOL_MAX = control ? 8 : 4;
 
 const DB = "sfc_load_harness";
 const ROLE = "sfc_load_harness";
@@ -85,7 +88,7 @@ interface Instance {
 }
 
 /** One authed dashboard visit's read shape, from the app's real seams. */
-async function dashboardRender(h: Instance): Promise<void> {
+async function dashboardRender(instance: Instance): Promise<void> {
   // The protected-request transaction seam: the app serializes threshold
   // decisions (rate limits, guarded transitions) through
   // AppDatabase.transaction — an advisory-locked `sql.begin`. A transaction
@@ -96,25 +99,25 @@ async function dashboardRender(h: Instance): Promise<void> {
   // modeled transaction runs ~150 ms — the order of a real protected
   // request's serialized write across the WAN — so concurrent transactions
   // genuinely overlap instead of draining between scheduler ticks.
-  await h.db.transaction("harness-render", async (tx) => {
+  await instance.db.transaction("harness-render", async (tx) => {
     await tx.run("SELECT pg_sleep(0.15)");
   });
   // The needs-human poll read (ticket 79's bell state), as its own request.
-  await h.store.listConversationsByState("awaiting_staff");
+  await instance.store.listConversationsByState("awaiting_staff");
   // The Settings page's first batch (ticket 89's ≤4-concurrent shape) with
   // the conversation desk's list — the heaviest single authed read.
   await Promise.all([
-    h.store.listConversations(),
-    readEmbedAllowlist(h.db),
-    readTranscriptRetention(h.db),
-    getEscalationPhrases(h.db),
+    instance.store.listConversations(),
+    readEmbedAllowlist(instance.db),
+    readTranscriptRetention(instance.db),
+    getEscalationPhrases(instance.db),
   ]);
   // The second batch: contact requests, handoff options, and the layout's
   // per-request favicon-version read.
   await Promise.all([
-    h.store.listOpenContactRequests(),
-    getHandoffOptions(h.db),
-    getDashboardFaviconVersion(h.db),
+    instance.store.listOpenContactRequests(),
+    getHandoffOptions(instance.db),
+    getDashboardFaviconVersion(instance.db),
   ]);
 }
 
@@ -125,7 +128,7 @@ function isCapRejection(error: unknown): boolean {
 }
 
 async function run(): Promise<0 | 1> {
-  process.env.PG_POOL_MAX = String(poolMax);
+  process.env.PG_POOL_MAX = String(POOL_MAX);
   const admin = postgres(adminUrl, { max: 2, connect_timeout: 10, onnotice: () => {} });
   const instancesOpened: Instance[] = [];
   let peak = 0;
@@ -186,7 +189,7 @@ async function run(): Promise<0 | 1> {
     // Several openPostgres handles model separate Vercel instances; each
     // contributes up to PG_POOL_MAX client connections (openPostgres reads
     // the env per call, so the pin above took effect).
-    for (let i = 0; i < instances; i++) {
+    for (let i = 0; i < INSTANCES; i++) {
       const sql = openPostgres(appUrl);
       instancesOpened.push({
         sql,
@@ -202,17 +205,17 @@ async function run(): Promise<0 | 1> {
       `target: scratch database ${DB} (dropped on exit), role ${ROLE} CONNECTION LIMIT ${CAP}`,
     );
     console.log(
-      `load: ${users} users × ${iterations} renders across ${instances} instance pools, PG_POOL_MAX=${poolMax}`,
+      `load: ${USERS} users × ${ITERATIONS} renders across ${INSTANCES} instance pools, PG_POOL_MAX=${POOL_MAX}`,
     );
 
     const started = Date.now();
     let completed = 0;
     const failures: { error: unknown }[] = [];
     await Promise.all(
-      Array.from({ length: users }, async (_, user) => {
-        for (let i = 0; i < iterations; i++) {
-          const h = instancesOpened[(user + i) % instancesOpened.length];
-          if (!h) {
+      Array.from({ length: USERS }, async (_, user) => {
+        for (let i = 0; i < ITERATIONS; i++) {
+          const instance = instancesOpened[(user + i) % instancesOpened.length];
+          if (!instance) {
             throw new Error("harness configuration error: missing instance handle");
           }
           try {
@@ -221,10 +224,10 @@ async function run(): Promise<0 | 1> {
               // issued every nav row's RSC render as the dashboard opened
               // (~10–12 concurrent renders per visit, the ticket 99 evidence).
               await Promise.all(
-                Array.from({ length: 11 }, () => dashboardRender(h)),
+                Array.from({ length: 11 }, () => dashboardRender(instance)),
               );
             } else {
-              await dashboardRender(h);
+              await dashboardRender(instance);
             }
             completed++;
           } catch (error) {
@@ -279,8 +282,8 @@ async function run(): Promise<0 | 1> {
     return 0;
   } finally {
     watching = false;
-    for (const h of instancesOpened) {
-      await h.sql.end({ timeout: 5 });
+    for (const instance of instancesOpened) {
+      await instance.sql.end({ timeout: 5 });
     }
     try {
       await admin.unsafe(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);

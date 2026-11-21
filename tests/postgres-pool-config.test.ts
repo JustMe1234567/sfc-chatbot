@@ -24,7 +24,7 @@ import { openPostgres } from "../src/db/postgres";
  * file runs on both dialects and needs no server.
  */
 
-/** Every variable openPostgres reads; each test restores all of them. */
+/** Every variable openPostgres reads. */
 const OVERRIDABLE = [
   "PG_POOL_MAX",
   "PG_PREPARE",
@@ -32,53 +32,55 @@ const OVERRIDABLE = [
   "PG_QUEUE_TIMEOUT",
 ] as const;
 
-describe("openPostgres pool configuration (ticket 99)", () => {
-  it("defaults to the conservative ceiling and the transaction-pooler-safe shapes", () => {
-    const saved = OVERRIDABLE.map((name) => [name, process.env[name]] as const);
-    for (const [name] of saved) {
-      delete process.env[name];
-    }
-    try {
-      const sql = openPostgres("postgresql://introspection@127.0.0.1:1/probe");
-      expect(sql.options.max).toBe(4);
-      expect(sql.options.prepare).toBe(false);
-      expect(sql.options.connect_timeout).toBe(10);
-      expect(sql.options.query_timeout).toBe(10);
-      expect(sql.options.queue_timeout).toBe(10);
-    } finally {
-      for (const [name, value] of saved) {
-        if (value === undefined) {
-          delete process.env[name];
-        } else {
-          process.env[name] = value;
-        }
+/**
+ * Runs the body with the overridable variables deleted (or set to the given
+ * overrides), then restores whatever each held before — including deleting
+ * it again if it was absent. The ticket-90 review's environment-leak
+ * discipline: vitest workers share state, and a lingering override would
+ * flake later PG work.
+ */
+function withPoolEnv<T>(overrides: Record<string, string>, body: () => T): T {
+  const saved = OVERRIDABLE.map((name) => [name, process.env[name]] as const);
+  for (const [name] of saved) {
+    delete process.env[name];
+  }
+  Object.assign(process.env, overrides);
+  try {
+    return body();
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
       }
     }
+  }
+}
+
+describe("openPostgres pool configuration (ticket 99)", () => {
+  it("defaults to the conservative ceiling and the transaction-pooler-safe shapes", () => {
+    const sql = withPoolEnv({}, () =>
+      openPostgres("postgresql://introspection@127.0.0.1:1/probe"),
+    );
+    expect(sql.options.max).toBe(4);
+    expect(sql.options.prepare).toBe(false);
+    expect(sql.options.connect_timeout).toBe(10);
+    expect(sql.options.query_timeout).toBe(10);
+    expect(sql.options.queue_timeout).toBe(10);
   });
 
   it("still honors the documented env overrides without moving the fixed bounds", () => {
-    const saved = OVERRIDABLE.map((name) => [name, process.env[name]] as const);
-    process.env.PG_POOL_MAX = "2";
-    process.env.PG_PREPARE = "true";
-    process.env.PG_QUERY_TIMEOUT = "3";
-    process.env.PG_QUEUE_TIMEOUT = "5";
-    try {
-      const sql = openPostgres("postgresql://introspection@127.0.0.1:1/probe");
-      expect(sql.options.max).toBe(2);
-      expect(sql.options.prepare).toBe(true);
-      expect(sql.options.query_timeout).toBe(3);
-      expect(sql.options.queue_timeout).toBe(5);
-      // connect_timeout has no documented env override: the fixed 10 s that
-      // discards a hung hosted handshake (tickets 89/90) stays.
-      expect(sql.options.connect_timeout).toBe(10);
-    } finally {
-      for (const [name, value] of saved) {
-        if (value === undefined) {
-          delete process.env[name];
-        } else {
-          process.env[name] = value;
-        }
-      }
-    }
+    const sql = withPoolEnv(
+      { PG_POOL_MAX: "2", PG_PREPARE: "true", PG_QUERY_TIMEOUT: "3", PG_QUEUE_TIMEOUT: "5" },
+      () => openPostgres("postgresql://introspection@127.0.0.1:1/probe"),
+    );
+    expect(sql.options.max).toBe(2);
+    expect(sql.options.prepare).toBe(true);
+    expect(sql.options.query_timeout).toBe(3);
+    expect(sql.options.queue_timeout).toBe(5);
+    // connect_timeout has no documented env override: the fixed 10 s that
+    // discards a hung hosted handshake (tickets 89/90) stays.
+    expect(sql.options.connect_timeout).toBe(10);
   });
 });

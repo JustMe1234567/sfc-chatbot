@@ -165,11 +165,14 @@ describe("the sidebar links don't prefetch on entry (ticket 99)", () => {
     // simultaneously — the fan-out that exhausted the shared pooler's
     // 15-client cap in production (ticket 99's EMAXCONNSESSION outage).
     // The regex takes each opening tag through its first `>`; the Link's
-    // attributes contain no `>` before the tag ends.
+    // attributes contain no `>` before the tag ends. Line comments are
+    // stripped before matching so a comment mentioning the prop can never
+    // satisfy the pin — only the rendered attribute itself counts.
     const links = header.match(/<Link[\s\S]*?>/g) ?? [];
     expect(links).toHaveLength(1);
-    expect(links[0]).toContain("prefetch={false}");
-    expect(links[0]).toContain("href={item.href}");
+    const tag = (links[0] ?? "").replace(/^[ \t]*\/\/.*$/gm, "");
+    expect(tag).toContain("prefetch={false}");
+    expect(tag).toContain("href={item.href}");
     // Normal navigation is preserved: the rows still navigate through
     // Next's Link on click (no plain-<a> swap that would change history,
     // scroll, and prefetch-on-navigation semantics), and the drawer's
