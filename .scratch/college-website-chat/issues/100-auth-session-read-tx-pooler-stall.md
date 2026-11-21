@@ -54,8 +54,8 @@ rationale.
 ## Comments
 
 2026-11-22: Filed urgent from the post-cutover login failure (owner in
-the loop; root cause confirmed from production runtime logs — see
-[[vercel-deployment-setup]] for the full evidence chain). Working branch
+the loop; root cause confirmed from production runtime logs — the full
+evidence chain is summarized in the ticket 99/101 records). Working branch
 `codex/ticket-100-auth-transient-retry` cut from origin/main `4e5f10cc1`
 (PR #13 merged: pool ceiling 4 + nav prefetch off are already live in
 production).
