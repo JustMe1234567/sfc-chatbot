@@ -174,8 +174,17 @@ const TRANSIENT_DB_CODES = new Set([
   "CONNECT_TIMEOUT",
   "57014", // canceling statement due to user request — the bounds' SQLSTATE
   "53300", // too many connections — pooler pressure
-  "08000", "08001", "08002", "08003", "08004", "08006", // connection_exception class
+  "08000", "08001", "08002", "08003", "08004", "08006", "08007", // connection_exception class
+  // Node socket errnos also surface on err.code (not only in the message).
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EPIPE",
+  "ETIMEDOUT",
 ]);
+
+/** The pause before the one retry: long enough for a stall window to
+ * clear, short enough to stay invisible next to the 10 s bounds. */
+const RETRY_GAP_MS = 250;
 
 function isTransientDbError(error: unknown): boolean {
   const err = error as { code?: string; cause?: { code?: string }; message?: string };
@@ -193,7 +202,7 @@ export async function withTransientDbRetry<T>(read: () => Promise<T>): Promise<T
     if (!isTransientDbError(error)) {
       throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, RETRY_GAP_MS));
     return read();
   }
 }

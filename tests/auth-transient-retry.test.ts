@@ -65,6 +65,15 @@ describe("withTransientDbRetry (ticket 100)", () => {
     expect(read).toHaveBeenCalledTimes(2);
   });
 
+  test("retries a Node socket errno carried on err.code", async () => {
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(withCode("ECONNRESET"))
+      .mockResolvedValueOnce({ email: "owner@example.edu" });
+    expect(await withTransientDbRetry(() => read())).toEqual({ email: "owner@example.edu" });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   test("rethrows non-transient errors immediately without a second read", async () => {
     const read = vi.fn().mockRejectedValue(withCode("23505"));
     await expect(withTransientDbRetry(() => read())).rejects.toMatchObject({ code: "23505" });
