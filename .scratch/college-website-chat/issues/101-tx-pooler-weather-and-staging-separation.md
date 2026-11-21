@@ -1,6 +1,6 @@
-# 101: Transaction-pooler weather is chronic — record the 5432 rollback and decide the Supabase environment plan
+# 101: Transaction-pooler weather is chronic — record the 5432 rollback and the declined environment decisions
 
-Status: needs-triage
+Status: ready-for-human
 
 ## Context (no code to build — a record and a decision)
 
@@ -13,10 +13,14 @@ database through the **session pooler (5432)** — localhost, `.env.local`
 — ran flawlessly all session. The owner rolled production back to 5432
 on 2026-11-22 (CLI env set from `.env.local` after three paste failures:
 quote-wrapped value, then a wrong password; verified — eligibility 4/4
-200, dashboard guard healthy). PR #13's ceiling 4 + nav-prefetch-off are
+200, dashboard guard healthy). **Lesson: never hand-copy connection
+values from `.env.local` — its lines are dotenv single-quote-wrapped,
+and the quotes ride along into pasted values; set Vercel envs via the
+CLI from the file instead.** PR #13's ceiling 4 + nav-prefetch-off are
 live, so the session-pooler fan-out risk that caused the morning's
-`EMAXCONNSESSION` outage is materially reduced (single-digit staff scale
-cannot reach 15 clients the way pool-8 + prefetch bursts did).
+`EMAXCONNSESSION` outage is materially reduced (staff-scale traffic
+stays well clear of 15 clients in a way pool-8 + prefetch bursts did
+not).
 
 ## Decisions needed (owner)
 
@@ -52,7 +56,7 @@ cannot reach 15 clients the way pool-8 + prefetch bursts did).
 ## Comments
 
 2026-11-22: Filed from the post-cutover incident response (ticket 100
-follow-up). Full evidence chain in [[vercel-deployment-setup]] and
-ticket 99/100 records. Ticket 100's retry stays deployed — dormant on
+follow-up). Full evidence chain in the ticket 99/100 records here.
+Ticket 100's retry stays deployed — dormant on
 5432 (nothing stalls to trigger it) and insurance if 6543 is ever
 re-attempted.
