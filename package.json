@@ -18,6 +18,7 @@
     "recover:staff": "tsx scripts/recover-staff-credentials.ts",
     "config:export": "tsx scripts/export-configuration.ts",
     "config:import": "tsx scripts/import-configuration.ts",
+    "load:dashboard": "tsx scripts/load-dashboard-users.ts",
     "hygiene": "node scripts/check-repository-hygiene.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
