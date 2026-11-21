@@ -115,3 +115,43 @@ production).
 
 COMPLETE — all acceptance criteria pass. Status set to `done`. PR opened
 for review; merge and deploy are the owner's steps.
+
+2026-11-22: **Review amendment — `/code-review 4e5f10cc1` over the full
+range (2 commits), both axes. No hard violations on either axis;
+in-scope findings fixed, judgement calls parked.**
+
+- **FIXED — connection-class coverage (spec axis):** the set omitted
+  `08007` (protocol_violation), the one missing member of PostgreSQL's
+  class-08 connection exceptions; added.
+- **FIXED — Node socket errnos on `err.code` (spec axis):** system
+  errors carry `ECONNRESET`-style codes on `err.code`, which only the
+  message regex caught; the errno names joined the transient set, and a
+  behavior test pins the errno-as-code path (8/8 now).
+- **FIXED — Mysterious Name (standards axis, trivial):** the 250 ms gap
+  became the named `RETRY_GAP_MS` constant.
+- **PARKED — Duplicated Code in the tests (standards axis):** the five
+  retry-and-recover cases share a shape but differ in error
+  construction; each documents a distinct classification path, and the
+  repo's established preference is explicit named cases over
+  test.each indirection (ticket 96's review precedent).
+- **PARKED — classification placement (standards axis, Feature Envy
+  adjacent):** the DB-code vocabulary lives in the auth provider rather
+  than `src/db/`; the ticket scoped the seam to `authenticate()`, so it
+  stays until a second caller ever appears (then relocate as its own
+  ticket).
+- **PARKED — `CONNECT_TIMEOUT` + `53300` in the set (spec axis, creep
+  notes):** no connect bound is configured and `53300` exceeds the
+  ticket's enumerated class, but both are read-only-retry-safe
+  expressions of the same pooler pressure the ticket targets.
+- **PARKED — healthy-path latency assertion (spec axis nit):** the
+  healthy case asserts one read; "no added latency" is structural (the
+  delay only exists on the retry path) and a timing assertion would be
+  flaky for nothing.
+- **PARKED — `vi.unmock` coupling (standards axis note):** the test
+  file must unmock the globally-mocked provider; the same preamble the
+  supabase-config test already carries.
+
+Verification of this amendment: focused tests 8/8, typecheck clean, full
+`npm run check` green.
+
+Reviewed through: d3399c466bea25ba819b64182880e9f8c1b3e48b
