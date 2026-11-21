@@ -153,3 +153,29 @@ describe("the sidebar styles stay in the dashboard token system (ticket 52)", ()
     expect(css).not.toContain(".topIdentity");
   });
 });
+
+describe("the sidebar links don't prefetch on entry (ticket 99)", () => {
+  it("disables automatic prefetch on the shared nav Link, leaving navigation itself untouched", async () => {
+    const header = await readHeader();
+    // One shared Link map renders both shells (the desktop rail and the
+    // mobile drawer), so pinning the single <Link> block covers both. Every
+    // nav row is a dynamic, database-backed route; Next.js's default
+    // prefetch fires each row's RSC render as the link enters the viewport,
+    // so opening the dashboard once issued the whole nav's renders
+    // simultaneously — the fan-out that exhausted the shared pooler's
+    // 15-client cap in production (ticket 99's EMAXCONNSESSION outage).
+    // The regex takes each opening tag through its first `>`; the Link's
+    // attributes contain no `>` before the tag ends.
+    const links = header.match(/<Link[\s\S]*?>/g) ?? [];
+    expect(links).toHaveLength(1);
+    expect(links[0]).toContain("prefetch={false}");
+    expect(links[0]).toContain("href={item.href}");
+    // Normal navigation is preserved: the rows still navigate through
+    // Next's Link on click (no plain-<a> swap that would change history,
+    // scroll, and prefetch-on-navigation semantics), and the drawer's
+    // close-on-navigate wiring stays.
+    expect(links[0]).not.toMatch(/<a[\s>]/);
+    expect(header).toContain("onClick={onNavigate}");
+    expect(header).toContain("closeDrawer()");
+  });
+});

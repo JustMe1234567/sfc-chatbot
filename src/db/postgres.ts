@@ -27,11 +27,23 @@ const POSTGRES_MIGRATIONS_DIR = path.join(repoRoot(), "migrations", "postgres");
  * recovers. Ten seconds is far above this application's warm query times
  * (well under a second, even across the WAN) and far below the hosted
  * statement timeout.
+ *
+ * The pool ceiling is per instance, and a serverless deployment runs many
+ * instances: every warm Vercel function instance contributes up to `max`
+ * client connections to the hosted pooler, so a burst of renders across
+ * instances multiplies them (the 2026-11-22 production outage, ticket 99 —
+ * the shared session pooler capped clients at its 15 server sessions and
+ * rejected the rest). The default stays conservative at 4: it matches the
+ * Settings page's four-read concurrency (ticket 89) so that render never
+ * queues behind itself, while keeping the per-instance client footprint
+ * small. Production targets the transaction pooler (:6543), where client
+ * connections multiplex over the shared server sessions and this ceiling
+ * bounds queue pileups rather than client counts.
  */
 export function openPostgres(url: string): PostgresSql {
   return postgres(url, {
     prepare: process.env.PG_PREPARE === "true",
-    max: Number(process.env.PG_POOL_MAX ?? 8),
+    max: Number(process.env.PG_POOL_MAX ?? 4),
     connect_timeout: 10,
     query_timeout: Number(process.env.PG_QUERY_TIMEOUT ?? 10),
     queue_timeout: Number(process.env.PG_QUEUE_TIMEOUT ?? 10),
