@@ -82,9 +82,33 @@ Staff members who still hold the old Springfield entry in an authenticator app c
    npm run recover:staff -- --username owner --password "new-10+-character-password" --identity-verified
    ```
 
+   Omitting `--password` reads it invisibly instead — a hidden keystroke prompt on a terminal, or the first line of piped stdin — so the password never lands in PowerShell history, npm output, or reports:
+
+   ```powershell
+   npm run recover:staff -- --username owner --identity-verified
+   ```
+
 3. The reset deletes every Auth session. It sends no email and never exposes the old password.
 
 The command's explicit flag records that the human verification step happened; it does not perform that verification. Staff can also change their own password from Settings.
+
+### Renaming a staff username (ticket 98)
+
+A username lives in the application database only — sign-in resolves the username to the staff record and then uses the linked Auth user, whose identity keys on the preserved staff ID. Renaming therefore never touches Supabase Auth. Two operations, in this order:
+
+1. Verify the account holder out-of-band, then run the guarded rename. It refuses unless the source is the one active owner account with a linked Auth user, the destination username is free case-insensitively, and `--identity-verified` is present; the rename itself is one transaction that changes only the username and its `updatedAt`:
+
+   ```powershell
+   npm run rename:staff -- --from owner --to sfc-admin --identity-verified
+   ```
+
+2. Reset the password as a separate operation (it revokes every session, including the renamed account's). Enter the new password at the hidden prompt:
+
+   ```powershell
+   npm run recover:staff -- --username sfc-admin --identity-verified
+   ```
+
+The staff ID, linked Auth user, name, role, sessions, and all related records survive the rename unchanged; sign-in simply uses the new username with the same Auth credential until step 2 replaces it.
 
 ## 6. Localhost and Vercel test verification
 
