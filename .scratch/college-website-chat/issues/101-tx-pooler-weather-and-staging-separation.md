@@ -60,3 +60,41 @@ follow-up). Full evidence chain in the ticket 99/100 records here.
 Ticket 100's retry stays deployed — dormant on
 5432 (nothing stalls to trigger it) and insurance if 6543 is ever
 re-attempted.
+
+2026-11-22: **Review amendment — `/code-review 8356e609` over the docs
+range, both axes. One hard cross-document finding fixed; the rest
+parked or corrected inline.**
+
+- **FIXED (hard, cross-document):** `docs/deployment.md` still stated
+  standing policy "Vercel deployments require the transaction pooler
+  (6543)" and called the rollback temporary — while ticket 101 records
+  production rolled back to 5432 with re-attempting declined. §1's
+  `DATABASE_URL` row now names the session pooler as the standing mode,
+  §7 gained a status banner (executed → rolled back → declined), and
+  step 5's "temporary" framing is superseded by the standing-policy
+  note.
+- **FIXED — dangling evidence links:** `[[vercel-deployment-setup]]`
+  referenced the session's private memory store, not any repo file;
+  tickets 101 and 100 now summarize the chain in plain text.
+- **FIXED — title/status framing:** the title said "decide" while the
+  body records both decisions made; the title now says "declined
+  environment decisions" and `Status:` moved to `ready-for-human` (the
+  one open item is an owner dashboard step).
+- **FIXED — paste lesson stated as bare facts:** the lesson is now
+  explicit (never hand-copy connection values from `.env.local`; its
+  lines are dotenv single-quote-wrapped — set Vercel envs via the CLI
+  from the file).
+- **FIXED — overstatement softened:** "single-digit staff scale cannot
+  reach 15 clients" now matches deployment.md's "reduced but not
+  eliminated" framing.
+- **PARKED — Duplicated Code (prose):** the rollback narrative lives in
+  tickets 99/100/101, LOCALHOST.md, and deployment.md; each ticket
+  records its own chain by repo convention, and the sync cost is
+  accepted.
+- **PARKED — start+stop recorded in one commit:** the working-tree
+  LOCALHOST.md was updated live during the run; the commit landed at
+  stop time.
+- **Note:** ticket 100's same dangling link was fixed in this PR (same
+  error class, one line).
+
+Reviewed through: ddd95072bc724b6e23da2053673c57d35c9ed911
