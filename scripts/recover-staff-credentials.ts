@@ -1,10 +1,14 @@
 // Trusted credential recovery for an account whose owner cannot use the dashboard.
-// Run only after the documented out-of-band identity check.
+// Run only after the documented out-of-band identity check. The password is
+// taken from --password or, when it is omitted, read invisibly (a hidden
+// keystroke prompt on a TTY, the first line of piped stdin) so it never
+// lands in PowerShell history, npm output, or reports.
 import { isStaffBanned } from "../src/api/staff";
 import { createSupabaseAuth } from "../src/auth/supabase-provider";
 import { postgresAppDatabase } from "../src/db/appDatabase";
 import { migratePostgres, openPostgres } from "../src/db/postgres";
 import { appBaseUrl, appDatabaseUrl } from "../src/config";
+import { readHiddenLine } from "./lib/secure-input";
 
 function readFlag(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -15,20 +19,27 @@ function readFlag(name: string): string | undefined {
 }
 
 const username = readFlag("username")?.trim().toLowerCase();
-const password = readFlag("password");
+const passwordFlag = readFlag("password");
 const identityVerified = process.argv.includes("--identity-verified");
 const databaseUrl = appDatabaseUrl();
 
-if (
-  !username ||
-  !/^[a-z0-9._-]{3,32}$/.test(username) ||
-  !password ||
-  password.length < 10 ||
-  !identityVerified ||
-  !databaseUrl
-) {
+if (!username || !/^[a-z0-9._-]{3,32}$/.test(username) || !identityVerified || !databaseUrl) {
   console.error(
-    "Usage: npm run recover:staff -- --username <username> --password <10+ characters> --identity-verified (DATABASE_URL is required)",
+    "Usage: npm run recover:staff -- --username <username> [--password <10+ characters> | omit it to enter the password at a hidden prompt] --identity-verified (DATABASE_URL is required)",
+  );
+  process.exit(1);
+}
+
+const password =
+  passwordFlag ??
+  (await readHiddenLine(
+    { input: process.stdin, output: process.stderr },
+    "Enter the new password (input hidden): ",
+  ));
+
+if (!password || password.length < 10) {
+  console.error(
+    "Usage: npm run recover:staff -- --username <username> [--password <10+ characters> | omit it to enter the password at a hidden prompt] --identity-verified (DATABASE_URL is required)",
   );
   process.exit(1);
 }

@@ -16,6 +16,7 @@
     "build:widget": "tsx scripts/build-widget.ts",
     "bootstrap:owner": "tsx scripts/bootstrap-owner.ts",
     "recover:staff": "tsx scripts/recover-staff-credentials.ts",
+    "rename:staff": "tsx scripts/rename-staff-username.ts",
     "config:export": "tsx scripts/export-configuration.ts",
     "config:import": "tsx scripts/import-configuration.ts",
     "hygiene": "node scripts/check-repository-hygiene.mjs",
