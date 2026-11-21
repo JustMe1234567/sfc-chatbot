@@ -351,6 +351,14 @@ function SidebarChrome({
             <Link
               key={item.area}
               href={item.href}
+              // Automatic prefetch is off (ticket 99): every nav row is a
+              // dynamic, database-backed route, and Next.js prefetches each
+              // link as it enters the viewport — opening the dashboard fired
+              // all rows' RSC renders at once, the fan-out that exhausted
+              // the shared pooler's 15-client cap in production. Clicking a
+              // row navigates exactly as before; the route renders on
+              // navigation instead of ahead of it.
+              prefetch={false}
               className={styles.sideItem}
               aria-current={item.area === area ? "page" : undefined}
               onClick={onNavigate}
