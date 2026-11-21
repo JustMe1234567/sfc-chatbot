@@ -231,3 +231,57 @@ COMPLETE — all acceptance criteria pass. Status set to `done`. The
 operator still must perform the documented Vercel `DATABASE_URL` cutover
 (section 7 of `docs/deployment.md`) to restore production; that step is
 deliberately outside this implementation per the ticket's constraints.
+
+2026-11-22: **Review amendment — `/code-review a607804d7` over the full
+range (4 commits), both axes; in-scope findings fixed.** Findings and
+dispositions:
+
+- **FIXED — LOCALHOST.md stale (hard, AGENTS.md "Shared localhost
+  state"):** the 5433 cluster entry still said DOWN while this session
+  restarted the cluster and left it running; the entry now records
+  RUNNING with the exact `pg_ctl` command, date, and provenance.
+- **FIXED — Duplicated Code (tests/postgres-pool-config.test.ts):** the
+  env save/delete/restore `try/finally` was copy-pasted across both
+  tests; extracted the `withPoolEnv` helper so the ticket-90 leak
+  discipline lives in one place.
+- **FIXED — Speculative Generality (scripts/load-dashboard-users.ts):**
+  the `--users`/`--iterations`/`--instances`/`--pool-max` flags were
+  configurability no ticket requires (AGENTS.md no-overengineering).
+  The load shape is now fixed constants, so a run demonstrates exactly
+  the configuration that ships; `--admin`/`--control` stay
+  (load-bearing).
+- **FIXED — Mysterious Name:** the harness's `h` instance handle reads
+  as `instance`.
+- **FIXED — test pin loophole (spec axis):** the nav-prefetch pin
+  matched the raw source span, so a comment naming `prefetch={false}`
+  could have satisfied it; line comments are stripped from the matched
+  tag before the assertion, so only the rendered attribute counts.
+- **PARKED — Duplicated Code (prose):** the pool-ceiling rationale
+  appears near-verbatim in `src/db/postgres.ts`, `.env.example`,
+  `docs/deployment.md`, and the test docblock. Each artifact serves a
+  different reader (code, env copier, operator); cross-referencing
+  prose between an env template and a runbook would cost more than it
+  saves, and the repo's established pattern accepts ticket-rationale
+  prose in all three layers.
+- **PARKED — prefetch coverage partial (spec axis):** other dashboard
+  links (the inbox conversation desk, desk entries, contacts/answers
+  pager links) still prefetch. The outage evidence named the sidebar
+  nav burst, and the ticket deliberately scopes the disable to it; the
+  requirement's own wording ("only where it unnecessarily causes
+  simultaneous database-backed dashboard renders") supports the
+  narrower reading. A ticket for the desk links can follow if evidence
+  ever implicates them.
+- **PARKED — control fidelity (spec axis):** the local control
+  reproduces the failure class — renders failing at the enforced
+  15-connection cap after refused connects — rather than the exact
+  `EMAXCONNSESSION` error text, which no local seam can produce (no
+  local Supavisor). Recorded honestly in the harness comment; the
+  post-fix control run in fact produced 6 direct "too many
+  connections" rejections alongside the bounded ones.
+
+Verification of this amendment: focused tests 13/13; harness green PASS
+(peak 12/15, zero rejections) and control PASS (8 failed renders, peak
+15/15); typecheck clean; full `npm run check` green (588 passed /
+7 skipped, production build).
+
+Reviewed through: 478db3205e1231e197d7aaf10d695343d983fda0
