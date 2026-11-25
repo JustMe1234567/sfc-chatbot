@@ -18,7 +18,7 @@ export interface BootstrapOwnerResult {
   store: string;
 }
 
-/** Creates the first owner in the configured Supabase test/production project. */
+/** Creates the first admin in the configured Supabase test/production project. */
 export async function bootstrapOwner(input: BootstrapOwnerInput): Promise<BootstrapOwnerResult> {
   assertSupabaseConfigured();
   const sql = openPostgres(input.databaseUrl);
@@ -29,13 +29,13 @@ export async function bootstrapOwner(input: BootstrapOwnerInput): Promise<Bootst
       db,
       baseUrl: appBaseUrl(),
     });
-    const owner = await provisionStaffMember(auth, db, {
+    const admin = await provisionStaffMember(auth, db, {
       username: input.username,
       password: input.password,
       name: input.name,
-      role: "owner",
+      role: "admin",
     });
-    return { ...owner, store: `Postgres database at ${safePostgresTarget(input.databaseUrl)}` };
+    return { ...admin, store: `Postgres database at ${safePostgresTarget(input.databaseUrl)}` };
   } finally {
     await sql.end({ timeout: 5 });
   }

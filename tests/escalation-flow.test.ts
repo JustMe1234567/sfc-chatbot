@@ -10,7 +10,7 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Flow Owner", role: "owner" });
+  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Flow Owner", role: "admin" });
   await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
 });
 

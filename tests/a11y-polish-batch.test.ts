@@ -108,7 +108,7 @@ describe("a11y polish batch (ticket 29)", () => {
       ["src/app/dashboard/answers/[id]/page.tsx", 'title: "Edit rule"'],
       ["src/app/dashboard/contacts/page.tsx", 'title: "Visitor contacts"'],
       ["src/app/dashboard/settings/page.tsx", 'title: "Settings"'],
-      ["src/app/dashboard/staff/page.tsx", 'title: "Staff"'],
+      ["src/app/dashboard/staff/page.tsx", 'title: "Staff accounts"'],
     ];
     for (const [target, pin] of titles) {
       const source = await readFile(path.join(repoRoot(), target), "utf8");

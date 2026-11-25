@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { repoRoot } from "../src/paths";
 import { confirmHandoffYes, ask, loadHistory, startConversation, TEST_ORIGIN, useTempDatabase, warmChatbotService } from "./helpers";
 import {
   authRequest,
@@ -9,14 +12,16 @@ import {
   signInAs,
 } from "./auth-helpers";
 
-const OWNER_EMAIL = "owner@example.edu";
-const OWNER_PASSWORD = "owner-manage-nimbus-52";
+const ADMIN_EMAIL = "admin@example.edu";
+const ADMIN_PASSWORD = "admin-manage-nimbus-52";
+const SECOND_ADMIN_EMAIL = "second-admin@example.edu";
+const SECOND_ADMIN_PASSWORD = "second-admin-manage-pilot-63";
 const ALICE_EMAIL = "alice@example.edu";
 const ALICE_PASSWORD = "alice-transfer-pilot-7c";
 const BOB_EMAIL = "bob@example.edu";
 const BOB_PASSWORD = "bob-transfer-harbor-3v";
-const EDITOR_EMAIL = "editor@example.edu";
-const EDITOR_PASSWORD = "editor-answer-lantern-8m";
+const EDDIE_EMAIL = "editor@example.edu";
+const EDDIE_PASSWORD = "editor-answer-lantern-8m";
 
 async function staffId(email: string): Promise<string> {
   const { getChatbotService } = await import("../src/db/service");
@@ -119,89 +124,98 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
+  await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "Olive", role: "admin" });
+  await provisionStaff({ email: SECOND_ADMIN_EMAIL, password: SECOND_ADMIN_PASSWORD, name: "Sana", role: "admin" });
   await provisionStaff({ email: ALICE_EMAIL, password: ALICE_PASSWORD, name: "Alice" });
   await provisionStaff({ email: BOB_EMAIL, password: BOB_PASSWORD, name: "Bob" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
+  await provisionStaff({ email: EDDIE_EMAIL, password: EDDIE_PASSWORD, name: "Eddie" });
 });
 
-describe("the owner manages named staff accounts", () => {
-  it("creates an active username and password account without sending email", async () => {
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
+describe("an admin manages admissions advisor accounts", () => {
+  it("creates an active Admissions Advisor account with an admin-set password, without sending email", async () => {
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
 
-    const create = await membersRequest(ownerJar, "POST", "/api/staff/members", {
+    // The form sends no role: the Admissions Advisor is the only creatable role.
+    const create = await membersRequest(adminJar, "POST", "/api/staff/members", {
       name: "Carol",
       username: "carol",
       password: "carol-secure-password-42",
-      role: "staff",
     });
     expect(create.status, await create.clone().text()).toBe(201);
-    const body = (await create.json()) as { member: { id: string; username: string } };
+    const body = (await create.json()) as { member: { id: string; username: string; role: string } };
     expect(body.member.username).toBe("carol");
+    expect(body.member.role).toBe("admissions_advisor");
     expect(JSON.stringify(body)).not.toContain("password");
     const outboxCount = await (await import("../src/db/service")).getChatbotService()
       .then(({ db }) => db.get<{ n: number }>("SELECT COUNT(*) AS n FROM mail_outbox"));
     expect(Number(outboxCount?.n ?? 0)).toBe(0);
-    const duplicate = await membersRequest(ownerJar, "POST", "/api/staff/members", {
+    const duplicate = await membersRequest(adminJar, "POST", "/api/staff/members", {
       name: "Carol Again",
       username: "carol",
       password: "different-secure-password-42",
-      role: "staff",
     });
     expect(duplicate.status).toBe(409);
 
-    const badRole = await membersRequest(ownerJar, "POST", "/api/staff/members", {
-      name: "Sneaky",
-      username: "sneaky",
-      password: "sneaky-secure-password-42",
-      role: "owner",
-    });
-    expect(badRole.status).toBe(400);
+    // No dashboard request creates an Admin, whatever role it asks for.
+    for (const role of ["admin", "owner", "staff", "editor"]) {
+      const refused = await membersRequest(adminJar, "POST", "/api/staff/members", {
+        name: "Sneaky",
+        username: "sneaky",
+        password: "sneaky-secure-password-42",
+        role,
+      });
+      expect(refused.status, `role ${role}`).toBe(400);
+    }
 
-    const list = await membersRequest(ownerJar, "GET", "/api/staff/members");
+    const list = await membersRequest(adminJar, "GET", "/api/staff/members");
     expect(list.status).toBe(200);
     const members = ((await list.json()) as { members: { username: string; role: string }[] }).members;
-    expect(members.some((member) => member.username === "carol" && member.role === "staff")).toBe(true);
+    expect(members.some((member) => member.username === "carol" && member.role === "admissions_advisor")).toBe(true);
+    // The roster holds exactly the two roles, and only the provisioned admins are Admins.
+    expect([...new Set(members.map((member) => member.role))].sort()).toEqual(["admin", "admissions_advisor"]);
+    expect(members.filter((member) => member.role === "admin").map((member) => member.username).sort())
+      .toEqual(["admin", "second-admin"]);
   });
 
-  it("is owner-only and origin-checked", async () => {
+  it("is admin-only and origin-checked", async () => {
     const aliceJar = new CookieJar();
     await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
     const forbidden = await membersRequest(aliceJar, "POST", "/api/staff/members", {
       name: "Nope",
       email: "nope@example.edu",
-      role: "staff",
     });
     expect(forbidden.status).toBe(403);
+    // Admissions Advisors have no Staff accounts area: the roster is refused too.
+    const roster = await membersRequest(aliceJar, "GET", "/api/staff/members");
+    expect(roster.status).toBe(403);
 
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
     const crossSite = await membersRequest(
-      ownerJar,
+      adminJar,
       "POST",
       "/api/staff/members",
-      { name: "Nope", email: "nope2@example.edu", role: "staff" },
+      { name: "Nope", email: "nope2@example.edu" },
       "https://evil.example.net",
     );
     expect(crossSite.status).toBe(403);
   });
 
-  it("resets a staff password and revokes sessions", async () => {
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const created = await membersRequest(ownerJar, "POST", "/api/staff/members", {
+  it("resets an advisor's password and revokes that advisor's sessions", async () => {
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const created = await membersRequest(adminJar, "POST", "/api/staff/members", {
       name: "Diana",
       username: "diana",
       password: "diana-original-password-42",
-      role: "staff",
     });
     const member = (await created.json()) as { member: { userId: string } };
     const active = new CookieJar();
     await signInAs(active, "diana", "diana-original-password-42");
 
     const reset = await membersRequest(
-      ownerJar,
+      adminJar,
       "POST",
       `/api/staff/members/${member.member.userId}/reset-password`,
       { password: "diana-replacement-password-84" },
@@ -220,7 +234,51 @@ describe("the owner manages named staff accounts", () => {
     expect((await staffApiRequest(replacement, "/api/staff/conversations")).status).toBe(200);
   });
 
-  it("lets signed-in staff change their own password without revoking sessions (ticket 82 amendment)", async () => {
+  it("refuses an advisor on create, reset, and disable", async () => {
+    const aliceJar = new CookieJar();
+    await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
+    const bobId = await staffId(BOB_EMAIL);
+
+    const create = await membersRequest(aliceJar, "POST", "/api/staff/members", {
+      name: "Not Allowed",
+      username: "not-allowed",
+      password: "not-allowed-password-42",
+    });
+    expect(create.status).toBe(403);
+    const reset = await membersRequest(aliceJar, "POST", `/api/staff/members/${bobId}/reset-password`, {
+      password: "hijacked-password-42",
+    });
+    expect(reset.status).toBe(403);
+    const disable = await membersRequest(aliceJar, "POST", `/api/staff/members/${bobId}/disable`);
+    expect(disable.status).toBe(403);
+
+    // Bob's password and access are untouched.
+    const bobJar = new CookieJar();
+    await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
+    expect((await staffApiRequest(bobJar, "/api/staff/conversations")).status).toBe(200);
+  });
+
+  it("cannot reset or disable an Admin account, including its own", async () => {
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const otherAdminId = await staffId(SECOND_ADMIN_EMAIL);
+
+    const reset = await membersRequest(adminJar, "POST", `/api/staff/members/${otherAdminId}/reset-password`, {
+      password: "hijacked-admin-password-42",
+    });
+    expect(reset.status).toBe(400);
+    const disable = await membersRequest(adminJar, "POST", `/api/staff/members/${otherAdminId}/disable`);
+    expect(disable.status).toBe(400);
+    const self = await membersRequest(adminJar, "POST", `/api/staff/members/${await staffId(ADMIN_EMAIL)}/disable`);
+    expect(self.status).toBe(400);
+
+    // The other Admin still signs in with the original password.
+    const otherAdmin = new CookieJar();
+    await signInAs(otherAdmin, SECOND_ADMIN_EMAIL, SECOND_ADMIN_PASSWORD);
+    expect((await staffApiRequest(otherAdmin, "/api/staff/members")).status).toBe(200);
+  });
+
+  it("lets a signed-in advisor change their own password without revoking sessions (ticket 82 amendment)", async () => {
     await provisionStaff({ email: "self-change@example.edu", password: "self-change-password-42", name: "Self Change" });
     const jar = new CookieJar();
     await signInAs(jar, "self-change", "self-change-password-42");
@@ -232,7 +290,7 @@ describe("the owner manages named staff accounts", () => {
     });
     expect(changed.status).toBe(200);
     // A self-service change revokes nothing: the acting session and the
-    // account's other live session keep working. Only owner-issued resets
+    // account's other live session keep working. Only admin-issued resets
     // wipe every session.
     expect((await staffApiRequest(jar, "/api/staff/conversations")).status).toBe(200);
     expect((await staffApiRequest(second, "/api/staff/conversations")).status).toBe(200);
@@ -250,7 +308,7 @@ describe("the owner manages named staff accounts", () => {
 });
 
 describe("disabling an account takes effect immediately", () => {
-  it("cuts off a signed-in staff member's dashboard, API, and inbox access", async () => {
+  it("cuts off a signed-in advisor's dashboard, API, and inbox access", async () => {
     // A disposable victim: banning is permanent for the file's database, so
     // later tests must never depend on this account again.
     const VICTIM_EMAIL = "dave@example.edu";
@@ -265,9 +323,9 @@ describe("disabling an account takes effect immediately", () => {
     );
     expect(before.status).toBe(200);
 
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const disable = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(VICTIM_EMAIL)}/disable`);
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const disable = await membersRequest(adminJar, "POST", `/api/staff/members/${await staffId(VICTIM_EMAIL)}/disable`);
     expect(disable.status).toBe(200);
 
     const after = await inboxRoute.GET(
@@ -282,12 +340,12 @@ describe("disabling an account takes effect immediately", () => {
     expect(resignIn.ok).toBe(false);
   });
 
-  it("refuses to disable the acting owner or another owner account", async () => {
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const self = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(OWNER_EMAIL)}/disable`);
+  it("refuses to disable the acting admin and reports an unknown account", async () => {
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const self = await membersRequest(adminJar, "POST", `/api/staff/members/${await staffId(ADMIN_EMAIL)}/disable`);
     expect(self.status).toBe(400);
-    const unknown = await membersRequest(ownerJar, "POST", "/api/staff/members/does-not-exist/disable");
+    const unknown = await membersRequest(adminJar, "POST", "/api/staff/members/does-not-exist/disable");
     expect(unknown.status).toBe(404);
   });
 
@@ -304,14 +362,14 @@ describe("disabling an account takes effect immediately", () => {
     const claim = await conversationAction(holderJar, conversation.id, "claim");
     expect(claim.status).toBe(200);
 
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const disable = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(HOLDER_EMAIL)}/disable`);
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const disable = await membersRequest(adminJar, "POST", `/api/staff/members/${await staffId(HOLDER_EMAIL)}/disable`);
     expect(disable.status).toBe(200);
 
     // The claim cannot outlive the account: the conversation returns to the
     // inbox, and the sweep is on the audit trail.
-    const detail = await conversationDetail(ownerJar, conversation.id);
+    const detail = await conversationDetail(adminJar, conversation.id);
     expect(detail.conversation.state).toBe("awaiting_staff");
     expect(detail.conversation.claimedBy).toBeNull();
     const sweep = detail.audit.find(
@@ -353,7 +411,7 @@ describe("releasing a claim", () => {
     expect(reclaim.status).toBe(200);
   });
 
-  it("only the claimer or the owner may release", async () => {
+  it("only the claimer or an admin may release", async () => {
     const { id: conversationId } = await claimedConversation();
     const bobJar = new CookieJar();
     await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
@@ -362,9 +420,9 @@ describe("releasing a claim", () => {
     const conflict = (await notClaimer.json()) as { claimedBy: string };
     expect(conflict.claimedBy).toBe("Alice");
 
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const override = await conversationAction(ownerJar, conversationId, "release");
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const override = await conversationAction(adminJar, conversationId, "release");
     expect(override.status).toBe(200);
   });
 
@@ -380,7 +438,7 @@ describe("releasing a claim", () => {
 });
 
 describe("transferring a claim", () => {
-  it("hands the conversation to another active staff member with history intact", async () => {
+  it("hands the conversation to another active admissions advisor with history intact", async () => {
     const { id: conversationId, token } = await claimedConversation();
     const aliceJar = new CookieJar();
     await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
@@ -394,7 +452,7 @@ describe("transferring a claim", () => {
     expect(transferred.conversation.state).toBe("claimed");
     expect(transferred.conversation.claimedBy).toBe(await staffId(BOB_EMAIL));
 
-    // The new owner can reply; the old one no longer can.
+    // The new holder can reply; the previous one no longer can.
     const bobJar = new CookieJar();
     await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     const bobReply = await conversationAction(bobJar, conversationId, "reply", { text: "Bob continuing from here." });
@@ -402,7 +460,7 @@ describe("transferring a claim", () => {
     const aliceReply = await conversationAction(aliceJar, conversationId, "reply", { text: "still alice" });
     expect(aliceReply.status).toBe(409);
 
-    // History preserved for the new owner, and the visitor's own polling
+    // History preserved for the new holder, and the visitor's own polling
     // still reads the same conversation with its full transcript.
     const detail = await conversationDetail(bobJar, conversationId);
     expect(detail.messages.length).toBeGreaterThanOrEqual(4);
@@ -421,11 +479,6 @@ describe("transferring a claim", () => {
     const aliceJar = new CookieJar();
     await signInAs(aliceJar, ALICE_EMAIL, ALICE_PASSWORD);
 
-    const editorTarget = await conversationAction(aliceJar, conversationId, "transfer", {
-      to: await staffId(EDITOR_EMAIL),
-    });
-    expect(editorTarget.status).toBe(400);
-
     const selfTarget = await conversationAction(aliceJar, conversationId, "transfer", {
       to: await staffId(ALICE_EMAIL),
     });
@@ -443,10 +496,10 @@ describe("transferring a claim", () => {
     });
     expect(notClaimer.status).toBe(409);
 
-    // The owner can move the assignment even without holding the claim.
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const override = await conversationAction(ownerJar, conversationId, "transfer", {
+    // An admin can move the assignment even without holding the claim.
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const override = await conversationAction(adminJar, conversationId, "transfer", {
       to: await staffId(BOB_EMAIL),
     });
     expect(override.status).toBe(200);
@@ -457,9 +510,9 @@ describe("transferring a claim", () => {
     const VICTIM_PASSWORD = "erin-disposable-orbit-77";
     await provisionStaff({ email: VICTIM_EMAIL, password: VICTIM_PASSWORD, name: "Erin" });
     const { id: conversationId } = await claimedConversation();
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const disable = await membersRequest(ownerJar, "POST", `/api/staff/members/${await staffId(VICTIM_EMAIL)}/disable`);
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const disable = await membersRequest(adminJar, "POST", `/api/staff/members/${await staffId(VICTIM_EMAIL)}/disable`);
     expect(disable.status).toBe(200);
 
     const aliceJar = new CookieJar();
@@ -471,13 +524,13 @@ describe("transferring a claim", () => {
   });
 });
 
-describe("the owner role can reply without holding the claim", () => {
-  it("lets the owner answer a conversation claimed by someone else", async () => {
+describe("the admin role can reply without holding the claim", () => {
+  it("lets an admin answer a conversation claimed by someone else", async () => {
     const { id: conversationId } = await claimedConversation();
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const reply = await conversationAction(ownerJar, conversationId, "reply", {
-      text: "Owner stepping in briefly.",
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const reply = await conversationAction(adminJar, conversationId, "reply", {
+      text: "Admin stepping in briefly.",
     });
     expect(reply.status).toBe(200);
   });
@@ -495,9 +548,9 @@ describe("the audit trail", () => {
     await signInAs(bobJar, BOB_EMAIL, BOB_PASSWORD);
     await conversationAction(bobJar, conversationId, "release");
 
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const detail = await conversationDetail(ownerJar, conversationId);
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const detail = await conversationDetail(adminJar, conversationId);
     const actions = detail.audit.map((entry) => entry.action);
     expect(actions).toContain("conversation_claimed");
     expect(actions).toContain("conversation_replied");
@@ -514,12 +567,12 @@ describe("the audit trail", () => {
     const { getChatbotService } = await import("../src/db/service");
     const { db } = await getChatbotService();
 
-    const editorJar = new CookieJar();
-    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    const eddieJar = new CookieJar();
+    await signInAs(eddieJar, EDDIE_EMAIL, EDDIE_PASSWORD);
     const create = await (await import("../src/app/api/staff/answer-rules/route")).POST(
       new Request(`${TEST_ORIGIN}/api/staff/answer-rules`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", cookie: editorJar.header(), origin: TEST_ORIGIN },
+        headers: { "Content-Type": "application/json", cookie: eddieJar.header(), origin: TEST_ORIGIN },
         body: JSON.stringify({
           topic: "Audited rule",
           response: "An audited response body.",
@@ -536,12 +589,106 @@ describe("the audit trail", () => {
     )) as { action: string }[];
     expect(rows.map((row) => row.action)).toContain("rule_created");
 
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
     const staffRows = (await db.all<{ action: string; detail: string }>(
       "SELECT action, detail FROM audit_log WHERE action IN ('staff_created','staff_disabled')",
     )) as { action: string; detail: string }[];
     expect(staffRows.some((row) => row.action === "staff_created" && row.detail.includes("carol"))).toBe(true);
     expect(staffRows.some((row) => row.action === "staff_disabled" && row.detail.includes("dave"))).toBe(true);
+    // A new account's audit row records the stored role value it was created with.
+    expect(staffRows.find((row) => row.action === "staff_created" && row.detail?.startsWith("carol"))?.detail)
+      .toBe("carol (admissions_advisor)");
+  });
+});
+
+describe("the relocated password change (ticket 102 decision 2)", () => {
+  const read = (rel: string) => readFile(path.join(repoRoot(), rel), "utf8");
+
+  it("is offered from the dashboard chrome, which renders on every page for both roles", async () => {
+    const header = await read("src/app/dashboard/header.tsx");
+    expect(header).toContain("<PasswordDialog />");
+    // The identity block is the chrome's per-member corner: the dialog sits
+    // beside sign-out, inside the sidebar both shells render.
+    const identityStart = header.indexOf('className={styles.sideIdentity}');
+    const identity = header.slice(identityStart, header.indexOf("</div>", identityStart));
+    expect(identity).toContain("<PasswordDialog />");
+  });
+
+  it("opens a dialog that reuses the self-service change with its no-revocation contract", async () => {
+    const dialog = await read("src/app/dashboard/password-dialog.tsx");
+    expect(dialog).toContain("Change password");
+    expect(dialog).toContain("PasswordSettings");
+    // The change goes through the existing auth endpoint (ADR-0006: it
+    // revokes no sessions) — pinned where the component always lived.
+    const form = await read("src/app/dashboard/settings/password-settings.tsx");
+    expect(form).toContain("authClient.changePassword");
+    // Admins keep the same control; only an issued reset signs out sessions.
+    expect(form).toContain("admin-issued reset");
+  });
+
+  it("keeps the Settings page free of the password form", async () => {
+    const page = await read("src/app/dashboard/settings/page.tsx");
+    expect(page).not.toContain("PasswordSettings");
+  });
+});
+
+describe("the dashboard front door (ticket 102)", () => {
+  it("sends both roles to the inbox; the editor-only Answers redirect is gone", async () => {
+    const page = await readFile(path.join(repoRoot(), "src/app/dashboard/page.tsx"), "utf8");
+    expect(page).toContain('redirect("/dashboard/inbox")');
+    expect(page).not.toContain('"editor"');
+    expect(page).not.toContain("/dashboard/answers");
+  });
+});
+
+describe("the Staff accounts page", () => {
+  const read = (rel: string) => readFile(path.join(repoRoot(), rel), "utf8");
+
+  it("is titled Staff accounts and refuses everyone but admins", async () => {
+    const page = await read("src/app/dashboard/staff/page.tsx");
+    expect(page).toContain('metadata: Metadata = { title: "Staff accounts" }');
+    expect(page).toContain('title="Staff accounts"');
+    expect(page).toContain('{ roles: ["admin"] }');
+    expect(page).toContain("This page requires the admin role.");
+  });
+
+  it("labels every account with its role name and status instead of the stored value", async () => {
+    const page = await read("src/app/dashboard/staff/page.tsx");
+    expect(page).toContain("{member.name} · {staffRoleLabel(member.role)}");
+    expect(page).not.toContain("{member.role}");
+    for (const status of [">disabled<", ">active<"]) {
+      expect(page).toContain(status);
+    }
+    // Decision 5 fixes the two role names.
+    const { staffRoleLabel } = await import("../src/auth/server");
+    expect(["admin", "admissions_advisor"].map(staffRoleLabel)).toEqual(["Admin", "Admissions Advisor"]);
+  });
+
+  it("carries the role label into the desk's transfer picker", async () => {
+    // The AC names the transfer picker as a role-label surface: the desk
+    // resolves each target's display label and the option renders it.
+    const desk = await read("src/app/dashboard/inbox/conversation-desk.tsx");
+    expect(desk).toContain("roleLabel: staffRoleLabel(member.role)");
+    const actions = await read("src/app/dashboard/conversations/[id]/conversation-actions.tsx");
+    expect(actions).toContain("{member.name} · {member.roleLabel}");
+  });
+
+  it("creates an Admissions Advisor account with no role picker and no staff or invite wording", async () => {
+    const form = await read("src/app/dashboard/staff/account-form.tsx");
+    expect(form).toContain("Create an Admissions Advisor account");
+    expect(form).not.toContain("<select");
+    // The request carries only what the admin fills in.
+    expect(form).toContain("JSON.stringify({ name: name.trim(), username, password })");
+    // What the page says — every string literal and JSX text, with the
+    // module's own imports and the internal API path set aside — names no
+    // other role, no invitation, and none of the old vocabulary.
+    const source = form.replace(/^import .*$/gm, "").replace(/^"use client";$/m, "");
+    const copy = [...source.matchAll(/>([^<>{}]+)<|"([^"]*)"/g)]
+      .map((match) => match[1] ?? match[2] ?? "")
+      .filter((text) => !text.startsWith("/"))
+      .join("\n");
+    expect(copy).toContain("Create an Admissions Advisor account");
+    expect(copy).not.toMatch(/\brole\b|\binvite|staff|editor|owner|admin/i);
   });
 });

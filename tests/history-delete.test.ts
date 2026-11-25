@@ -25,7 +25,7 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
+  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "admin" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
 });
 
@@ -265,7 +265,7 @@ describe("the confirmation dialog and row structure (ticket 51)", () => {
       path.join(repoRoot(), "src/app/dashboard/inbox/conversation-desk.tsx"),
       "utf8",
     );
-    expect(desk).toContain('guard.staff.role === "owner"');
+    expect(desk).toContain('guard.staff.role === "admin"');
     expect(desk).toContain("ClearHistoryButton");
     expect(desk).toContain("count={history.length}");
   });

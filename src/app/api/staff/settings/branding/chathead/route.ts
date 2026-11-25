@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
-import { DASHBOARD_ROLES } from "@/auth/server";
 import {
   chatheadFitRequirement,
   isValidChatheadConfig,
@@ -25,7 +24,7 @@ export async function PUT(request: Request) {
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: DASHBOARD_ROLES });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }

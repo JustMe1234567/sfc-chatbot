@@ -257,11 +257,11 @@ describe("the Visitor contacts page (ticket 69)", () => {
     expect(source).not.toContain("mailto:");
   });
 
-  it("joins the shared nav list for owners and staff under its new name", async () => {
+  it("joins the shared nav list for both dashboard roles under its new name", async () => {
     const header = await readFile(path.join(repoRoot(), HEADER_PATH), "utf8");
 
     expect(header).toContain(
-      '{ area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["owner", "staff"] }',
+      '{ area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["admin", "admissions_advisor"] }',
     );
     expect(header).toContain("contacts: (");
     expect(header).not.toContain('"/dashboard/emails"');

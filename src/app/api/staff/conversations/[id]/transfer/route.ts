@@ -10,9 +10,9 @@ interface RouteContext {
 }
 
 /**
- * Transfer (ticket 08): the claimer — or the owner role overriding — hands
- * the conversation to another active inbox-capable staff member. History is
- * untouched; the new owner can reply immediately.
+ * Transfer (ticket 08): the claimer — or the admin role overriding — hands
+ * the conversation to another active admissions advisor. History is
+ * untouched; the new holder can reply immediately.
  */
 export async function POST(request: Request, context: RouteContext) {
   const blocked = sameOriginGuard(request);
@@ -30,7 +30,7 @@ export async function POST(request: Request, context: RouteContext) {
   const targetId = typeof body?.to === "string" ? body.to : "";
   if (targetId.length === 0) {
     return NextResponse.json(
-      { error: { code: "invalid_target", message: "Choose a staff member to transfer to." } },
+      { error: { code: "invalid_target", message: "Choose an admissions advisor to transfer to." } },
       { status: 400 },
     );
   }
@@ -42,21 +42,21 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
   const isClaimer = conversation.claimedBy === staff.userId;
-  if (!isClaimer && staff.role !== "owner") {
+  if (!isClaimer && staff.role !== "admin") {
     return claimConflictResponse(claimerName);
   }
 
   const { store, db } = await getChatbotService();
   const target = await activeInboxMember(db, targetId);
-  // Transferring to the conversation's current owner is always a no-op: the
-  // claimer picking themselves. (An owner overriding may take a conversation
+  // Transferring to the conversation's current holder is always a no-op: the
+  // claimer picking themselves. (An admin overriding may take a conversation
   // over by transferring it to themselves.)
   if (!target || target.id === conversation.claimedBy) {
     return NextResponse.json(
       {
         error: {
           code: "invalid_target",
-          message: "Pick a different active staff member with inbox access.",
+          message: "Pick a different active admissions advisor.",
         },
       },
       { status: 400 },

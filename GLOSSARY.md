@@ -56,14 +56,17 @@ The visitor's full name, email address, and phone number, required before every 
 A visitor's explicit ask to be reached (ticket 69), in one of three media: **Chat** rides the existing waiting-for-staff flow (Take over completes it), while **Email** and **Phone** leave the bot active behind a persistent red **Contact Me** desk status that staff clear with **Mark contacted** — viewing the transcript never clears it. A clicked Handoff Option or typed Handoff phrase asks the persisted two-action confirmation before anything happens; exactly one request may be open per conversation, one row per conversation shows the latest medium in Visitor contacts, and earlier requests stay in the conversation's request history. Requests leave with the conversation under every deletion path.
 
 **Conversation**:
-The message history shared by a visitor, the bot, and any administrator who takes over.
+The message history shared by a visitor, the bot, and the Admin or Admissions Advisor who takes over.
 
 **Staff account**:
-The named dashboard membership of a college employee. An owner assigns its username, initial password, and owner/staff/editor role; the password alone admits the dashboard (ticket 82 removed the second factor).
+The named dashboard membership of a college employee. An admin assigns its username, initial password, and Admin or Admissions Advisor role — advisor accounts from the Staff accounts page, Admins only through the bootstrap command; the password alone admits the dashboard (ticket 82 removed the second factor).
 
-**Owner**:
-The highest-privilege staff role, responsible for security-sensitive dashboard configuration and staff administration.
-_Avoid_: Superadmin, administrator
+**Admin**:
+The highest-privilege role, responsible for security-sensitive dashboard configuration and staff administration. Admins exist only through the bootstrap command and cannot be created, disabled, or password-reset from the dashboard. (The role was named Owner before ticket 102; historical records keep the old name.)
+_Avoid_: Superadmin, administrator, Owner (historical)
+
+**Admissions Advisor**:
+The dashboard's operational role: conversations, visitor contacts, and the whole Answers area (edit and publish), excluding Analytics, Settings, Logs, and Staff accounts. Internal dashboard vocabulary only — visitor-facing chat copy says "Staff" (owner's standing rule, 2026-11-24). The role merged the former staff and editor roles (ticket 102).
 
 **Staff credential reset**:
 An owner-issued password reset for an existing staff account. It revokes every session; the member signs back in with the new password.

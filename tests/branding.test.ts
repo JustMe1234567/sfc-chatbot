@@ -4,6 +4,7 @@ process.env.PG_POOL_MAX = process.env.PG_POOL_MAX ?? "2";
 import { beforeAll, describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { StaffRole } from "../src/auth/server";
 import {
   CHATHEAD_DEFAULTS,
   chatheadDerivedSize,
@@ -61,7 +62,7 @@ function webPBytes(): Uint8Array {
  * Provisions the staff member and leaves the jar holding a dashboard
  * session (the house provisioning sequence).
  */
-async function provisionedSession(role: "owner" | "staff" | "editor", label: string): Promise<CookieJar> {
+async function provisionedSession(role: StaffRole, label: string): Promise<CookieJar> {
   const jar = new CookieJar();
   const email = `${label}-${role}@example.edu`;
   await provisionStaff({ email, password: "Branding2026!", name: `Branding ${role}`, role });
@@ -279,18 +280,24 @@ describe("branding settings API (ticket 70)", () => {
     expect(put.status).toBe(401);
   });
 
-  it("accepts a valid upload from every dashboard role", async () => {
+  it("accepts a valid upload from an admin and refuses an admissions advisor", async () => {
+    // Branding is admin-only since ticket 102: Admissions Advisors have no
+    // Settings page and their writes are refused on all three routes.
     const png = await bundledPngBytes();
-    for (const role of ["owner", "staff", "editor"] as const) {
-      const jar = await provisionedSession(role, "matrix");
-      const put = await staffPut("chatbot-icon", jar, { image: pngDataUrl(png) });
-      expect(put.status, `${role} upload`).toBe(200);
-      expect(((await put.json()) as { ok?: boolean }).ok).toBe(true);
+    const adminJar = await provisionedSession("admin", "matrix");
+    const put = await staffPut("chatbot-icon", adminJar, { image: pngDataUrl(png) });
+    expect(put.status, "admin upload").toBe(200);
+    expect(((await put.json()) as { ok?: boolean }).ok).toBe(true);
+
+    const advisorJar = await provisionedSession("admissions_advisor", "matrix");
+    for (const route of ["chatbot-icon", "dashboard-favicon", "chathead"]) {
+      const refused = await staffPut(route, advisorJar, null);
+      expect(refused.status, `${route} as advisor`).toBe(403);
     }
   });
 
   it("rejects SVG, disguised, oversized, and corrupt uploads without saving", async () => {
-    const jar = await provisionedSession("owner", "validator");
+    const jar = await provisionedSession("admin", "validator");
     const attempts: [string, unknown][] = [
       ["svg", { image: svgDataUrl() }],
       ["corrupt base64", { image: "data:image/png;base64,####" }],
@@ -317,7 +324,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("applies an accepted upload to the public read and asset route", async () => {
-    const jar = await provisionedSession("staff", "apply");
+    const jar = await provisionedSession("admin", "apply");
     const png = await bundledPngBytes();
     const put = await staffPut("chatbot-icon", jar, { image: pngDataUrl(png) });
     expect(put.status).toBe(200);
@@ -339,7 +346,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("keeps the two images independent on reset", async () => {
-    const jar = await provisionedSession("editor", "independent");
+    const jar = await provisionedSession("admin", "independent");
     const png = await bundledPngBytes();
     await staffPut("chatbot-icon", jar, { image: pngDataUrl(png) });
     await staffPut("dashboard-favicon", jar, { image: pngDataUrl(png) });
@@ -364,7 +371,7 @@ describe("branding settings API (ticket 70)", () => {
   });
 
   it("validates the chathead config, blocks saves that do not fit, and resets (ticket 71)", async () => {
-    const jar = await provisionedSession("staff", "chathead");
+    const jar = await provisionedSession("admin", "chathead");
 
     // A pre-71-shaped body (no dimensions) stays valid: the public read
     // derives the outer size, preserving deployed chatheads.
@@ -513,6 +520,6 @@ describe("branding settings API (ticket 70)", () => {
     expect(header).toContain("/brand/cropped-SFC-Final-Logo-Single.png");
     expect(header).toContain('area: "settings"');
     expect(header).toContain('label: "Settings"');
-    expect(header).toContain('roles: ["owner", "staff", "editor"]');
+    expect(header).toContain('roles: ["admin"]');
   });
 });

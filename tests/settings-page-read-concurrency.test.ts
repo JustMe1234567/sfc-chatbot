@@ -22,8 +22,8 @@ import { CookieJar, provisionStaff, signInAs } from "./auth-helpers";
  * so every increment lands in the same tick before any read can settle).
  *
  * The same renders pin what the batching must not disturb: every Settings
- * value reaching its card or summary, the owner/staff/editor role gates, and
- * ticket 88's read-only staff summary.
+ * value reaching its card, and — since ticket 102 made Settings an Admin
+ * area — that an Admissions Advisor is refused before any settings read.
  */
 
 // Shared with the `@/db/service` mock factory below (vi.mock factories hoist
@@ -81,7 +81,7 @@ vi.mock("@/db/service", async (importOriginal) => {
   };
 });
 
-const OWNER_LOGIN = "pool-owner";
+const ADMIN_LOGIN = "pool-admin";
 const STAFF_LOGIN = "pool-staff";
 const EDITOR_LOGIN = "pool-editor";
 const PASSWORD = "pool-render-lantern-9f";
@@ -114,9 +114,11 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: `${OWNER_LOGIN}@example.edu`, password: PASSWORD, name: "Rhea", role: "owner" });
+  // The two operational accounts both hold the Admissions Advisor role now
+  // (ticket 102 merged Staff and Editor into it).
+  await provisionStaff({ email: `${ADMIN_LOGIN}@example.edu`, password: PASSWORD, name: "Rhea", role: "admin" });
   await provisionStaff({ email: `${STAFF_LOGIN}@example.edu`, password: PASSWORD, name: "Sage" });
-  await provisionStaff({ email: `${EDITOR_LOGIN}@example.edu`, password: PASSWORD, name: "Elio", role: "editor" });
+  await provisionStaff({ email: `${EDITOR_LOGIN}@example.edu`, password: PASSWORD, name: "Elio" });
 
   const { getChatbotService } = await import("@/db/service");
   const { db } = await getChatbotService();
@@ -141,14 +143,14 @@ beforeAll(async () => {
   seededIconVersion = await getChatbotIconVersion(db);
   seededFaviconVersion = await getDashboardFaviconVersion(db);
 
-  for (const login of [OWNER_LOGIN, STAFF_LOGIN, EDITOR_LOGIN]) {
+  for (const login of [ADMIN_LOGIN, STAFF_LOGIN, EDITOR_LOGIN]) {
     const jar = new CookieJar();
     await signInAs(jar, login, PASSWORD);
     jars[login] = jar;
   }
 });
 
-/** Renders the real page as a role and reports the read concurrency peak. */
+/** Renders the real page as a signed-in account and reports the read concurrency peak. */
 async function renderSettings(login: string): Promise<{ tree: unknown; maxConcurrent: number }> {
   const jar = jars[login];
   if (!jar) {
@@ -163,16 +165,16 @@ async function renderSettings(login: string): Promise<{ tree: unknown; maxConcur
 }
 
 describe("the settings page's server reads stay within the pool headroom (ticket 89)", () => {
-  it("holds at most four concurrent store reads on the owner render", async () => {
-    const { maxConcurrent } = await renderSettings(OWNER_LOGIN);
+  it("holds at most four concurrent store reads on the admin render", async () => {
+    const { maxConcurrent } = await renderSettings(ADMIN_LOGIN);
     // The bound the fix pins: at most half the default pool of 8. The old
     // single `Promise.all` measured 8 here — the over-subscription that
     // starved the five-lease deployed pool and hung the authed render.
     expect(maxConcurrent).toBeLessThanOrEqual(4);
   });
 
-  it("delivers every seeded setting to the owner render, batched or not", async () => {
-    const { tree } = await renderSettings(OWNER_LOGIN);
+  it("delivers every seeded setting to the admin render, batched or not", async () => {
+    const { tree } = await renderSettings(ADMIN_LOGIN);
     const rendered = JSON.stringify(tree);
     expect(rendered).toContain('"initialHours":{"timeZone":"America/Chicago"');
     expect(rendered).toContain('"initialDays":45');
@@ -186,22 +188,23 @@ describe("the settings page's server reads stay within the pool headroom (ticket
     );
   });
 
-  it("keeps the staff summary and keeps the owner cards out of the staff render", async () => {
-    const { tree, maxConcurrent } = await renderSettings(STAFF_LOGIN);
-    expect(maxConcurrent).toBeLessThanOrEqual(4);
-    const rendered = JSON.stringify(tree);
-    // Ticket 88's read-only summary: the live values without editing surfaces.
-    expect(rendered).toContain("Current support hours and transcript retention");
-    expect(rendered).toContain("45 days in History");
-    expect(rendered).not.toContain("initialHours");
-    expect(rendered).not.toContain("initialDays");
-  });
-
-  it("gives editors neither the owner cards nor the staff summary", async () => {
-    const { tree } = await renderSettings(EDITOR_LOGIN);
-    const rendered = JSON.stringify(tree);
-    expect(rendered).not.toContain("initialHours");
-    expect(rendered).not.toContain("initialDays");
-    expect(rendered).not.toContain("Current support hours and transcript retention");
+  it("refuses each admissions advisor before reading or rendering any setting", async () => {
+    for (const login of [STAFF_LOGIN, EDITOR_LOGIN]) {
+      const { tree } = await renderSettings(login);
+      const rendered = JSON.stringify(tree);
+      expect(rendered, login).toContain("This page requires the admin role.");
+      // Neither the configuration forms, nor ticket 88's former read-only
+      // summary, nor any configured value reaches an advisor.
+      for (const withheld of [
+        "initialHours",
+        "initialDays",
+        "initialOrigins",
+        ALLOWLIST_ORIGIN,
+        '"backgroundColor":"#123456"',
+        "45 days in History",
+      ]) {
+        expect(rendered, `${login} → ${withheld}`).not.toContain(withheld);
+      }
+    }
   });
 });

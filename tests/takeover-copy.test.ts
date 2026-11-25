@@ -27,10 +27,11 @@ describe("staff-facing takeover copy (ticket 45)", () => {
       path.join(repoRoot(), "src/app/dashboard/inbox/conversation-desk.tsx"),
       "utf8",
     );
-    expect(source).toContain("Waiting for a staff member to take over this conversation.");
+    // Desk copy names the advisor (ticket 102's dashboard-facing sweep).
+    expect(source).toContain("Waiting for an advisor to take over this conversation.");
     expect(source).toContain("took over this conversation");
     // The empty-state paragraph line-breaks in the JSX; pin within one line.
-    expect(source).toContain("for a staff member to take over; Active chats are already being");
+    expect(source).toContain("for an advisor to take over; Active chats are already being");
     expect(source).not.toContain("claim this conversation");
     expect(source).not.toContain("for a claim;");
     // The audit display label changes, the stored action id does not.
@@ -39,7 +40,7 @@ describe("staff-facing takeover copy (ticket 45)", () => {
 
   it("states takeover in the conflict and validation copy staff can hit", async () => {
     const conflict = await readFile(path.join(repoRoot(), "src/api/staffConversations.ts"), "utf8");
-    expect(conflict).toContain("Another staff member took over this chat.");
+    expect(conflict).toContain("Another advisor took over this chat.");
     expect(conflict).toContain("is already helping in this conversation.");
     expect(conflict).toContain('code: "already_claimed"');
     const reply = await readFile(

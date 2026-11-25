@@ -14,10 +14,10 @@ import { expireFakeSessions, registerFakeStaff } from "./fake-auth-provider";
 
 const STAFF_EMAIL = "registrar@example.edu";
 const STAFF_PASSWORD = "correct-horse-battery";
-const OWNER_EMAIL = "owner@example.edu";
-const OWNER_PASSWORD = "owner-staple-cartoon-42";
-const EDITOR_EMAIL = "editor@example.edu";
-const EDITOR_PASSWORD = "editor-placid-nimbus-88";
+const ADMIN_EMAIL = "owner@example.edu";
+const ADMIN_PASSWORD = "owner-staple-cartoon-42";
+const ADVISOR_EMAIL = "editor@example.edu";
+const ADVISOR_PASSWORD = "editor-placid-nimbus-88";
 
 async function escalateAConversation(): Promise<void> {
   const conversation = await startConversation();
@@ -31,9 +31,9 @@ beforeAll(async () => {
   await warmChatbotService();
   // The auth layer only trusts its own base URL: make the synthetic test
   // origin the trusted origin so cookie flows behave like the real dashboard.
-    await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "College Owner", role: "owner" });
+    await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "College Admin", role: "admin" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Front Desk" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Content Editor", role: "editor" });
+  await provisionStaff({ email: ADVISOR_EMAIL, password: ADVISOR_PASSWORD, name: "Content Advisor",  });
   // Password-only sign-in throughout (ticket 82 removed the second factor).
 });
 
@@ -195,11 +195,11 @@ describe("protected shared inbox", () => {
     expect(transcriptBody.messages.map((message) => message.role)).toContain("visitor");
   });
 
-  it("refuses the inbox to a role without inbox access", async () => {
+  it("gives the inbox to both roles — the ticket-102 merge left no answer-only role", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const inbox = await staffApiRequest(jar, "/api/staff/conversations");
-    expect(inbox.status).toBe(403);
+    expect(inbox.status).toBe(200);
   });
 
   it("ends access immediately when the account is disabled", async () => {

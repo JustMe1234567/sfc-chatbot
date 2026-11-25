@@ -37,10 +37,10 @@ import { repoRoot } from "../src/paths";
  * matches rules keeps normal answer matching.
  */
 
-const OWNER_EMAIL = "options-owner@example.edu";
-const OWNER_PASSWORD = "options-owner-harbor-7n";
-const EDITOR_EMAIL = "options-editor@example.edu";
-const EDITOR_PASSWORD = "options-editor-ridge-3k";
+const ADMIN_EMAIL = "options-owner@example.edu";
+const ADMIN_PASSWORD = "options-owner-harbor-7n";
+const ADVISOR_EMAIL = "options-editor@example.edu";
+const ADVISOR_PASSWORD = "options-editor-ridge-3k";
 const STAFF_EMAIL = "options-staff@example.edu";
 const STAFF_PASSWORD = "options-staff-quiet-8v";
 
@@ -165,8 +165,8 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
+  await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "Olive", role: "admin" });
+  await provisionStaff({ email: ADVISOR_EMAIL, password: ADVISOR_PASSWORD, name: "Eddie",  });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   const { store } = await service();
   // A published rule deliberately covering the same topic as an option:
@@ -190,8 +190,8 @@ describe("the seeded options (ticket 67)", () => {
 });
 
 describe("the Answers admin surface for options", () => {
-  it("applies editor saves on the very next fetch, without a redeploy", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
+  it("applies advisor saves on the very next fetch, without a redeploy", async () => {
+    const editor = await staffJar(ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const saved = await putOptions(editor, [
       ADMISSIONS_OPTION,
       "Please connect me with the registrar",
@@ -215,7 +215,7 @@ describe("the Answers admin surface for options", () => {
   });
 
   it("rejects malformed option lists", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
+    const editor = await staffJar(ADVISOR_EMAIL, ADVISOR_PASSWORD);
     expect((await putOptions(editor, "not a list" as unknown as string[])).status).toBe(400);
     expect((await putOptions(editor, ["?!?"])).status).toBe(400);
     expect((await putOptions(editor, ["x".repeat(201)])).status).toBe(400);
@@ -224,14 +224,22 @@ describe("the Answers admin surface for options", () => {
     ).toBe(400);
   });
 
-  it("is editor-role territory: plain staff, anonymous, and untrusted origins refused", async () => {
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
-    expect((await putOptions(staff, ["staff cannot"])).status).toBe(403);
+  it("is Answers-area content both roles configure; anonymous and untrusted origins refused", async () => {
+    // Ticket 102: both dashboard roles hold the handoff options; neither
+    // save below mutates the configured list the click tests rely on.
+    const secondAdvisor = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
+    expect((await putOptions(secondAdvisor, [ADMISSIONS_OPTION, COURSE_PRICES_OPTION, FINANCIAL_AID_OPTION])).status).toBe(200);
 
     expect((await putOptions(new CookieJar(), ["anonymous"])).status).toBe(401);
 
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
-    expect((await putOptions(owner, ["evil"], "https://evil.example.net")).status).toBe(403);
+    const admin = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
+    expect((await putOptions(admin, ["evil"], "https://evil.example.net")).status).toBe(403);
+    // The refused cross-site write left the configured list untouched.
+    expect((await (await fetchPublicOptions()).json()).options).toEqual([
+      ADMISSIONS_OPTION,
+      COURSE_PRICES_OPTION,
+      FINANCIAL_AID_OPTION,
+    ]);
   });
 });
 
@@ -297,7 +305,7 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     const { store } = await service();
     const request = await store.getOpenContactRequest(conversation.id);
     expect(request?.medium).toBe("chat");
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const owner = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const deskResponse = await staffApiRequest(owner, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {
       incoming: { id: string; attention: boolean }[];
@@ -400,7 +408,7 @@ describe("typing the same wording keeps normal matching", () => {
   });
 
   it("prompts before handing off when a typed handoff phrase is used (ticket 69)", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
+    const editor = await staffJar(ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const saved = await putEscalationPhrases(editor, ["question about financial aid"]);
     expect(saved.status).toBe(200);
 

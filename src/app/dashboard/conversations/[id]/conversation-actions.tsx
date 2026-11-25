@@ -74,7 +74,7 @@ export function ReleaseAndTransfer({
   targets,
 }: {
   conversationId: string;
-  targets: { id: string; name: string }[];
+  targets: { id: string; name: string; roleLabel: string }[];
 }) {
   const staff = useStaffAction();
   const [target, setTarget] = useState(targets[0]?.id ?? "");
@@ -120,7 +120,7 @@ export function ReleaseAndTransfer({
           >
             {targets.map((member) => (
               <option key={member.id} value={member.id}>
-                {member.name}
+                {member.name} · {member.roleLabel}
               </option>
             ))}
           </select>

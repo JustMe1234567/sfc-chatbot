@@ -30,16 +30,16 @@ export default function StaffLoginPage() {
   return (
     <main className={styles.loginShell}>
       <form className={styles.loginCard} onSubmit={submitCredentials}>
-        <h1 className={styles.srOnly}>Staff sign-in</h1>
+        <h1 className={styles.srOnly}>Dashboard sign-in</h1>
         <div className={styles.loginBrand}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/cropped-SFC-Final-Logo-Single.png" alt="" />
           <span className={styles.loginBrandText}>
             <strong>Springfield College</strong>
-            <span>Staff sign-in</span>
+            <span>Dashboard sign-in</span>
           </span>
         </div>
-        <p className={styles.hint}>Chat dashboard. Staff accounts are created by an owner.</p>
+        <p className={styles.hint}>Accounts are created by an admin.</p>
         <label htmlFor="username">Username</label>
         <input
           id="username"
@@ -61,7 +61,7 @@ export default function StaffLoginPage() {
         <PendingButton type="submit" pending={busy} pendingLabel="Signing in…">
           Sign in
         </PendingButton>
-        <p className={styles.hint}>Contact an owner if you forget your password.</p>
+        <p className={styles.hint}>Contact an admin if you forget your password.</p>
         {error ? <p className={styles.error} role="alert">{error}</p> : null}
       </form>
     </main>

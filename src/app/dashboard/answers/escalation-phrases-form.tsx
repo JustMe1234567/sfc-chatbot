@@ -50,7 +50,7 @@ export default function EscalationPhrasesForm({ initialPhrases }: { initialPhras
     >
       <h2>Handoff phrases</h2>
       <p className={styles.hint}>
-        One phrase per line. A question containing a phrase goes to staff
+        One phrase per line. A question containing a phrase goes to an advisor
         immediately, even when an answer rule also matches.
       </p>
       <label htmlFor="escalation-phrases">Phrases</label>

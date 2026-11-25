@@ -588,8 +588,10 @@ a:focus-visible {
 
 /* Collapsed rail: the Sign out shrinks to its inline SVG arrow (the label's
    text hides under font-size 0; the accessible name stays on the button);
-   the bulk revoke has no icon form and stays an expanded-rail affordance. */
-.sidebar[data-collapsed] .ghostButton {
+   the bulk revoke has no icon form and stays an expanded-rail affordance —
+   as does the password-change trigger beside it (ticket 102). */
+.sidebar[data-collapsed] .ghostButton,
+.sidebar[data-collapsed] .passwordTrigger {
   display: none;
 }
 

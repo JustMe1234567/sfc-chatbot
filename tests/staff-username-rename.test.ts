@@ -53,7 +53,7 @@ async function snapshot(username: string): Promise<StaffSnapshot | undefined> {
 
 async function provision(
   username: string,
-  role: "owner" | "staff" | "editor",
+  role: "admin" | "admissions_advisor",
 ): Promise<StaffSnapshot> {
   const { auth, db } = await getChatbotService();
   await provisionStaffMember(auth, db, {
@@ -77,8 +77,8 @@ function withoutVolatileFields(
 }
 
 describe("the guarded staff username rename (ticket 98)", () => {
-  test("renames the sole active owner, changing only username and updatedAt", async () => {
-    const before = await provision("owner", "owner");
+  test("renames the sole active admin, changing only username and updatedAt", async () => {
+    const before = await provision("owner", "admin");
     const { db } = await getChatbotService();
     // Pin the timestamp old so the rename's fresh updatedAt is observable.
     await db.run(
@@ -117,8 +117,8 @@ describe("the guarded staff username rename (ticket 98)", () => {
   });
 
   test("refuses a duplicate destination case-insensitively, even a disabled one", async () => {
-    await provision("owner-dup", "owner");
-    const destination = await provision("destination", "staff");
+    await provision("owner-dup", "admin");
+    const destination = await provision("destination", "admissions_advisor");
     const { db } = await getChatbotService();
     // Uppercase in the store and disabled: the guard (like the unique index
     // beneath it) spans case and account state.
@@ -137,21 +137,21 @@ describe("the guarded staff username rename (ticket 98)", () => {
     expect((await snapshot("owner-dup"))?.username).toBe("owner-dup");
   });
 
-  test("refuses a non-owner source", async () => {
-    await provision("desk-staff", "staff");
+  test("refuses a non-admin source", async () => {
+    await provision("desk-staff", "admissions_advisor");
     const { db } = await getChatbotService();
     await expect(
       renameStaffUsernameOnDatabase(db, {
         currentUsername: "desk-staff",
         newUsername: "sfc-admin-staff",
       }),
-    ).rejects.toThrowError(/does not hold the owner role/);
+    ).rejects.toThrowError(/does not hold the admin role/);
     expect((await snapshot("desk-staff"))?.username).toBe("desk-staff");
     expect(await snapshot("sfc-admin-staff")).toBeUndefined();
   });
 
   test("refuses a disabled source", async () => {
-    const source = await provision("disabled-owner", "owner");
+    const source = await provision("disabled-owner", "admin");
     const { db } = await getChatbotService();
     await db.run(`UPDATE staff_members SET "banned" = ? WHERE "id" = ?`, true, source.id);
     await expect(
@@ -164,7 +164,7 @@ describe("the guarded staff username rename (ticket 98)", () => {
   });
 
   test("refuses an unlinked source", async () => {
-    const source = await provision("unlinked-owner", "owner");
+    const source = await provision("unlinked-owner", "admin");
     const { db } = await getChatbotService();
     await db.run(`UPDATE staff_members SET "supabaseUserId" = NULL WHERE "id" = ?`, source.id);
     await expect(
@@ -176,21 +176,21 @@ describe("the guarded staff username rename (ticket 98)", () => {
     expect(await snapshot("sfc-admin-unlinked")).toBeUndefined();
   });
 
-  test("refuses when more than one active owner exists", async () => {
-    await provision("owner-a", "owner");
-    await provision("owner-b", "owner");
+  test("refuses when more than one active admin exists", async () => {
+    await provision("owner-a", "admin");
+    await provision("owner-b", "admin");
     const { db } = await getChatbotService();
     await expect(
       renameStaffUsernameOnDatabase(db, {
         currentUsername: "owner-a",
         newUsername: "sfc-admin-multi",
       }),
-    ).rejects.toThrowError(/exactly one active owner account; found 2/);
+    ).rejects.toThrowError(/exactly one active admin account; found 2/);
     expect(await snapshot("sfc-admin-multi")).toBeUndefined();
   });
 
   test("refuses an invalid destination username", async () => {
-    await provision("invalid-dest-owner", "owner");
+    await provision("invalid-dest-owner", "admin");
     const { db } = await getChatbotService();
     for (const bad of ["ab", "sfc admin!", "a".repeat(33), ""]) {
       await expect(
@@ -204,8 +204,8 @@ describe("the guarded staff username rename (ticket 98)", () => {
   });
 
   test("a refused rename leaves the whole roster untouched", async () => {
-    const ownerA = await provision("rollback-a", "owner");
-    const ownerB = await provision("rollback-b", "owner");
+    const ownerA = await provision("rollback-a", "admin");
+    const ownerB = await provision("rollback-b", "admin");
     const { db } = await getChatbotService();
     await db.run(
       `UPDATE staff_members SET "updatedAt" = ? WHERE "id" IN (?, ?)`,
@@ -220,7 +220,7 @@ describe("the guarded staff username rename (ticket 98)", () => {
         currentUsername: "rollback-a",
         newUsername: "sfc-admin-rollback",
       }),
-    ).rejects.toThrowError(/exactly one active owner/);
+    ).rejects.toThrowError(/exactly one active admin/);
     // The guard refused inside the keyed transaction before the only write,
     // so every stored byte is identical (on Postgres the transaction rolls
     // back outright; on SQLite no statement had run past the reads).

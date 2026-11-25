@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import Image from "next/image";
 import { requireStaff } from "@/api/staff";
-import { STAFF_ROLES } from "@/auth/server";
+import { STAFF_ROLES, staffRoleLabel, type StaffRole } from "@/auth/server";
 import {
   DESK_STATE_LABELS,
   DESK_STATUS_LABELS,
@@ -30,8 +30,10 @@ import type { ConversationState } from "@/domain/types";
 import styles from "../dashboard.module.css";
 
 const ACTION_LABELS: Record<AuditView["action"], string> = {
-  // Display label only (ticket 45): stored audit rows keep the
-  // conversation_claimed action id, so history stays readable either way.
+  // Display labels only (ticket 45): stored audit rows keep their action ids,
+  // so history stays readable either way. The staff_* wording is
+  // dashboard-facing and speaks the ticket-102 vocabulary; the ids and
+  // historical rows are unchanged.
   conversation_claimed: "took over this conversation",
   conversation_released: "released this conversation to the inbox",
   conversation_transferred: "transferred this conversation",
@@ -45,11 +47,11 @@ const ACTION_LABELS: Record<AuditView["action"], string> = {
   rule_trashed: "moved an answer rule to Trash",
   rule_restored: "restored an answer rule",
   rule_purged: "permanently deleted an answer rule",
-  staff_invited: "invited a staff member",
-  staff_created: "created a staff account",
-  staff_password_reset: "reset a staff password",
-  staff_mfa_reset: "reset a staff authenticator",
-  staff_disabled: "disabled a staff account",
+  staff_invited: "invited an advisor",
+  staff_created: "created an advisor account",
+  staff_password_reset: "reset an advisor password",
+  staff_mfa_reset: "reset an advisor authenticator",
+  staff_disabled: "disabled an advisor account",
 };
 
 const STATE_CHIPS: Record<ConversationState, string | undefined> = {
@@ -78,7 +80,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized staff session.</p>
+        <p className={styles.empty}>This page requires an authorized session.</p>
       </main>
     );
   }
@@ -105,7 +107,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
     ? await auditWithNames(db, await store.listConversationAudit(selected.id))
     : [];
   const claimerName = selected?.claimedBy
-    ? ((await staffName(db, selected.claimedBy)) ?? "another staff member")
+    ? ((await staffName(db, selected.claimedBy)) ?? "another advisor")
     : null;
   const claimedByMe = selected?.claimedBy === guard.staff.userId;
   // The sound cue's event feed (ticket 44): every standing attention episode
@@ -147,19 +149,19 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // each tier's count wears its own color.
   const attentionTierCount = desk ? desk.active.filter((item) => item.attention).length : 0;
   const mayReassign =
-    selected?.state === "claimed" && (claimedByMe || guard.staff.role === "owner");
+    selected?.state === "claimed" && (claimedByMe || guard.staff.role === "admin");
   // Transfer targets mirror the API's eligibility exactly: active, verified
-  // inbox members who don't already own it.
+  // members with inbox permission — both roles hold it (ticket 102).
   const transferTargets = selected
     ? (await listStaffMembers(db))
         .filter(
           (member) =>
             member.id !== selected.claimedBy &&
-            (member.role === "owner" || member.role === "staff") &&
+            STAFF_ROLES.includes(member.role as StaffRole) &&
             !member.banned &&
             member.emailVerified,
         )
-        .map((member) => ({ id: member.id, name: member.name }))
+        .map((member) => ({ id: member.id, name: member.name, roleLabel: staffRoleLabel(member.role) }))
     : [];
 
   return (
@@ -203,7 +205,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                   ) : null}
                 </h2>
                 {desk.incoming.length === 0 ? (
-                  <p className={styles.deskEmpty}>Nothing is waiting for staff.</p>
+                  <p className={styles.deskEmpty}>Nothing is waiting for an advisor.</p>
                 ) : (
                   desk.incoming.map((item) => (
                     <DeskEntry key={item.id} item={item} selected={item.id === selectedId} />
@@ -222,9 +224,9 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
               <>
                 <div className={styles.historyHead}>
                   <h2>History</h2>
-                  {/* Owner-only bulk clear (ticket 51), hidden when History
+                  {/* Admin-only bulk clear (ticket 51), hidden when History
                       is empty; it covers every History row (ticket 62). */}
-                  {guard.staff.role === "owner" && history.length > 0 ? (
+                  {guard.staff.role === "admin" && history.length > 0 ? (
                     <ClearHistoryButton count={history.length} selectedId={selectedId} />
                   ) : null}
                 </div>
@@ -266,7 +268,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                       {selectedActive && selected.state !== "closed" && selected.state !== "claimed"
                         ? `Last message ${new Date(selected.lastActivityAt).toLocaleString("en-GB")}`
                         : null}
-                      {selected.state === "closed" ? "Closed by staff" : null}
+                      {selected.state === "closed" ? "Closed by an advisor" : null}
                       {!selectedActive && selected.state !== "closed"
                         ? "Quiet since " + new Date(selected.lastActivityAt).toLocaleString("en-GB")
                         : null}
@@ -297,7 +299,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 <div className={styles.paneBody}>
                   <p className={styles.hint}>
                     {selected.state === "awaiting_staff" && selectedActive &&
-                      "Waiting for a staff member to take over this conversation."}
+                      "Waiting for an advisor to take over this conversation."}
                     {!selectedActive && selected.state !== "closed" &&
                       "This conversation has gone quiet and moved to History. The visitor's next question starts a fresh chat."}
                     {claimedByMe && selected.state === "claimed" && !selectedActive &&
@@ -315,7 +317,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                   {/* A live region (ticket 28): the authorized poll re-renders
                       this stream every few seconds, and role="log" turns the
                       appended messages into polite announcements — a
-                      screen-reader staff member hears the visitor's reply
+                      screen-reader advisor hears the visitor's reply
                       instead of polling the pane manually. Keys stay on the
                       stable message id so polls append nodes rather than
                       replace the stream. */}
@@ -351,7 +353,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                           {new Date(entry.createdAt).toLocaleString("en-GB")}
                         </span>
                         <span>
-                          {entry.actorName ?? "a former staff member"} {ACTION_LABELS[entry.action]}
+                          {entry.actorName ?? "a former advisor"} {ACTION_LABELS[entry.action]}
                           {entry.detail ? ` → ${entry.detail}` : ""}
                         </span>
                       </div>
@@ -370,7 +372,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
                 <strong>No conversation selected</strong>
                 <p>
                   Choose a conversation from the list. Incoming chats are waiting
-                  for a staff member to take over; Active chats are already being
+                  for an advisor to take over; Active chats are already being
                   helped. Conversations that go quiet for a day move to History
                   with their transcripts kept.
                 </p>

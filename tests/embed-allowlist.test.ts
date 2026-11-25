@@ -104,8 +104,8 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
+  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "admin" });
+  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie",  });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
 });
 
@@ -514,10 +514,12 @@ describe("the loader and settings surface carry the feature (source contract)", 
     expect(script).not.toMatch(/(?:api[_-]?key|secret|password|supabase)/i);
   });
 
-  it("mounts the allowlist card for owners only, backed by the owner-only API", async () => {
+  it("mounts the allowlist card on the admin-only settings page, backed by the admin-only API", async () => {
+    // Ticket 102: the whole Settings page — this card included — is
+    // admin-only, so the card renders unconditionally behind the page's gate.
     const page = await read("src/app/dashboard/settings/page.tsx");
     expect(page).toContain("EmbedAllowlistSettings");
-    expect(page).toContain('guard.staff.role === "owner"');
+    expect(page).toContain('{ roles: ["admin"] }');
     expect(page).toContain("getEmbedAllowlistOrigins");
     const card = await read("src/app/dashboard/settings/embed-allowlist-settings.tsx");
     expect(card).toContain('"/api/staff/settings/embed-allowlist"');

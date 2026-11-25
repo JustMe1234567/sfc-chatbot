@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
-import { STAFF_ROLES } from "@/auth/server";
 import { audit } from "@/api/audit";
 import { listStaffMembers } from "@/api/staffMembers";
 import { provisionStaffMember } from "@/auth/provision";
-import type { StaffRole } from "@/auth/server";
 import { getChatbotService } from "@/db/service";
 
-/** The roster (owner + staff; editors hold answer permissions only). */
+/** The roster — Admin-only, the same gate as the Staff accounts page. */
 export async function GET(request: Request) {
-  const guard = await requireStaff(request.headers, { roles: STAFF_ROLES });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }
@@ -18,15 +16,17 @@ export async function GET(request: Request) {
 }
 
 /**
- * Create a named staff account with owner-managed credentials. Additional owner accounts
- * stays with the trusted bootstrap command.
+ * Create an Admissions Advisor account with admin-set credentials. The
+ * advisor is the only role the dashboard creates: Admin accounts come from
+ * the trusted bootstrap command alone (ticket 102), so a request naming any
+ * other role is refused.
  */
 export async function POST(request: Request) {
   const blocked = sameOriginGuard(request);
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }
@@ -39,16 +39,17 @@ export async function POST(request: Request) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
   const password = typeof body?.password === "string" ? body.password : "";
-  const role = typeof body?.role === "string" ? body.role : "";
   if (name.length === 0 || name.length > 80 || !/^[a-z0-9._-]{3,32}$/.test(username) || password.length < 10) {
     return NextResponse.json(
       { error: { code: "invalid_member", message: "Provide a name, a valid username, and a password of at least 10 characters." } },
       { status: 400 },
     );
   }
-  if (role !== "staff" && role !== "editor") {
+  // The form sends no role; a request may name the advisor role explicitly.
+  // Any other value — including a non-string — is refused outright.
+  if (body?.role !== undefined && body.role !== "admissions_advisor") {
     return NextResponse.json(
-      { error: { code: "invalid_role", message: "Choose a staff or editor account." } },
+      { error: { code: "invalid_role", message: "Only Admissions Advisor accounts can be created here." } },
       { status: 400 },
     );
   }
@@ -59,9 +60,9 @@ export async function POST(request: Request) {
       username,
       password,
       name,
-      role: role as StaffRole,
+      role: "admissions_advisor",
     });
-    await audit(service.store, guard.staff.userId, "staff_created", {}, `${username} (${role})`);
+    await audit(service.store, guard.staff.userId, "staff_created", {}, `${username} (admissions_advisor)`);
     return NextResponse.json({ member }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

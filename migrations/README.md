@@ -31,6 +31,7 @@ tables. Where each piece physically lives:
 | Credential audit | 0020 | 0010 |
 | 81 login events | 0021 | 0011 |
 | 82 drop staff factor columns | 0022 | 0012 |
+| 102 Admin and Admissions Advisor roles | 0023 | 0013 |
 
 ## Why SQLite skips 0009
 

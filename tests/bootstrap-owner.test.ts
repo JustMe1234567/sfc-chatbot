@@ -15,17 +15,17 @@ describe("trusted first-owner provisioning", () => {
       username: "bootstrap-owner",
       password: "bootstrap-owner-password-42",
       name: "Bootstrap Owner",
-      role: "owner",
+      role: "admin",
     });
 
     expect(owner).toMatchObject({
       username: "bootstrap-owner",
-      role: "owner",
+      role: "admin",
     });
     const stored = await db.get<{ role: string; username: string }>(
       `SELECT role, username FROM staff_members WHERE id = ?`,
       owner.userId,
     );
-    expect(stored).toEqual({ role: "owner", username: "bootstrap-owner" });
+    expect(stored).toEqual({ role: "admin", username: "bootstrap-owner" });
   });
 });

@@ -28,8 +28,8 @@ import {
  * contacted. One open request per conversation, ever.
  */
 
-const OWNER_EMAIL = "requests-owner@example.edu";
-const OWNER_PASSWORD = "requests-owner-harbor-7f";
+const ADMIN_EMAIL = "requests-owner@example.edu";
+const ADMIN_PASSWORD = "requests-owner-harbor-7f";
 const STAFF_EMAIL = "requests-staff@example.edu";
 const STAFF_PASSWORD = "requests-staff-quiet-3k";
 const EDITOR_EMAIL = "requests-editor@example.edu";
@@ -120,9 +120,9 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
-  await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam", role: "staff" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
+  await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "Olive", role: "admin" });
+  await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam",  });
+  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie",  });
 });
 
 describe("temporary details are not saved contacts (ticket 69)", () => {
@@ -188,7 +188,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     expect(await contactAlerts(conversation.id)).toBe(0);
     expect(await escalationAlerts(conversation.id)).toBe(0);
 
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const owner = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const deskResponse = await staffApiRequest(owner, "/api/staff/conversations");
     const desk = (await deskResponse.json()) as {
       active: { id: string; contactRequest: { medium: string } | null }[];
@@ -254,18 +254,16 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     expect(await contactAlerts(conversation.id)).toBe(0);
   });
 
-  it("lets staff Mark contacted complete it — owners and staff, not editors — and allows a later request", async () => {
+  it("lets any dashboard role Mark contacted complete it, and allows a later request", async () => {
     const conversation = await startConversation();
     await ask(conversation, "I want to talk to a person about the fees.");
     await askRaw(conversation, JSON.stringify({ choice: "handoff-no" }));
     await askRaw(conversation, JSON.stringify({ choice: "contact-email" }));
 
-    // Editors are refused (403 by role), owners and staff are not.
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
-    expect((await staffPost(editor, conversation.id, "mark-contacted")).status).toBe(403);
-
-    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
-    const marked = await staffPost(staff, conversation.id, "mark-contacted");
+    // Ticket 102 merged the editor into the advisor role, and Mark contacted
+    // follows the desk's permission: every dashboard role completes it.
+    const advisor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
+    const marked = await staffPost(advisor, conversation.id, "mark-contacted");
     expect(marked.status).toBe(200);
     const body = (await marked.json()) as {
       request: { status: string; completedBy: string | null; medium: string };
@@ -273,6 +271,8 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     expect(body.request.status).toBe("completed");
     expect(body.request.medium).toBe("email");
     expect(body.request.completedBy).toBeTruthy();
+
+    const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
 
     const { store } = await service();
     expect(await store.getOpenContactRequest(conversation.id)).toBeNull();
@@ -305,7 +305,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
   });
 
   it("refuses Mark contacted with nothing open, and never completes another conversation's request", async () => {
-    const jar = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const jar = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const conversation = await startConversation();
     expect((await staffPost(jar, conversation.id, "mark-contacted")).status).toBe(409);
 

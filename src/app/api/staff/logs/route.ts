@@ -13,7 +13,7 @@ import { getChatbotService } from "@/db/service";
  * only release for a block.
  */
 export async function GET(request: Request) {
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }
@@ -28,7 +28,7 @@ export async function DELETE(request: Request) {
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }

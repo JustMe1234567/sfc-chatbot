@@ -1,6 +1,6 @@
 # 102: Replace Owner/Staff/Editor with Admin and Admissions Advisor roles
 
-**Status:** ready-for-agent
+**Status:** done
 **Category:** enhancement (roles + authorization + terminology)
 **Priority:** P1
 **Source:** Boss feedback relayed by the owner, 2026-11-22 (feature area 1 of 3)
@@ -429,3 +429,139 @@ visitor chat. The feedback's "Replace product references to 'College
 Staff'" requirement is scoped by this rule to dashboard-facing references;
 the historical decision-4 comment above records the pre-rule census as
 decided that day.
+
+2026-11-26: **Implemented.** The two-role model shipped in one slice on
+`codex/ticket-102-admin-and-advisor-roles` (base b2f57c5a7), TDD at three
+seams: the real migration runners, the route handlers under signed-in
+sessions, and the suite's source-contract convention for pages and copy.
+
+**Migration.** `migrations/0023` (SQLite) and `migrations/postgres/0013`
+are one data update each — `owner→admin`, then `staff` and
+`editor→admissions_advisor` — with no CHECK added to `staff_members.role`
+(the disclosed technical default). `tests/role-migration.test.ts` drives
+the real runners on both dialects: accounts seeded with the three legacy
+values map exactly; identity, credential linkage, ban flag, a desk
+assignment, and its audit attribution survive on the same staff ids;
+sessions opened before the migration keep working; each migrated account
+hits the full 11-endpoint matrix with the confirmed statuses; a disabled
+account stays disabled; a second boot replays nothing.
+
+**Authorization.** `StaffRole` is now `admin | admissions_advisor`; the
+three role sets collapse to admin-inclusive pairs and gain
+`staffRoleLabel` (the one dashboard-facing name map). Admin-only: the
+roster GET, member create/reset/disable, clear-history, every
+`settings/*` route, all three `branding/*` routes (superseding ticket
+70's every-role posture), analytics, and logs. Advisor-inclusive:
+conversations (claim/reply/release/transfer/mark-contacted — the
+release/reply/transfer admin override now keys on `admin`), answer rules,
+and the three Answers-area content settings. The desk's transfer-target
+filter admits both roles via `STAFF_ROLES`; `activeInboxMember` matches
+the same set. Analytics lost its in-page role split (admin-only now), and
+the needs-human bell's poll follows the Conversations nav row, so
+advisors now receive it.
+
+**Account lifecycle.** `npm run bootstrap:owner` seeds the `admin` role
+and reports "Admin account created" (command name unchanged per AC); the
+members POST takes only advisors — the form sends no role, a forged role
+value (any of admin/owner/staff/editor) answers 400 — and Admin targets
+refuse reset and disable exactly as owners did. The Staff accounts page
+(superseding ticket 88's posture along with the whole Settings page)
+renders stored roles through `staffRoleLabel` and keeps disable/reset off
+Admin rows; the create form drops the Role picker and the staff/invite
+vocabulary. The guarded username rename (ticket 98) now demands the
+`admin` role and counts exactly one active admin.
+
+**Terminology.** Dashboard-facing copy reworded: login page reads
+"Dashboard sign-in" with the two decision-5 hint lines; nav row "Staff
+accounts" (route unchanged); desk copy ("Nothing is waiting for an
+advisor.", "Closed by an advisor", the takeover hints, transfer errors,
+conflict copy, "a former advisor"), audit display labels (advisor
+wording; stored action ids untouched), page refusals ("the admin role" on
+admin-only pages; neutral "an authorized session" on shared pages), and
+the analytics hints. The password form's hint now says "admin-issued
+reset". Visitor-facing chat copy kept verbatim per the standing rule —
+verified by diff against the base: the widget banner, joined notice,
+waiting line, clear confirm, handoff prompt, "Yes, chat with staff", and
+the `hours.ts` escalation replies are byte-identical; `messages.role =
+"staff"` and `awaiting_staff` are untouched.
+
+**Password relocation (decision 2).** New `PasswordDialog` in the
+sidebar's identity block renders the unchanged `PasswordSettings` form
+(same `change-password` endpoint, same no-revocation contract) from
+every dashboard page for both roles; like the bulk revoke it has no icon
+form and hides in the compact rail. The Settings page no longer renders
+it, and ticket 88's read-only summary left with the page. The front door
+(`/dashboard`) redirects both roles to the inbox unconditionally.
+
+**Docs.** GLOSSARY.md: the Owner entry became **Admin** (bootstrap-only,
+avoid-list updated) with a new **Admissions Advisor** entry recording the
+internal-only rule and the merge; **Staff account** and **Conversation**
+reworked. ADR-0004's status and opening paragraph carry the ticket-102
+amendment. `migrations/README.md` gained the 102→0023/0013 row.
+
+### Verification
+
+- `tests/role-migration.test.ts` — green on SQLite and Postgres (the
+  full matrix inside the migration test itself).
+- `tests/staff-management.test.ts` 25/25 (create without a role field,
+  forged roles 400, advisor 403 on create/reset/disable, Admin
+  un-resettable/un-disableable, admin claim overrides, roster labels,
+  chrome password pins, front-door pin) — both dialects.
+- Full suite: SQLite **72 files / 621 passed / 7 skipped**; Postgres
+  **73 files / 625 passed / 3 skipped** (the skips are the
+  SQLite-restart-specific tests). Zero failures on either dialect.
+- `tsc --noEmit` clean; hygiene 796 tracked files pass; production build
+  exit 0.
+
+### Status
+
+COMPLETE — all fourteen acceptance criteria pass. Status set to `done`.
+Not pushed; no PR opened — review and merge are the owner's steps.
+
+2026-11-26: **Review amendment — `/code-review b2f57c5a7` over the full
+range (3 commits), both axes. One hard standards violation, fixed with
+three smaller in-scope findings; the rest parked with dispositions.**
+
+- **FIXED — stale "owner" refusal (standards axis, hard):** the Logs
+  page still rendered "This page requires the owner role." — the last
+  user-visible legacy string, breaching the reworded-strings AC
+  (dashboard error messages) and the glossary's new avoid-list. Reworded
+  to "the admin role"; the page's stale owner comment updated too.
+- **FIXED — Answers-area hints (spec axis):** three user-visible hints
+  still said "staff" (answers intro "go straight to staff", the handoff
+  options "sends the visitor straight to staff", the escalation phrases
+  "goes to staff") — dashboard-facing copy the sweep covers; reworded to
+  advisor wording.
+- **FIXED — transfer picker role labels (spec axis, partial AC):** the
+  picker rendered names only; the desk now resolves each target's
+  `staffRoleLabel` and the option renders "Name · Admissions Advisor",
+  with a source pin on the pairing.
+- **FIXED — dead conditional (standards axis):** AnalyticsSettingsForm's
+  `settings ?` guard could never fire after the admin-only simplification;
+  removed. The members POST also now refuses a non-string `role` outright
+  instead of silently defaulting it to advisor.
+- **PARKED — identical role-set arrays (standards axis, Duplicated
+  Code):** `STAFF_ROLES`/`DASHBOARD_ROLES`/`ANSWER_RULE_ROLES` are now the
+  same list; the three names carry the per-area semantic intent the
+  ticket's authorization model describes, and callers keep expressing
+  *which kind of area* they gate. Collapse them if a future ticket ever
+  needs one set.
+- **PARKED — `staffRoleLabel` lives in `auth/server` (standards axis,
+  Mysterious Name adjacent):** a client-consumed label helper inside a
+  module named "server". No server-only imports are involved, the file is
+  already the shared role vocabulary, and relocating it is churn tickets
+  103/104 would immediately follow; leave until a second vocabulary home
+  appears.
+- **PARKED — unticked AC checkboxes (spec axis, bookkeeping):** the
+  tracker's convention marks completion via the `Status:` line (ticket 91
+  is `done` with its boxes unticked), so the boxes stay.
+- **PARKED — 78-file scatter (standards axis, Shotgun Surgery):**
+  inherent to a deliberate vocabulary + permission-matrix replacement;
+  every hunk traces to a ticket AC or decision (spec axis: no scope creep
+  found).
+
+Re-verification after the fixes: full SQLite suite 72 files / 622 passed
+/ 7 skipped; the touched suites re-run green on Postgres (56 tests);
+typecheck, hygiene (800 files), and the production build all pass.
+
+Reviewed through: abc70354e

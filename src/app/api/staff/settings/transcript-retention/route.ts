@@ -18,7 +18,7 @@ import { getChatbotService } from "@/db/service";
  * takes effect without waiting for staff traffic.
  */
 export async function GET(request: Request) {
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }
@@ -31,7 +31,7 @@ export async function PUT(request: Request) {
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }

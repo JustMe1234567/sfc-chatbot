@@ -50,7 +50,7 @@ export default async function VisitorContactsPage({
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized staff session.</p>
+        <p className={styles.empty}>This page requires an authorized session.</p>
       </main>
     );
   }
@@ -187,7 +187,7 @@ export default async function VisitorContactsPage({
               <div className={styles.alertEmpty}>
                 <strong>No saved contacts yet</strong>
                 <p>
-                  An entry appears here once a visitor asks for staff help or
+                  An entry appears here once a visitor asks an advisor for help or
                   asks to be contacted by email or phone.
                 </p>
               </div>

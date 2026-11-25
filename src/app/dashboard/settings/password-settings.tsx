@@ -34,11 +34,11 @@ export default function PasswordSettings() {
   }
 
   return (
-    <form className={styles.ruleCard} onSubmit={submit}>
+    <form onSubmit={submit}>
       <h2>Change password</h2>
       <p className={styles.hint}>
         Changing your password keeps your sessions — including this one — signed in. Only an
-        owner-issued reset signs out every session.
+        admin-issued reset signs out every session.
       </p>
       <label htmlFor="own-new-password">New password</label>
       <input id="own-new-password" type="password" minLength={10} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
