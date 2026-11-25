@@ -222,16 +222,6 @@ function inactiveResponse(): NextResponse {
   );
 }
 
-/** While staff help is requested but not yet claimed (ticket 43), visitor
- *  input is locked: the widget disables its composer, and the API rejects
- *  anything that slips past it with this stable error. */
-function awaitingStaffResponse(): NextResponse {
-  return conflictResponse(
-    "awaiting_staff",
-    "Waiting for a staff member to take over. You can reply once they join.",
-  );
-}
-
 /** The contact gate (ticket 66): nothing a visitor submits — a typed
  *  question, a topic choice, or the human-handoff offer — is accepted until
  *  this conversation carries accepted contact details. The widget shows its
@@ -290,13 +280,10 @@ async function postHandler(request: Request, context: RouteContext) {
   // never re-ambiguate the visitor's own choice. The transcript records the
   // picked topic as the visitor's words; no free text rides along.
   if (body?.choice !== undefined) {
-    // The waiting period locks visitor input (ticket 43): any choice posted
-    // while staff help is requested but unclaimed is rejected, whatever the
-    // offer state. Under an active claim a pick still lands as the visitor's
-    // words to staff.
-    if (conversation.state === "awaiting_staff") {
-      return awaitingStaffResponse();
-    }
+    // No waiting lock (ticket 103): a choice posted while staff help is
+    // requested falls through to the persisted-prompt staleness check
+    // below, so only a choice whose prompt is still the last message can
+    // fire — stale prompts refuse gracefully.
     const invalidChoice = (): NextResponse =>
       NextResponse.json(
         { error: { code: "invalid_choice", message: "Pick one of the offered topics." } },
@@ -392,11 +379,9 @@ async function postHandler(request: Request, context: RouteContext) {
   // contact until the visitor chooses. Only the click reaches this branch:
   // typing the same wording keeps normal answer matching below.
   if (body?.handoffOption !== undefined) {
-    // The waiting period locks visitor input (ticket 43): a click while
-    // staff help is requested but unclaimed can never be a second handoff.
-    if (conversation.state === "awaiting_staff") {
-      return awaitingStaffResponse();
-    }
+    // No waiting lock (ticket 103): a click while staff help is requested
+    // is recorded as the visitor's words — the bot is paused, so it can
+    // never raise a second handoff.
     const invalidOption = (): NextResponse =>
       NextResponse.json(
         {
@@ -444,7 +429,7 @@ async function postHandler(request: Request, context: RouteContext) {
     );
   }
   // The typed path checks its conflicts up front, in this order — a closure
-  // or a quiet day beats the waiting lock — then records through the same
+  // or a quiet day beats everything else — then records through the same
   // shared preflight the choice paths use (ticket 33), so the rate limit,
   // the record, presence, and the activity mark cannot drift between the
   // two paths. recordVisitorChoice's own closed/inactive re-checks are
@@ -461,12 +446,6 @@ async function postHandler(request: Request, context: RouteContext) {
   // exactly like a closure — the contact form returns for a fresh chat (66).
   if (!isConversationActive(conversation)) {
     return inactiveResponse();
-  }
-  // The waiting period locks visitor input (ticket 43): the widget disables
-  // its composer, and anything posted directly is rejected here so the lock
-  // cannot be bypassed.
-  if (conversation.state === "awaiting_staff") {
-    return awaitingStaffResponse();
   }
 
   const service = await getChatbotService();

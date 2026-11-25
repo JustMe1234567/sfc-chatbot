@@ -68,19 +68,21 @@ describe("unknown question offers a visitor-consented handoff", () => {
     expect(clickedBody.conversation.state).toBe("awaiting_staff");
     expect(clickedBody.reply?.text).toContain("handed our conversation to the college staff team");
 
-    // Ticket 43: while staff help is requested but unclaimed, visitor input
-    // is locked — the widget disables its composer and the API rejects
-    // anything posted directly, so the transcript ends on the handoff reply.
+    // Ticket 103: while staff help is requested, the visitor can keep
+    // messaging — the words are recorded for the claiming advisor and the
+    // bot stays paused: no answer, no rule match.
     const second = await ask(conversation, "And what about parking permits?");
-    expect(second.status).toBe(409);
-    expect(((await second.json()) as { error: { code: string } }).error.code).toBe("awaiting_staff");
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as { reply: unknown }).reply).toBeNull();
 
     const history = await loadHistory(conversation);
     const historyBody = (await history.json()) as {
       conversation: { state: string };
       messages: { role: string; text: string }[];
     };
-    expect(historyBody.messages.at(-1)?.role).toBe("bot");
+    expect(historyBody.conversation.state).toBe("awaiting_staff");
+    expect(historyBody.messages.at(-1)?.role).toBe("visitor");
+    expect(historyBody.messages.at(-1)?.text).toBe("And what about parking permits?");
     expect(historyBody.messages.map((message) => message.role)).toEqual([
       "visitor",
       "bot",
@@ -88,6 +90,7 @@ describe("unknown question offers a visitor-consented handoff", () => {
       "bot",
       "visitor",
       "bot",
+      "visitor",
     ]);
 
     const { getChatbotService } = await import("../src/db/service");

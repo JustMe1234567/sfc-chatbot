@@ -23,6 +23,16 @@ async function postMessage(
   );
 }
 
+async function loadHistory(conversation: ConversationStart): Promise<Response> {
+  const { GET } = await import("../src/app/api/v1/conversations/[id]/messages/route");
+  return GET(
+    new Request(`${TEST_ORIGIN}/api/v1/conversations/${conversation.id}/messages`, {
+      headers: { Authorization: `Bearer ${conversation.token}` },
+    }),
+    { params: Promise.resolve({ id: conversation.id }) },
+  );
+}
+
 async function staffClaim(jar: CookieJar, conversationId: string): Promise<Response> {
   const { POST } = await import("../src/app/api/staff/conversations/[id]/claim/route");
   return POST(
@@ -41,8 +51,8 @@ beforeAll(async () => {
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Lock Staff" });
 });
 
-describe("visitor input lock while waiting for staff (ticket 43)", () => {
-  it("rejects visitor messages with a stable error while awaiting_staff and unlocks on takeover", async () => {
+describe("visitor messaging stays open while waiting for staff (ticket 103)", () => {
+  it("records visitor messages while awaiting_staff with no bot reply, and keeps them flowing after takeover", async () => {
     const conversation = await startConversation();
 
     // An unknown question offers the human request; taking it escalates.
@@ -59,16 +69,34 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
       "awaiting_staff",
     );
 
-    // Locked: direct text and repeated choices both draw the stable error.
-    const rejectedText = await postMessage(conversation, { text: "Hello while waiting?" });
-    expect(rejectedText.status).toBe(409);
-    expect(((await rejectedText.json()) as { error: { code: string } }).error.code).toBe(
-      "awaiting_staff",
-    );
-    const rejectedChoice = await postMessage(conversation, { choice: "request-human" });
-    expect(rejectedChoice.status).toBe(409);
+    // Open composer while waiting: a typed message is recorded for the
+    // claiming advisor — including a question a published rule would
+    // answer — but draws no bot reply while the bot is paused.
+    const waiting = await postMessage(conversation, {
+      text: "What are the admission requirements?",
+    });
+    expect(waiting.status).toBe(200);
+    const waitingBody = (await waiting.json()) as {
+      conversation: { state: string };
+      reply: unknown;
+    };
+    expect(waitingBody.conversation.state).toBe("awaiting_staff");
+    expect(waitingBody.reply).toBeNull();
 
-    // Staff takeover unlocks input without any visitor-side reset.
+    const history = await loadHistory(conversation);
+    const historyBody = (await history.json()) as {
+      conversation: { state: string };
+      messages: { role: string; text: string }[];
+    };
+    expect(historyBody.conversation.state).toBe("awaiting_staff");
+    expect(historyBody.messages.at(-1)?.role).toBe("visitor");
+    expect(historyBody.messages.at(-1)?.text).toBe("What are the admission requirements?");
+    // The transcript ends on the visitor's words: the escalation reply is
+    // the last bot message, and no answer-rule match fired.
+    expect(historyBody.messages.filter((message) => message.role === "bot")).toHaveLength(2);
+
+    // Staff takeover keeps the flow open: messages still record for the
+    // advisor, with no bot answer, without any visitor-side reset.
     const jar = new CookieJar();
     await signInAs(jar, STAFF_EMAIL, STAFF_PASSWORD);
     const claim = await staffClaim(jar, conversation.id);
@@ -82,6 +110,26 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
     };
     expect(unlockedBody.conversation.state).toBe("claimed");
     expect(unlockedBody.reply).toBeNull();
+  });
+
+  it("refuses stale prompt choices gracefully while waiting (prompt staleness, not an input lock)", async () => {
+    const conversation = await startConversation();
+
+    await postMessage(conversation, { text: "What is the meaning of life?" });
+    const takeover = await postMessage(conversation, { choice: "request-human" });
+    expect(takeover.status).toBe(200);
+
+    // The offer is no longer the last message, so a replayed choice cannot
+    // fire: the persisted-prompt staleness check refuses it with the
+    // standard invalid-choice error — not a waiting-lock 409.
+    const stale = await postMessage(conversation, { choice: "request-human" });
+    expect(stale.status).toBe(400);
+    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe("invalid_choice");
+
+    // An unknown choice id draws the same graceful refusal.
+    const unknown = await postMessage(conversation, { choice: "no-such-choice" });
+    expect(unknown.status).toBe(400);
+    expect(((await unknown.json()) as { error: { code: string } }).error.code).toBe("invalid_choice");
   });
 
   it("a failed human request leaves the conversation unlocked", async () => {
@@ -99,10 +147,11 @@ describe("visitor input lock while waiting for staff (ticket 43)", () => {
   it("a fresh conversation after Clear requires contact details again", async () => {
     const conversation = await startConversation();
     await postMessage(conversation, { text: "I need to speak to a human, please." });
-    // The phrase asks first now (ticket 69); Yes locks the input.
+    // The phrase asks first now (ticket 69); Yes escalates while messaging
+    // stays open (ticket 103).
     await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }));
-    const locked = await postMessage(conversation, { text: "Still waiting?" });
-    expect(locked.status).toBe(409);
+    const waiting = await postMessage(conversation, { text: "Still there?" });
+    expect(waiting.status).toBe(200);
 
     const { POST: clearRoute } = await import(
       "../src/app/api/v1/conversations/[id]/clear/route"
