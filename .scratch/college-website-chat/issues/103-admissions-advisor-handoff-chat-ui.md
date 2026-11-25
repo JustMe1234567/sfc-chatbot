@@ -1,6 +1,6 @@
 # 103: Admissions Advisor handoff chat UI
 
-**Status:** ready-for-agent
+**Status:** done
 **Category:** enhancement (visitor widget UX)
 **Priority:** P1
 **Source:** Boss feedback relayed by the owner, 2026-11-22 (feature area 2 of 3)
@@ -296,3 +296,75 @@ labels. Numbered 103 after 102 because the two share visitor-facing copy and
 102's confirmed vocabulary feeds this ticket's labels. Status `needs-info`:
 decision 1 (what the "three handoff choices" are) changes what gets built,
 and decisions 2–5 are wording/scope choices only the owner can make.
+
+2026-11-26: IMPLEMENTED (branch `codex/ticket-103-advisor-handoff-chat-ui`
+from origin/main `16ae51df5`, three commits). TDD at the agreed seams — the
+reworked contracts failed red first, then went green.
+
+- **The setting (decision 5):** `src/domain/waitingNotice.ts` (default
+  "Staff will reply", 280-char cap, client-safe validator), seeded
+  insert-if-absent in both database builders, public credential-free
+  `GET /api/v1/waiting-notice` (topics-bar rate limit), staff GET/PUT
+  `/api/staff/settings/waiting-notice` gated to `ANSWER_RULE_ROLES`
+  (admin + admissions_advisor), and a Waiting Notice tab + form in the
+  Answers area — the welcome-message pattern end to end. Invalid or empty
+  reads fall back to the default; invalid saves are refused 400 exactly
+  like the welcome setting's.
+- **The unlock (requirement 4 / AC 6-7):** the three `awaiting_staff` 409
+  blocks are gone from the messages route; typed text, prompt choices, and
+  handoff-option clicks while waiting record as the visitor's words with
+  `reply: null` — `recordVisitorChoice`'s existing non-`bot_active` path
+  pins the bot pause (pinned, not rebuilt, as the ticket directs). Stale
+  prompt choices refuse with `invalid_choice` via the persisted-prompt
+  staleness check; the stream hook's `awaiting_staff` 409 branch is deleted.
+- **The widget:** waiting + joined notices are small centered `<li>` lines
+  at the log's end riding its `aria-live` region (no live semantics of
+  their own — one announcement per event, ticket 25); the joined sentence
+  stays verbatim (decision 2); composer, chips, and choices never lock;
+  the waiting line, the banner blocks, and their CSS are deleted; topic
+  chips, the fresh stack, and the intro line hide for the whole episode
+  (`handoffActive = handoff || claimed`); advisor bubbles label "Staff",
+  bot bubbles "Admissions Chatbot", visitors unlabeled (decisions 3-4);
+  the click-to-handoff options render as a vertical full-text stack at
+  both sites, replacing the horizontal rail.
+- **Suites:** `waiting-notice.test.ts` (new), `handoff-chat-ui.test.ts`
+  (new source contract), and the reworks of `awaiting-lock`,
+  `escalation-flow`, `handoff-options`, `ambiguity-handoff`, and
+  `embed-smoke`'s two handoff tests.
+
+Review (both axes from `16ae51df5`): **no hard violations, no missing or
+wrong implementations, no scope creep.** Dispositions:
+
+- **ACCEPTED — welcome-pattern duplication (standards axis, Duplicated
+  Code):** the setting's domain file, route pair, and form mirror the
+  welcome message's near-verbatim. The repo convention is one
+  route-dir/component per setting, and AGENTS.md's no-speculative-
+  abstraction rule overrides the smell; a shared text-setting factory
+  would be an abstraction exactly two instances call for.
+- **PARKED — repeated fetch shape in `usePublishedContent` (standards
+  axis):** the waiting-notice read is the third/fourth copy of the
+  fetch→set→swallow pattern in that hook. A small `fetchPublishedText`
+  helper would gather it — out of this ticket's scope; worth a cleanup
+  ticket if a fifth published read ever lands.
+- **ACCEPTED — source-pin brittleness (standards axis):** the new suite
+  pins one-line implementation strings (`handoffActive`, the notice
+  conditional anchors), tighter than some embed-smoke pins but the same
+  convention; the anchors are the notice conditionals themselves, which
+  are the contract.
+- **ACCEPTED — layout clause pinned by assertion (spec axis, AC 1):** the
+  ongoing options reuse the fresh stack's measured classes
+  (`.freshSuggestions`/`.freshSuggest`, no clamp, 85% wrap), so ticket
+  71/27 hold by inheritance; live measurement stays with the parked
+  ticket-80 cert fleet, unchanged by this ticket.
+- **PARKED — unticked AC checkboxes:** the tracker's convention marks
+  completion via the `Status:` line (ticket 91/102 precedent), so the
+  boxes stay.
+
+Verification: full `npm run check` green on SQLite (74 files / 634 passed
+/ 7 skipped; hygiene, typecheck, production build with both new routes
+registered) and the full suite green on Postgres via
+`CHATBOT_TEST_POSTGRES_URL` against the local 5433 cluster (75 files /
+638 passed / 3 skipped). `public/widget/v1.js` build churn restored
+(loader unchanged).
+
+Reviewed through: 081fdd0ad
