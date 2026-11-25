@@ -121,7 +121,7 @@ describe("WordPress embed smoke check", () => {
     expect(frame).toContain("Your question");
   });
 
-  it("locks visitor input while staff help is requested (ticket 43)", async () => {
+  it("keeps visitor input open while staff help is requested (ticket 103)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
@@ -130,47 +130,43 @@ describe("WordPress embed smoke check", () => {
       path.join(repoRoot(), "src/app/widget/frame/hooks/useConversationStream.ts"),
       "utf8",
     );
-    // The composer locks while staff help is requested but unclaimed, with
-    // an inline explanation; claiming re-enables it through the normal
-    // state application, and the API rejects anything posted directly.
-    expect(frame).toContain("Waiting for a staff member to take over…");
-    expect(frame).toContain("composerLocked");
-    expect(stream).toContain('code === "awaiting_staff"');
-    // The lock's start and the takeover are each announced once — via the
-    // handoff and claimed notices' own live regions (ticket 25 moved the
-    // lock's announcer from this line to the notice).
-    expect(frame).toContain('role="status"');
+    // Ticket 43's lock is gone (ticket 103): the composer, chips, and API
+    // stay open while an advisor joins. The widget carries no lock state,
+    // no waiting line, and no awaiting_staff 409 handler.
+    expect(frame).not.toContain("composerLocked");
+    expect(frame).not.toContain("Waiting for a staff member to take over");
+    expect(stream).not.toContain('code === "awaiting_staff"');
+    // The stream still applies the awaiting state — the notice and the open
+    // composer render from it.
+    expect(stream).toContain('state === "awaiting_staff"');
   });
 
-  it("announces the takeover and the claim, each exactly once (ticket 25)", async () => {
+  it("announces the handoff states exactly once, from inside the transcript (tickets 25 and 103)", async () => {
     const frame = await readFile(
       path.join(repoRoot(), "src/app/widget/frame/page.tsx"),
       "utf8",
     );
-    // The handoff notice is the awaiting event's ONE announcer (ticket 25):
-    // the takeover is the service's core escalation event, and it must
-    // reach screen readers through this paragraph.
-    const handoffSlice = frame.slice(
+    // Both notices are transcript lines now (ticket 103): the log's single
+    // live region announces each state event exactly once, so the notices
+    // carry no live semantics of their own — no role, no nested region.
+    const awaitingSlice = frame.slice(
       frame.indexOf("{handoff ? ("),
-      frame.indexOf("Automated answers are paused."),
+      frame.indexOf("{claimed ? ("),
     );
-    expect(handoffSlice).toContain('role="status"');
-    expect(handoffSlice).toContain("College staff will reply in this chat.");
-    // The claim announces through its own notice (ticket 43's region).
+    expect(awaitingSlice).not.toMatch(/role=|aria-live/);
+    expect(awaitingSlice).toContain("styles.notice");
+    expect(awaitingSlice).toContain("waitingNotice");
     const claimedSlice = frame.slice(
       frame.indexOf("{claimed ? ("),
-      frame.indexOf("A college staff member has joined"),
+      frame.indexOf("{freshStart ? ("),
     );
-    expect(claimedSlice).toContain('role="status"');
-    // One announcer per event: the waiting line renders alongside the
-    // handoff notice, so it must stay visual — two polite regions firing
-    // together would read the same event twice.
-    const waitingSlice = frame.slice(
-      frame.indexOf("{composerLocked ? ("),
-      frame.indexOf("Waiting for a staff member to take over…"),
+    expect(claimedSlice).not.toMatch(/role=|aria-live/);
+    expect(claimedSlice).toContain("styles.notice");
+    // The joined notice keeps today's exact sentence (ticket 103 decision
+    // 2, the owner-confirmed exception to ticket 102's wording sweep).
+    expect(frame).toContain(
+      "A college staff member has joined the conversation and will reply here.",
     );
-    expect(waitingSlice).not.toContain('role="status"');
-    expect(frame).toContain("Waiting for a staff member to take over…");
     // The topicless guidance line carries no live role, so the takeover
     // announcement is never doubled by an intro swap (ticket 38 removed the
     // takeover variant; this keeps the region count at one per event).
