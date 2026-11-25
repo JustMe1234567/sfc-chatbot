@@ -362,10 +362,12 @@ export interface Store {
   /**
    * Revokes every visitor session of one conversation without touching the
    * conversation itself (ticket 104): the stored credential stops working
-   * (lookups miss, so requests fail authorization) while the conversation,
-   * transcript, contact details, and request rows stay exactly as they are.
-   * The retention sweep removes the expired rows with the conversation as
-   * today.
+   * (lookups miss, so requests fail authorization) and any unused return
+   * link for it burns too — the same revocation shape as the Clear flow —
+   * so no path can mint a fresh credential into the ended chat. The
+   * conversation, transcript, contact details, and request rows stay
+   * exactly as they are; the retention sweep removes the expired rows with
+   * the conversation as today.
    */
   revokeVisitorSessions(conversationId: string): Promise<void>;
   createReturnToken(token: ReturnToken): Promise<void>;

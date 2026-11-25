@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { requireStaff } from "@/api/staff";
 import { STAFF_ROLES } from "@/auth/server";
-import { isConversationActive } from "@/domain/activity";
+import { isDeskActive } from "@/domain/inbox";
 import ConversationDesk from "../conversation-desk";
 import styles from "../../dashboard.module.css";
 import { getChatbotService } from "@/db/service";
@@ -54,10 +54,18 @@ export default async function DeskConversationPage({ params }: PageProps) {
       redirect(`/dashboard/inbox/${predecessorId}`);
     }
   }
+  // An open email or phone request pins the conversation in Active
+  // (ticket 104): a deep link to a quiet one still opens the Active view —
+  // the History tab it can never appear in.
+  const openRequest = await store.getOpenContactRequest(id);
   return (
     <ConversationDesk
       selectedId={id}
-      view={isConversationActive(conversation) ? "active" : "history"}
+      view={
+        isDeskActive(conversation, openRequest !== null && openRequest.medium !== "chat")
+          ? "active"
+          : "history"
+      }
     />
   );
 }

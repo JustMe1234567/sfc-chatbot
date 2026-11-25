@@ -213,6 +213,33 @@ describe("the email/phone choice ends the visitor's session (ticket 104)", () =>
     expect(historyAfter.conversations.some((item) => item.id === conversation.id)).toBe(true);
   });
 
+  it("burns the conversation's unused return links with the session", async () => {
+    const conversation = await startConversation();
+    const { createSessionToken, hashSessionToken, sessionExpiry } = await import(
+      "../src/domain/tokens"
+    );
+    const { store } = await service();
+    const link = createSessionToken();
+    await store.createReturnToken({
+      tokenHash: hashSessionToken(link),
+      conversationId: conversation.id,
+      createdAt: new Date().toISOString(),
+      expiresAt: sessionExpiry(),
+    });
+
+    await requestMedium(conversation, "contact-email");
+
+    // A burned link cannot mint a fresh credential into the ended chat:
+    // redemption misses, so no path resumes the conversation's posts.
+    expect(
+      await store.redeemReturnToken(hashSessionToken(link), {
+        tokenHash: hashSessionToken(createSessionToken()),
+        createdAt: new Date().toISOString(),
+        expiresAt: sessionExpiry(),
+      }),
+    ).toBeNull();
+  });
+
   it("the Chat handoff path is unchanged: the session stays alive through waiting and Take over", async () => {
     const conversation = await startConversation();
     await ask(conversation, "I want to talk to a person about the fees.");

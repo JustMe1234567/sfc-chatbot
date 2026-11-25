@@ -1,4 +1,4 @@
-import type { ConversationState, Store } from "./types";
+import type { Conversation, ConversationState, Store } from "./types";
 import type { MessageRole } from "./types";
 import { isConversationActive } from "./activity";
 
@@ -6,6 +6,23 @@ export function roleLabel(role: MessageRole): string {
   if (role === "visitor") return "Visitor";
   if (role === "bot") return "Bot";
   return "Staff";
+}
+
+/**
+ * The desk's Active membership (ticket 104, decision 3): ordinary Activity
+ * — any state but closed and quiet inside the 24-hour window — plus the
+ * exception that a conversation with an open email/phone request never
+ * leaves the active lists, however quiet, until an advisor marks it
+ * contacted. `hasOpenMediumRequest` is the caller's open email/phone lookup
+ * (never a chat request — those are the Needs-human state). The exception
+ * is desk-visibility only: the visitor refusal boundary and the retention
+ * sweep keep reading the plain isConversationActive window.
+ */
+export function isDeskActive(
+  conversation: Conversation,
+  hasOpenMediumRequest: boolean,
+): boolean {
+  return isConversationActive(conversation) || hasOpenMediumRequest;
 }
 
 /**
@@ -71,15 +88,9 @@ async function toDeskItemWithMessages(
     id: conversation.id,
     state: conversation.state,
     visitorName: conversation.visitorName,
-    // Pinned in Active (ticket 104, decision 3): a conversation with an open
-    // email/phone request never leaves the active lists, however quiet —
-    // the Contact Me chip and Mark contacted stay reachable until an advisor
-    // completes the request, and the ordinary 24-hour roll resumes after
-    // completion. Both list summaries read this flag, so the same exception
-    // keeps the pinned conversation out of History too. Retention is not
-    // deferred: isConversationActive (the visitor refusal and the purge
-    // boundary) is untouched.
-    active: isConversationActive(conversation) || openRequests.has(conversation.id),
+    // Both list summaries read this flag, so the open-request exception
+    // keeps a pinned conversation in Active and out of History alike.
+    active: isDeskActive(conversation, openRequests.has(conversation.id)),
     attention: conversation.attentionAt !== null,
     attentionAt: conversation.attentionAt,
     contactRequest: openRequests.get(conversation.id) ?? null,

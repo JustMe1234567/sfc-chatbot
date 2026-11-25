@@ -13,7 +13,7 @@ import {
   summarizeConversationDesk,
   summarizeConversationHistory,
 } from "@/domain/inbox";
-import { isConversationActive } from "@/domain/activity";
+import { isDeskActive } from "@/domain/inbox";
 import { staffName } from "@/api/staffConversations";
 import { auditWithNames, type AuditView } from "@/api/audit";
 import { listStaffMembers } from "@/api/staffMembers";
@@ -103,11 +103,12 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
     selectedOpenRequest && selectedOpenRequest.medium !== "chat"
       ? { id: selectedOpenRequest.id, medium: selectedOpenRequest.medium as "email" | "phone" }
       : null;
-  // Pinned in Active (ticket 104): the pane's own active reading follows the
-  // lists' exception, so a quiet open-request conversation keeps the live
-  // tiers and Mark contacted instead of falling back to the state chip.
+  // The pane's own active reading follows the lists' exception
+  // (isDeskActive, ticket 104), so a quiet open-request conversation keeps
+  // the live tiers and Mark contacted instead of falling back to the state
+  // chip.
   const selectedActive = selected
-    ? isConversationActive(selected) || selectedContactBadge !== null
+    ? isDeskActive(selected, selectedContactBadge !== null)
     : false;
   // Opening the transcript is viewing it: the attention alert clears, so the
   // next visitor message can raise it again. The active desk polls every

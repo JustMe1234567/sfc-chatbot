@@ -29,8 +29,10 @@ describe("history shows the same compact rows as the live desk (ticket 47)", () 
       "utf8",
     );
     // The pane's tab and back link follow the conversation's own lifecycle,
-    // so a row clicked in History keeps the History tab and back link.
-    expect(detail).toContain('isConversationActive(conversation) ? "active" : "history"');
+    // so a row clicked in History keeps the History tab and back link —
+    // with the ticket-104 exception: an open email/phone request pins the
+    // conversation in Active, so its deep link opens the Active view.
+    expect(detail).toContain("isDeskActive(conversation, openRequest !== null && openRequest.medium !== \"chat\")");
 
     const desk = await readFile(path.join(repoRoot(), DESK), "utf8");
     expect(desk).toContain('href={view === "history" ? "/dashboard/inbox/history" : "/dashboard/inbox"}');

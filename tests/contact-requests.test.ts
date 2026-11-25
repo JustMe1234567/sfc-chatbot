@@ -114,6 +114,29 @@ const CONTACT = {
   phone: "+1 (555) 010-0199",
 };
 
+/**
+ * Seeds an open request at the store level — the pre-deployment posture
+ * (ticket 104 follow-up 5b) whose conversations keep the old behavior, so
+ * tests can hold a live session beside an open request.
+ */
+async function seedOpenRequest(
+  conversationId: string,
+  medium: "email" | "phone",
+): Promise<void> {
+  const { store } = await service();
+  expect(
+    await store.createContactRequest({
+      id: crypto.randomUUID(),
+      conversationId,
+      medium,
+      status: "open",
+      createdAt: new Date().toISOString(),
+      completedAt: null,
+      completedBy: null,
+    }),
+  ).toBe(true);
+}
+
 interface ReplyBody {
   conversation: { state: string };
   reply: { text: string; choices?: { id: string; topic: string }[] } | null;
@@ -235,21 +258,10 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     const conversation = await startConversation();
     await ask(conversation, "I want to talk to a person about the fees.");
     await askRaw(conversation, JSON.stringify({ choice: "handoff-no" }));
-    // Seeded open request (ticket 104 follow-up 5b), raised after the
-    // prompts exist so the medium choice still reaches the guarded insert:
-    // the session stays live, keeping the old refusal mechanics reachable.
-    const { store } = await service();
-    expect(
-      await store.createContactRequest({
-        id: crypto.randomUUID(),
-        conversationId: conversation.id,
-        medium: "phone",
-        status: "open",
-        createdAt: new Date().toISOString(),
-        completedAt: null,
-        completedBy: null,
-      }),
-    ).toBe(true);
+    // Seeded open request, raised after the prompts exist so the medium
+    // choice still reaches the guarded insert: the session stays live,
+    // keeping the old refusal mechanics reachable.
+    await seedOpenRequest(conversation.id, "phone");
 
     // The medium choice rides the shared preflight, then the guarded insert
     // refuses: the visitor's words are recorded, but no second request.
@@ -269,6 +281,7 @@ describe("No, contact me another way: email and phone (ticket 69)", () => {
     // asking, exactly the pre-deployment behavior.
     expect((await ask(conversation, "How do I apply?")).status).toBe(200);
 
+    const { store } = await service();
     expect(await store.listContactRequests(conversation.id)).toHaveLength(1);
     expect(await contactAlerts(conversation.id)).toBe(0);
   });
@@ -377,17 +390,8 @@ describe("the unknown-question handoff (tickets 37/69)", () => {
 
   it("hides the offer while a request is open (pre-deployment posture)", async () => {
     const conversation = await startConversation();
-    // Seeded open request (ticket 104 follow-up 5b): the session stays live.
-    const { store } = await service();
-    await store.createContactRequest({
-      id: crypto.randomUUID(),
-      conversationId: conversation.id,
-      medium: "email",
-      status: "open",
-      createdAt: new Date().toISOString(),
-      completedAt: null,
-      completedBy: null,
-    });
+    // Seeded open request: the session stays live.
+    await seedOpenRequest(conversation.id, "email");
     await ask(conversation, "I want to talk to a person about this.");
 
     const unknown = await ask(conversation, "What is the canteen menu on Thursdays?");
@@ -402,19 +406,9 @@ describe("stale and forged contact choices (ticket 69)", () => {
     const conversation = await startConversation();
     await ask(conversation, "I want to talk to a person about this.");
     await askRaw(conversation, JSON.stringify({ choice: "handoff-no" }));
-    // Seeded open request (ticket 104 follow-up 5b), raised after the
-    // prompts exist: the session stays live, so the stale-prompt mechanics
-    // stay reachable.
-    const { store } = await service();
-    await store.createContactRequest({
-      id: crypto.randomUUID(),
-      conversationId: conversation.id,
-      medium: "email",
-      status: "open",
-      createdAt: new Date().toISOString(),
-      completedAt: null,
-      completedBy: null,
-    });
+    // Seeded open request, raised after the prompts exist: the session
+    // stays live, so the stale-prompt mechanics stay reachable.
+    await seedOpenRequest(conversation.id, "email");
     // The medium prompt is last. The duplicate choice is refused by the
     // guarded insert, and its recorded words push the prompt out of the
     // last place.
@@ -425,6 +419,7 @@ describe("stale and forged contact choices (ticket 69)", () => {
     expect(staleNo.status).toBe(400);
     expect(await errorCode(staleNo)).toBe("invalid_choice");
     // Nothing was created by the stale click.
+    const { store } = await service();
     expect(await store.listContactRequests(conversation.id)).toHaveLength(1);
   });
 
@@ -502,18 +497,9 @@ describe("the request lifecycle follows the conversation's lifecycle (ticket 69)
 
   it("does not carry requests into a Clear chat successor (pre-deployment posture)", async () => {
     const conversation = await startConversation();
-    // Seeded open request (ticket 104 follow-up 5b): the session stays live,
-    // so the visitor's Clear action still works on this conversation.
-    const { store } = await service();
-    await store.createContactRequest({
-      id: crypto.randomUUID(),
-      conversationId: conversation.id,
-      medium: "email",
-      status: "open",
-      createdAt: new Date().toISOString(),
-      completedAt: null,
-      completedBy: null,
-    });
+    // Seeded open request: the session stays live, so the visitor's Clear
+    // action still works on this conversation.
+    await seedOpenRequest(conversation.id, "email");
 
     const { POST } = await import("../src/app/api/v1/conversations/[id]/clear/route");
     const cleared = await POST(
@@ -525,6 +511,7 @@ describe("the request lifecycle follows the conversation's lifecycle (ticket 69)
     );
     expect(cleared.status).toBe(200);
     const successor = (await cleared.json()) as { id: string };
+    const { store } = await service();
     expect(await store.listContactRequests(successor.id)).toEqual([]);
     // The old conversation keeps its request history.
     expect(await store.listContactRequests(conversation.id)).toHaveLength(1);
