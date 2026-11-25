@@ -142,11 +142,12 @@ describe("the visitor's selected choice answers", () => {
     const conversation = await startConversation();
     await ask(conversation, "Something no rule covers at all, escalate me");
     await askWithChoice(conversation, "request-human", "Chat with a human");
-    // Ticket 43 locks visitor input while staff help is requested but
-    // unclaimed: a stale selection is rejected outright, so nothing is
-    // recorded and no bot answer could fire either way.
+    // Ticket 103 opens the composer while staff help is requested: the
+    // selection lands as the visitor's words for the claiming advisor, and
+    // the paused bot answers nothing — the rule never fires.
     const stalePick = await askWithChoice(conversation, "fees-overview", "Fees");
-    expect(stalePick.status).toBe(409);
+    expect(stalePick.status).toBe(200);
+    expect(((await stalePick.json()) as { reply: unknown }).reply).toBeNull();
 
     const history = await loadHistory(conversation);
     const body = (await history.json()) as {
@@ -154,7 +155,7 @@ describe("the visitor's selected choice answers", () => {
       messages: { role: string }[];
     };
     expect(body.conversation.state).toBe("awaiting_staff");
-    expect(body.messages.at(-1)?.role).toBe("bot");
+    expect(body.messages.at(-1)?.role).toBe("visitor");
   });
 });
 

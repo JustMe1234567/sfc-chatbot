@@ -315,15 +315,19 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     );
   });
 
-  it("locks out a repeat click while waiting, so nothing duplicates", async () => {
+  it("records a repeat click as words while waiting, so nothing duplicates", async () => {
     const conversation = await startConversation();
     expect((await clickOption(conversation, COURSE_PRICES_OPTION)).status).toBe(200);
     expect((await askRaw(conversation, JSON.stringify({ choice: "handoff-yes" }))).status).toBe(
       200,
     );
+    // Ticket 103: the waiting lock is gone — the repeat click lands as the
+    // visitor's words for the claiming advisor, with no reply and no second
+    // handoff: the bot is paused, so no new prompt is asked and nothing
+    // re-escalates.
     const repeat = await clickOption(conversation, COURSE_PRICES_OPTION);
-    expect(repeat.status).toBe(409);
-    expect(await errorCode(repeat)).toBe("awaiting_staff");
+    expect(repeat.status).toBe(200);
+    expect(((await repeat.json()) as { reply: unknown }).reply).toBeNull();
     expect(await escalationAlerts(conversation.id)).toBe(0);
 
     const history = await loadHistory(conversation);
@@ -332,7 +336,15 @@ describe("a deliberate click asks before handing off (ticket 69)", () => {
     };
     expect(
       historyBody.messages.filter((message) => message.role === "visitor").map((m) => m.text),
-    ).toEqual([COURSE_PRICES_OPTION, "Yes, chat with staff"]);
+    ).toEqual([COURSE_PRICES_OPTION, "Yes, chat with staff", COURSE_PRICES_OPTION]);
+    // Exactly one prompt was ever asked — no duplicate ask, and the
+    // escalation reply is the only other bot message.
+    expect(
+      historyBody.messages.filter(
+        (message) => message.role === "bot" && message.text.startsWith("Would you like"),
+      ),
+    ).toHaveLength(1);
+    expect(historyBody.messages.filter((message) => message.role === "bot")).toHaveLength(2);
   });
 
   it("lets staff take over — completing the chat request — and reply in the same chat", async () => {

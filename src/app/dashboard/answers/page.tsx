@@ -4,7 +4,7 @@ import { requireStaff } from "@/api/staff";
 import { ANSWER_RULE_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
 import { getChatbotService } from "@/db/service";
-import { getEscalationPhrases, getHandoffOptions, getWelcomeMessage } from "@/settings";
+import { getEscalationPhrases, getHandoffOptions, getWaitingNotice, getWelcomeMessage } from "@/settings";
 import { rulesWithPublisherNames } from "@/api/staffAnswerRules";
 import AnswersWorkspace from "./answers-workspace";
 import styles from "../dashboard.module.css";
@@ -39,6 +39,7 @@ export default async function AnswersPage() {
   const phrases = await getEscalationPhrases(db);
   const options = await getHandoffOptions(db);
   const welcome = await getWelcomeMessage(db);
+  const waitingNotice = await getWaitingNotice(db);
 
   return (
     <main className={styles.shell}>
@@ -74,7 +75,13 @@ export default async function AnswersPage() {
               New Answer
             </Link>
           </div>
-          <AnswersWorkspace rules={rules} phrases={phrases} options={options} welcome={welcome} />
+          <AnswersWorkspace
+            rules={rules}
+            phrases={phrases}
+            options={options}
+            welcome={welcome}
+            waitingNotice={waitingNotice}
+          />
         </div>
       </div>
     </main>

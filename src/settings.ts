@@ -12,6 +12,10 @@ import {
   normalizeEmbedOrigin,
 } from "./domain/embedAllowlist";
 import type { SupportHours } from "./domain/types";
+import {
+  DEFAULT_WAITING_NOTICE,
+  isValidWaitingNotice,
+} from "./domain/waitingNotice";
 import { DEFAULT_WELCOME_MESSAGE, isValidWelcomeMessage } from "./domain/welcome";
 
 export interface SettingRow {
@@ -461,6 +465,32 @@ export async function getWelcomeMessage(db: AppDatabase): Promise<string> {
 
 export async function setWelcomeMessage(db: AppDatabase, text: string): Promise<void> {
   await setSetting(db, WELCOME_MESSAGE_KEY, text.trim());
+}
+
+const WAITING_NOTICE_KEY = "waiting_notice";
+
+/**
+ * The handoff waiting notice (ticket 103): the small, centered line inside
+ * the transcript shown while an advisor is joining. Follows the
+ * welcome-message pattern (ticket 41): the widget renders the published
+ * value, with the domain default standing in while unconfigured or when a
+ * hand-edited or emptied row fails validation. Never stored as a message.
+ */
+export async function getWaitingNotice(db: AppDatabase): Promise<string> {
+  const raw = await getSetting(db, WAITING_NOTICE_KEY);
+  return isValidWaitingNotice(raw) ? raw : DEFAULT_WAITING_NOTICE;
+}
+
+export async function setWaitingNotice(db: AppDatabase, text: string): Promise<void> {
+  await setSetting(db, WAITING_NOTICE_KEY, text.trim());
+}
+
+/** Insert-if-absent, mirroring the other setting seeds: staff own the value
+ *  from the first boot, so restarts never overwrite their wording. */
+export async function seedWaitingNotice(db: AppDatabase): Promise<void> {
+  if ((await getSetting(db, WAITING_NOTICE_KEY)) === null) {
+    await setWaitingNotice(db, DEFAULT_WAITING_NOTICE);
+  }
 }
 
 // ---------------------------------------------------------------------------

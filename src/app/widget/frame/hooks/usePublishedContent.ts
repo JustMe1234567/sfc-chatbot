@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DEFAULT_WAITING_NOTICE } from "@/domain/waitingNotice";
 import { DEFAULT_WELCOME_MESSAGE } from "@/domain/welcome";
 
 /** A published answer rule's topic button, served by /api/v1/topics. */
@@ -21,6 +22,7 @@ export function usePublishedContent(): {
   handoffOptions: string[];
   chatbotIconSrc: string;
   welcome: { text: string; at: string } | null;
+  waitingNotice: string;
   greet: () => void;
   clearWelcome: () => void;
 } {
@@ -35,6 +37,11 @@ export function usePublishedContent(): {
   // visitor can actually use starts out empty and the published text has
   // settled. The timestamp rides along (ticket 46) so the pair stays atomic.
   const [welcome, setWelcome] = useState<{ text: string; at: string } | null>(null);
+  // The handoff waiting notice (ticket 103): the published wording shown
+  // inside the transcript while an advisor is joining, with the domain
+  // default standing in until a read succeeds — the welcome fallback keeps
+  // the notice honest even when the read fails.
+  const [waitingNotice, setWaitingNotice] = useState<string>(DEFAULT_WAITING_NOTICE);
 
   // Published topic buttons, re-fetched on every widget open so staff
   // publishing changes what visitors see without a redeploy. Failure is
@@ -59,6 +66,19 @@ export function usePublishedContent(): {
       .then((body) => {
         if (body) {
           setHandoffOptions(body.options);
+        }
+      })
+      .catch(() => {});
+    // The waiting notice (ticket 103) rides along too: same public,
+    // silent-failure contract, so a published change lands on the next
+    // widget open and a failed read leaves the default copy standing.
+    fetch("/api/v1/waiting-notice")
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as { text: string }) : null,
+      )
+      .then((body) => {
+        if (body && typeof body.text === "string" && body.text.length > 0) {
+          setWaitingNotice(body.text);
         }
       })
       .catch(() => {});
@@ -127,5 +147,5 @@ export function usePublishedContent(): {
 
   const chatbotIconSrc = chatbotIconUrl ?? "/brand/cropped-SFC-Final-Logo-Single.png";
 
-  return { topics, handoffOptions, chatbotIconSrc, welcome, greet, clearWelcome };
+  return { topics, handoffOptions, chatbotIconSrc, welcome, waitingNotice, greet, clearWelcome };
 }

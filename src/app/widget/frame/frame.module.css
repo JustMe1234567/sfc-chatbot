@@ -310,16 +310,26 @@
   opacity: 1;
 }
 
-/* The handoff state stays as short as it can be (ticket 38): the transcript
-   below is the widget's primary surface, so every notice is a compact
-   one-glance block. */
-.handoff {
-  margin: 6px 16px 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #fdecea;
-  color: #a8342a;
-  font-size: 13px;
+/* The handoff notices (ticket 103): small, centered lines inside the
+   transcript, not banners above it (ticket 38's transcript-dominant posture
+   holds). They ride the log's live region, so they stay presentation-only. */
+.notice {
+  align-self: center;
+  max-width: 90%;
+  padding: 0 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #52606d;
+}
+
+/* Sender labels (ticket 103): every non-visitor bubble names its speaker.
+   A small block line inside the bubble keeps the bubble shapes untouched. */
+.senderLabel {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #52606d;
 }
 
 /* The contact gate's form (ticket 66): the widget's first usable step for
@@ -761,13 +771,4 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-/* The waiting line (ticket 43): shown above the composer while staff help
-   is requested but unclaimed — the composer is locked and this explains
-   why, leaving the transcript and the handoff notice to tell the story. */
-.waiting {
-  margin: 6px 16px 0;
-  font-size: 13px;
-  color: #52606d;
 }

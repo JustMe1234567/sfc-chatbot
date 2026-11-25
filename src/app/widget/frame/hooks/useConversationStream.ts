@@ -386,18 +386,6 @@ export function useConversationStream({
           returnToGate(text, choice, handoffClick);
           return;
         }
-        if (conflict.error?.code === "awaiting_staff") {
-          // The waiting lock (ticket 43): the escalation landed while this
-          // message was in flight. Drop the bubble and hand the words back.
-          dropOptimistic();
-          if (!choice && !handoffClick) {
-            setQuestion(text);
-          }
-          setError(
-            conflict.error.message ?? "Waiting for a staff member to take over.",
-          );
-          return;
-        }
         dropOptimistic();
         showError();
         return;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_MESSAGE_LENGTH, MAX_NAME_LENGTH } from "@/domain/limits";
 import { distinctOptions, topicLabelsShadowedByOptions } from "@/domain/handoffOptions";
+import type { MessageRole } from "@/domain/types";
 import { useClearFlow } from "./hooks/useClearFlow";
 import { useContactGate } from "./hooks/useContactGate";
 import { useConversationStream } from "./hooks/useConversationStream";
@@ -14,6 +15,18 @@ import styles from "./frame.module.css";
 function isHttpLink(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
+
+/**
+ * Transcript sender labels (ticket 103): every non-visitor bubble names its
+ * speaker in the visitor's chat — advisor messages read "Staff" (the
+ * owner's visitor-facing override; "Admissions Advisor" is internal), bot
+ * messages read "Admissions Chatbot". Visitor bubbles carry no label, and
+ * the dashboard's transcript labels are ticket 102's sweep, untouched here.
+ */
+const SENDER_LABELS: Record<Exclude<MessageRole, "visitor">, string> = {
+  bot: "Admissions Chatbot",
+  staff: "Staff",
+};
 
 /**
  * The suggested-questions strip (ticket 18): a two-row, horizontally
@@ -148,7 +161,7 @@ export default function WidgetFrame() {
     send,
     dismissArrival,
   } = stream;
-  const { topics, handoffOptions, chatbotIconSrc, welcome } = content;
+  const { topics, handoffOptions, chatbotIconSrc, welcome, waitingNotice } = content;
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
@@ -160,9 +173,13 @@ export default function WidgetFrame() {
     }
   }, [contactRequired]);
 
-  // Staff help requested but nobody claimed yet: the composer locks (ticket
-  // 43). Claiming — or a fresh conversation after Clear — re-enables it.
-  const composerLocked = handoff && !claimed;
+  // The handoff episode (ticket 103): from the escalation through the
+  // advisor's claim until release or closure, the conversation belongs to
+  // staff — the topic chips, the fresh stack, and the intro line hide, and
+  // the in-transcript notice tells the visitor staff will reply. The
+  // composer itself never locks: visitors keep messaging throughout
+  // (ticket 43's lock is reversed), and the bot stays paused server-side.
+  const handoffActive = handoff || claimed;
 
   // A configured option that spells the same suggestion as a published
   // rule's topic wins the shared chip (ticket 67): clicking it must notify
@@ -293,6 +310,9 @@ export default function WidgetFrame() {
   // The greeting row (ticket 46) composes the reference's hierarchy: crest
   // avatar left, the bot bubble, then the subtle local timestamp. Still
   // presentation-only — announced by the log's live region, never stored.
+  // The handoff notices (ticket 103) are transcript lines at the log's end:
+  // small, centered, riding the log's live region so each state event is
+  // announced exactly once (ticket 25) with no live semantics of their own.
   const logContent = (
     <>
       {welcome !== null ? (
@@ -324,6 +344,9 @@ export default function WidgetFrame() {
               : undefined
           }
         >
+          {message.role !== "visitor" ? (
+            <span className={styles.senderLabel}>{SENDER_LABELS[message.role]}</span>
+          ) : null}
           {message.text}
           {message.link && isHttpLink(message.link) && (
             <a href={message.link} target="_blank" rel="noopener noreferrer">
@@ -338,7 +361,7 @@ export default function WidgetFrame() {
                   key={choice.id}
                   type="button"
                   className={styles.topicButton}
-                  disabled={sending || composerLocked}
+                  disabled={sending}
                   onClick={() => void send(choice.topic, choice.id)}
                 >
                   {choice.topic}
@@ -348,6 +371,22 @@ export default function WidgetFrame() {
           ) : null}
         </li>
       ))}
+      {handoff ? (
+        <li
+          key="awaiting-notice"
+          className={`${styles.notice} ${noticesArrive ? styles.arrive : ""}`}
+        >
+          {waitingNotice}
+        </li>
+      ) : null}
+      {claimed ? (
+        <li
+          key="claimed-notice"
+          className={`${styles.notice} ${noticesArrive ? styles.arrive : ""}`}
+        >
+          A college staff member has joined the conversation and will reply here.
+        </li>
+      ) : null}
     </>
   );
 
@@ -402,33 +441,12 @@ export default function WidgetFrame() {
           </span>
         </header>
       )}
-      {visibleTopics.length === 0 && !contactRequired ? (
-        // Only the topicless widget needs the guidance line (ticket 38): with
-        // chips visible they are the affordance, and during a handoff the
-        // notice below already says the bot has paused.
+      {visibleTopics.length === 0 && !contactRequired && !handoffActive ? (
+        // Only the topicless widget needs the guidance line (ticket 38), and
+        // only outside a handoff (ticket 103): with chips visible they are
+        // the affordance, and during the handoff episode the in-transcript
+        // notice and the open composer are the guidance.
         <p className={styles.intro}>Ask us your question.</p>
-      ) : null}
-      {handoff ? (
-        // The awaiting event's one live announcer (ticket 25): the takeover
-        // is the service's core escalation event, so this paragraph carries
-        // its announcement — the waiting line below stays purely visual,
-        // since two polite regions firing together would read it twice.
-        <p
-          className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}
-          role="status"
-        >
-          College staff will reply in this chat. Automated answers are paused.
-        </p>
-      ) : null}
-      {claimed ? (
-        // Announced once when staff take over (ticket 43) — the moment the
-        // composer unlocks.
-        <p
-          className={`${styles.handoff} ${noticesArrive ? styles.arrive : ""}`}
-          role="status"
-        >
-          A college staff member has joined the conversation and will reply here.
-        </p>
       ) : null}
       {freshStart ? (
         // The fresh start area (ticket 46): greeting and stacked suggestions
@@ -443,7 +461,10 @@ export default function WidgetFrame() {
           >
             {logContent}
           </ol>
-          {!contactRequired && visibleTopics.length > 0 ? (
+          {!contactRequired && visibleTopics.length > 0 && !handoffActive ? (
+            // The fresh suggested questions (ticket 46), hidden once the
+            // handoff episode begins (ticket 103): the chips would promise
+            // bot answers the paused bot cannot give.
             <div
               className={`${styles.freshSuggestions} ${styles.arrive}`}
               role="group"
@@ -454,7 +475,7 @@ export default function WidgetFrame() {
                   key={topic.id}
                   type="button"
                   className={styles.freshSuggest}
-                  disabled={sending || composerLocked}
+                  disabled={sending}
                   onClick={() => void send(topic.question)}
                 >
                   {topic.topic}
@@ -495,38 +516,37 @@ export default function WidgetFrame() {
       <p className={styles.status} role="alert">
         {error}
       </p>
-      {composerLocked ? (
-        // Visual companion to the handoff notice's announcement — ticket 43
-        // made this line the announcer, ticket 25 moved that duty to the
-        // notice above (one announcer per event, no double reading).
-        <p className={styles.waiting}>Waiting for a staff member to take over…</p>
-      ) : null}
-      {!freshStart && !contactRequired && visibleTopics.length > 0 ? (
+      {!freshStart && !contactRequired && visibleTopics.length > 0 && !handoffActive ? (
         // The compact persistent strip is the conversation's suggestion rail
         // (ticket 18); the fresh state stacks its own instead (ticket 46).
+        // Hidden during the handoff episode (ticket 103): the chips would
+        // promise bot answers the paused bot cannot give.
         <TopicsStrip
           topics={visibleTopics}
-          disabled={sending || composerLocked}
+          disabled={sending}
           onPick={(question) => void send(question)}
         />
       ) : null}
       {!freshStart && handoffOptionsVisible ? (
-        // The ongoing options rail (ticket 67): the conversation's own
-        // click-to-handoff chips, in the same visual language as the
-        // suggestion rail above, appearing and hiding with the same rules.
-        <div className={styles.topicsShell}>
-          <div className={styles.topics} role="group" aria-label="Options to reach our staff">
-            {visibleHandoffOptions.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={styles.topicButton}
-                onClick={() => void send(option, undefined, true)}
-              >
-                <span className={styles.topicLabel}>{option}</span>
-              </button>
-            ))}
-          </div>
+        // The ongoing options (ticket 67): the conversation's own
+        // click-to-handoff chips, stacked vertically like the fresh state's
+        // so their full text stays visible (ticket 103) — no horizontal
+        // rail, no clipping.
+        <div
+          className={styles.freshSuggestions}
+          role="group"
+          aria-label="Options to reach our staff"
+        >
+          {visibleHandoffOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={styles.freshSuggest}
+              onClick={() => void send(option, undefined, true)}
+            >
+              {option}
+            </button>
+          ))}
         </div>
       ) : null}
       {contactRequired ? (
@@ -622,7 +642,6 @@ export default function WidgetFrame() {
             maxLength={MAX_MESSAGE_LENGTH}
             placeholder="Type your question"
             value={question}
-            disabled={composerLocked}
             onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
@@ -634,7 +653,7 @@ export default function WidgetFrame() {
           <button
             type="submit"
             className={styles.send}
-            disabled={sending || composerLocked}
+            disabled={sending}
             aria-busy={sending || undefined}
           >
             {sending ? (
