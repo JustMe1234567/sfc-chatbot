@@ -26,7 +26,7 @@ The queue of escalated conversations available to authorized staff until one per
 The staff dashboard's two-pane view of the day's work: a conversation list on the left (Incoming and Active sections, with History a tab away) and the selected transcript with its reply controls on the right.
 
 **Activity**:
-Whether a conversation is still live on the desk, judged from its latest meaningful message — a visitor or staff message; polling, presence, and page views do not count. A conversation leaves the active lists exactly 24 hours after its latest meaningful message and waits in History, transcript kept.
+Whether a conversation is still live on the desk, judged from its latest meaningful message — a visitor or staff message; polling, presence, and page views do not count. A conversation leaves the active lists exactly 24 hours after its latest meaningful message and waits in History, transcript kept. One exception (ticket 104): a conversation with an open email or phone contact request never leaves the active lists, however quiet — it stays pinned in Active, with the Contact Me status and Mark contacted available, until an advisor marks the request contacted, after which the ordinary 24-hour rule resumes. The exception is a desk-visibility rule only: the visitor refusal boundary and the retention sweep keep reading the plain inactivity window, so a pinned conversation's records still age out on the usual clock.
 
 **Attention**:
 The in-dashboard signal that a conversation has something new for staff — a fresh escalation or a visitor message while staff help is active. Viewing, replying, or claiming clears it; it never duplicates while standing.

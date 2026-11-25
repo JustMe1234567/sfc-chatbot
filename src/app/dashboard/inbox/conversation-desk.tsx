@@ -95,7 +95,20 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // closed or quiet conversation, so its count is the list's length.
 
   const selected = selectedId ? await store.getConversation(selectedId) : null;
-  const selectedActive = selected ? isConversationActive(selected) : false;
+  // The selected conversation's open email/phone request (ticket 69): the
+  // pane shows the persistent Contact Me chip and the Mark contacted action
+  // until staff complete it. Viewing the transcript never clears it.
+  const selectedOpenRequest = selected ? await store.getOpenContactRequest(selected.id) : null;
+  const selectedContactBadge =
+    selectedOpenRequest && selectedOpenRequest.medium !== "chat"
+      ? { id: selectedOpenRequest.id, medium: selectedOpenRequest.medium as "email" | "phone" }
+      : null;
+  // Pinned in Active (ticket 104): the pane's own active reading follows the
+  // lists' exception, so a quiet open-request conversation keeps the live
+  // tiers and Mark contacted instead of falling back to the state chip.
+  const selectedActive = selected
+    ? isConversationActive(selected) || selectedContactBadge !== null
+    : false;
   // Opening the transcript is viewing it: the attention alert clears, so the
   // next visitor message can raise it again. The active desk polls every
   // second (ticket 61), so a staff member watching the pane stays "viewing".
@@ -126,14 +139,6 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
   // event whose conversation is on this list sounds as the louder alert.
   // History (no desk scan) never sounds.
   const needsHumanIds = desk ? desk.incoming.map((item) => item.id) : [];
-  // The selected conversation's open email/phone request (ticket 69): the
-  // pane shows the persistent Contact Me chip and the Mark contacted action
-  // until staff complete it. Viewing the transcript never clears it.
-  const selectedOpenRequest = selected ? await store.getOpenContactRequest(selected.id) : null;
-  const selectedContactBadge =
-    selectedOpenRequest && selectedOpenRequest.medium !== "chat"
-      ? { id: selectedOpenRequest.id, medium: selectedOpenRequest.medium as "email" | "phone" }
-      : null;
   // The selected header chip shares the rows' tier mapping while the
   // conversation is live; closed and quiet conversations keep their state chip.
   const selectedTier =

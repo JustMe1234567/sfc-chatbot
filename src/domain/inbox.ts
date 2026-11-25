@@ -71,7 +71,15 @@ async function toDeskItemWithMessages(
     id: conversation.id,
     state: conversation.state,
     visitorName: conversation.visitorName,
-    active: isConversationActive(conversation),
+    // Pinned in Active (ticket 104, decision 3): a conversation with an open
+    // email/phone request never leaves the active lists, however quiet —
+    // the Contact Me chip and Mark contacted stay reachable until an advisor
+    // completes the request, and the ordinary 24-hour roll resumes after
+    // completion. Both list summaries read this flag, so the same exception
+    // keeps the pinned conversation out of History too. Retention is not
+    // deferred: isConversationActive (the visitor refusal and the purge
+    // boundary) is untouched.
+    active: isConversationActive(conversation) || openRequests.has(conversation.id),
     attention: conversation.attentionAt !== null,
     attentionAt: conversation.attentionAt,
     contactRequest: openRequests.get(conversation.id) ?? null,

@@ -61,9 +61,10 @@ describe("the visitor's polling cadence (ticket 61)", () => {
   it("fetches nothing without a session and never stacks history requests", async () => {
     const stream = await read(STREAM);
     // A fresh visitor has no conversation session: the guard makes every
-    // tick a no-op, and a send in flight holds the poller off too (the bot
-    // answer arrives with the send response, not a poll).
-    expect(stream).toContain("if (!session || sendingRef.current) {");
+    // tick a no-op, a send in flight holds the poller off too (the bot
+    // answer arrives with the send response, not a poll), and the ended
+    // chat (ticket 104) polls for nothing while its one-time view stands.
+    expect(stream).toContain("if (!session || sendingRef.current || sessionEndedRef.current) {");
     // The in-flight latch is keyed by generation and session, so a request
     // for the previous chat never blocks (or answers for) the current one,
     // and only its own key releases the latch in finally.

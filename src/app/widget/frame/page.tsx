@@ -154,12 +154,14 @@ export default function WidgetFrame() {
     error,
     sending,
     contactRequired,
+    sessionEnded,
     question,
     setQuestion,
     arrivingIds,
     noticesArrive,
     send,
     dismissArrival,
+    startNewChat,
   } = stream;
   const { topics, handoffOptions, chatbotIconSrc, welcome, waitingNotice } = content;
 
@@ -196,11 +198,14 @@ export default function WidgetFrame() {
   // again after bot answers; hidden while the visitor types a nonblank
   // question or a send/reply is pending — they return once the input is
   // cleared or the bot has answered — and gone for good in the waiting and
-  // claimed states, where there is no second handoff to request. They
-  // hide rather than disable: a chip that invites a staff handoff must not
-  // linger as an affordance it can no longer honor.
+  // claimed states, where there is no second handoff to request, and in the
+  // ended chat (ticket 104), where the confirmation and the single action
+  // are the whole end state. They hide rather than disable: a chip that
+  // invites a staff handoff must not linger as an affordance it can no
+  // longer honor.
   const handoffOptionsVisible =
     !contactRequired &&
+    !sessionEnded &&
     !sending &&
     !handoff &&
     !claimed &&
@@ -354,7 +359,7 @@ export default function WidgetFrame() {
               <span className={styles.srOnly}>(opens in a new tab)</span>
             </a>
           )}
-          {index === messages.length - 1 && message.choices && !contactRequired ? (
+          {index === messages.length - 1 && message.choices && !contactRequired && !sessionEnded ? (
             <div className={styles.choices}>
               {message.choices.map((choice) => (
                 <button
@@ -428,7 +433,7 @@ export default function WidgetFrame() {
             <span className={styles.title}>Chat with us</span>
           </span>
           <span className={styles.headerActions}>
-            {messages.length > 0 ? headerMenu : null}
+            {messages.length > 0 && !sessionEnded ? headerMenu : null}
             <button
               type="button"
               ref={closeButtonRef}
@@ -441,7 +446,7 @@ export default function WidgetFrame() {
           </span>
         </header>
       )}
-      {visibleTopics.length === 0 && !contactRequired && !handoffActive ? (
+      {visibleTopics.length === 0 && !contactRequired && !handoffActive && !sessionEnded ? (
         // Only the topicless widget needs the guidance line (ticket 38), and
         // only outside a handoff (ticket 103): with chips visible they are
         // the affordance, and during the handoff episode the in-transcript
@@ -516,7 +521,7 @@ export default function WidgetFrame() {
       <p className={styles.status} role="alert">
         {error}
       </p>
-      {!freshStart && !contactRequired && visibleTopics.length > 0 && !handoffActive ? (
+      {!freshStart && !contactRequired && visibleTopics.length > 0 && !handoffActive && !sessionEnded ? (
         // The compact persistent strip is the conversation's suggestion rail
         // (ticket 18); the fresh state stacks its own instead (ticket 46).
         // Hidden during the handoff episode (ticket 103): the chips would
@@ -623,6 +628,17 @@ export default function WidgetFrame() {
             </p>
           ) : null}
         </form>
+      ) : sessionEnded ? (
+        // The ended chat (ticket 104, decision 4): the transcript above stays
+        // with the contact confirmation as its last row, and the composer
+        // area becomes the single "Start a new chat" action — no heading, no
+        // other copy. The old conversation is over for this visitor; the
+        // gate's next accepted submission starts a separate one.
+        <div className={styles.form}>
+          <button type="button" className={styles.send} onClick={startNewChat}>
+            Start a new chat
+          </button>
+        </div>
       ) : (
         <form
           className={styles.form}

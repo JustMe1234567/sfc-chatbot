@@ -482,6 +482,13 @@ export function createPostgresStore(sql: PostgresSql): Store {
       return row ? row.conversation_id : null;
     },
 
+    // Revocation drops the conversation's visitor session rows (ticket 104):
+    // the credential stops authorizing while the conversation stays live,
+    // and the sweep removes the rows with the conversation later.
+    async revokeVisitorSessions(conversationId) {
+      await sql`DELETE FROM visitor_sessions WHERE conversation_id = ${conversationId}`;
+    },
+
     async createReturnToken(token) {
       await sql`INSERT INTO return_tokens (token_hash, conversation_id, created_at, expires_at)
                 VALUES (${token.tokenHash}, ${token.conversationId}, ${token.createdAt}, ${token.expiresAt})`;
