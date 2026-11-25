@@ -3,7 +3,7 @@ import { sqliteAppDatabase, postgresAppDatabase, type AppDatabase } from "./appD
 import { createSqliteStore } from "../store/sqliteStore";
 import { createPostgresStore } from "../store/postgresStore";
 import { seedAnswerRules } from "../store/seed";
-import { seedEmbedAllowlist, seedEscalationPhrases, seedHandoffOptions } from "../settings";
+import { seedEmbedAllowlist, seedEscalationPhrases, seedHandoffOptions, seedWaitingNotice } from "../settings";
 import { migratePostgres, openPostgres, type PostgresSql } from "./postgres";
 import type { AuthProvider } from "../auth/provider";
 import { assertSupabaseConfigured, createSupabaseAuth } from "../auth/supabase-provider";
@@ -35,6 +35,7 @@ async function buildSqliteService(): Promise<ChatbotService> {
   await seedAnswerRules(store);
   await seedEscalationPhrases(appDb);
   await seedHandoffOptions(appDb);
+  await seedWaitingNotice(appDb);
   await seedEmbedAllowlist(appDb);
   const auth = createSupabaseAuth({
     db: appDb,
@@ -50,6 +51,7 @@ async function buildPostgresService(sql: PostgresSql): Promise<ChatbotService> {
   await seedAnswerRules(store);
   await seedEscalationPhrases(appDb);
   await seedHandoffOptions(appDb);
+  await seedWaitingNotice(appDb);
   await seedEmbedAllowlist(appDb);
   const auth = createSupabaseAuth({
     db: appDb,

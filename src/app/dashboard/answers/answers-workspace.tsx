@@ -6,6 +6,7 @@ import type { AnswerRuleStatus } from "@/domain/types";
 import EscalationPhrasesForm from "./escalation-phrases-form";
 import HandoffOptionsForm from "./handoff-options-form";
 import WelcomeForm from "./welcome-form";
+import WaitingNoticeForm from "./waiting-notice-form";
 import AnswerActions from "./answer-actions";
 import styles from "../dashboard.module.css";
 
@@ -22,13 +23,14 @@ import styles from "../dashboard.module.css";
  * save flows untouched.
  */
 
-type AnswersTab = "rules" | "phrases" | "options" | "welcome";
+type AnswersTab = "rules" | "phrases" | "options" | "welcome" | "waiting";
 
 const TABS: { id: AnswersTab; label: string }[] = [
   { id: "rules", label: "Answer Rules" },
   { id: "phrases", label: "Handoff Phrases" },
   { id: "options", label: "Handoff Options" },
   { id: "welcome", label: "Welcome Message" },
+  { id: "waiting", label: "Waiting Notice" },
 ];
 
 export type AnswersStatusFilter = "all" | "published" | "draft" | "archived" | "trash";
@@ -439,11 +441,13 @@ export default function AnswersWorkspace({
   phrases,
   options,
   welcome,
+  waitingNotice,
 }: {
   rules: RuleView[];
   phrases: string[];
   options: string[];
   welcome: string;
+  waitingNotice: string;
 }) {
   const [rules, setRules] = useState(initialRules);
   const [tab, setTab] = useState<AnswersTab>("rules");
@@ -589,6 +593,16 @@ export default function AnswersWorkspace({
         className={styles.answersPanel}
       >
         <WelcomeForm initialText={welcome} />
+      </div>
+
+      <div
+        role="tabpanel"
+        id="answers-panel-waiting"
+        aria-labelledby="answers-tab-waiting"
+        hidden={tab !== "waiting"}
+        className={styles.answersPanel}
+      >
+        <WaitingNoticeForm initialText={waitingNotice} />
       </div>
     </div>
   );
