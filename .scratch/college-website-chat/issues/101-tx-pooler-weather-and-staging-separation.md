@@ -1,6 +1,6 @@
 # 101: Transaction-pooler weather is chronic — record the 5432 rollback and the declined environment decisions
 
-Status: ready-for-human
+Status: done
 
 ## Context (no code to build — a record and a decision)
 
@@ -40,18 +40,19 @@ not).
 3. **Leftover ops items:** Vercel `PG_POOL_MAX` — **set to 4 on 2026-11-22
    via CLI** (redeploy sfc-chatbot-6kilbnnum applied it; the value is
    stored as a Vercel Secret, so dashboard reads stay hidden); Vercel
-   Preview environment still carries a stale `DATABASE_URL` (the CLI/API
-   token cannot write it — set it via the dashboard when convenient;
-   until then, future PR previews will 500 while production is
-   unaffected).
+   Preview environment still carries a stale `DATABASE_URL`. On
+   2026-11-26 the owner declined changing it because the deployed
+   dashboard is working. Revisit only if Preview deployments are needed;
+   until then, future PR previews may fail while production is unaffected.
 
 ## Acceptance criteria
 
 - ~~The owner decides 1 and 2~~ — decided: both declined with rationale
   recorded above.
 - ~~Ops item 3: PG_POOL_MAX~~ — closed (set to 4, deployed).
-- Preview `DATABASE_URL` remains the one open ops item (owner dashboard
-  step).
+- ~~Preview `DATABASE_URL`~~ — owner-declined on 2026-11-26; no change is
+  required while the deployed dashboard is working. Revisit only if
+  Preview deployments are needed later.
 
 ## Comments
 
@@ -98,3 +99,12 @@ parked or corrected inline.**
   error class, one line).
 
 Reviewed through: ddd95072bc724b6e23da2053673c57d35c9ed911
+
+2026-11-26: **Owner acceptance and closure.** The current production
+database configuration is accepted because the deployed dashboard is
+working. The owner declined changing the stale Vercel Preview
+`DATABASE_URL`; Preview availability is not currently required and may
+be reconsidered if Preview deployments are needed later. With the final
+manual operations item explicitly declined, ticket 101 is `done`. No
+application code, deployment configuration, or Vercel environment value
+was changed for this closure.
