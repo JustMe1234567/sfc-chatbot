@@ -517,3 +517,51 @@ amendment. `migrations/README.md` gained the 102→0023/0013 row.
 
 COMPLETE — all fourteen acceptance criteria pass. Status set to `done`.
 Not pushed; no PR opened — review and merge are the owner's steps.
+
+2026-11-26: **Review amendment — `/code-review b2f57c5a7` over the full
+range (3 commits), both axes. One hard standards violation, fixed with
+three smaller in-scope findings; the rest parked with dispositions.**
+
+- **FIXED — stale "owner" refusal (standards axis, hard):** the Logs
+  page still rendered "This page requires the owner role." — the last
+  user-visible legacy string, breaching the reworded-strings AC
+  (dashboard error messages) and the glossary's new avoid-list. Reworded
+  to "the admin role"; the page's stale owner comment updated too.
+- **FIXED — Answers-area hints (spec axis):** three user-visible hints
+  still said "staff" (answers intro "go straight to staff", the handoff
+  options "sends the visitor straight to staff", the escalation phrases
+  "goes to staff") — dashboard-facing copy the sweep covers; reworded to
+  advisor wording.
+- **FIXED — transfer picker role labels (spec axis, partial AC):** the
+  picker rendered names only; the desk now resolves each target's
+  `staffRoleLabel` and the option renders "Name · Admissions Advisor",
+  with a source pin on the pairing.
+- **FIXED — dead conditional (standards axis):** AnalyticsSettingsForm's
+  `settings ?` guard could never fire after the admin-only simplification;
+  removed. The members POST also now refuses a non-string `role` outright
+  instead of silently defaulting it to advisor.
+- **PARKED — identical role-set arrays (standards axis, Duplicated
+  Code):** `STAFF_ROLES`/`DASHBOARD_ROLES`/`ANSWER_RULE_ROLES` are now the
+  same list; the three names carry the per-area semantic intent the
+  ticket's authorization model describes, and callers keep expressing
+  *which kind of area* they gate. Collapse them if a future ticket ever
+  needs one set.
+- **PARKED — `staffRoleLabel` lives in `auth/server` (standards axis,
+  Mysterious Name adjacent):** a client-consumed label helper inside a
+  module named "server". No server-only imports are involved, the file is
+  already the shared role vocabulary, and relocating it is churn tickets
+  103/104 would immediately follow; leave until a second vocabulary home
+  appears.
+- **PARKED — unticked AC checkboxes (spec axis, bookkeeping):** the
+  tracker's convention marks completion via the `Status:` line (ticket 91
+  is `done` with its boxes unticked), so the boxes stay.
+- **PARKED — 78-file scatter (standards axis, Shotgun Surgery):**
+  inherent to a deliberate vocabulary + permission-matrix replacement;
+  every hunk traces to a ticket AC or decision (spec axis: no scope creep
+  found).
+
+Re-verification after the fixes: full SQLite suite 72 files / 622 passed
+/ 7 skipped; the touched suites re-run green on Postgres (56 tests);
+typecheck, hygiene (800 files), and the production build all pass.
+
+Reviewed through: abc70354e
