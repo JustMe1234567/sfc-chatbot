@@ -4,50 +4,55 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import SignOutButton from "./inbox/sign-out-button";
+import PasswordDialog from "./password-dialog";
 import {
   initialSidebarCollapsed,
   persistSidebarCollapsed,
   restoreSidebarCollapsed,
 } from "./sidebar-preference";
 import { createNeedsHumanSignal, NEEDS_HUMAN_POLL_MS } from "@/domain/needsHumanSignal";
+import { staffRoleLabel } from "@/auth/server";
 import styles from "./dashboard.module.css";
 
 export type HeaderArea = "inbox" | "contacts" | "answers" | "staff" | "analytics" | "settings" | "logs";
 
+/**
+ * Each area with the roles that may open it (ticket 102): Admissions Advisors
+ * work Conversations, Visitor contacts, and Answers; Analytics, Staff
+ * accounts, Logs, and Settings are Admin areas. Every entry mirrors its
+ * page's and APIs' `requireStaff` gate.
+ */
 const NAV: { area: HeaderArea; href: string; label: string; roles: string[] }[] = [
-  { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] },
+  { area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["admin", "admissions_advisor"] },
   // Ticket 53 added this entry; ticket 69 renames it — the saved-contact
   // list beside Conversations, for the roles that work follow-ups.
-  { area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["owner", "staff"] },
-  { area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] },
-  { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] },
-  { area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] },
+  { area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["admin", "admissions_advisor"] },
+  { area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["admin"] },
+  { area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["admin", "admissions_advisor"] },
+  // Staff accounts (ticket 08): where Admins create and manage Admissions
+  // Advisor accounts.
+  { area: "staff", href: "/dashboard/staff", label: "Staff accounts", roles: ["admin"] },
   // Login observability (ticket 81): every dashboard sign-in attempt, its
-  // suspicious flags, and the deletion controls — owners alone.
-  { area: "logs", href: "/dashboard/logs", label: "Logs", roles: ["owner"] },
-  // Branding settings (ticket 70): every dashboard role may configure the
-  // chatbot icon, the dashboard favicon, and the chathead appearance.
-  { area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["owner", "staff", "editor"] },
+  // suspicious flags, and the deletion controls — admins alone.
+  { area: "logs", href: "/dashboard/logs", label: "Logs", roles: ["admin"] },
+  // Settings (tickets 70 and 76): branding and the security-sensitive
+  // configuration — admins alone.
+  { area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["admin"] },
 ];
 
 // The Conversations row's own role list from the NAV table above: the
 // needs-human bell's poll runs only for the roles that can see the row
-// (ticket 79) — editors have no Conversations row and request nothing.
+// (ticket 79).
 const CONVERSATIONS_ROLES =
   NAV.find((item) => item.area === "inbox")?.roles ?? [];
 
 /**
  * The shared dashboard chrome (ticket 13, sidebar shell from ticket 52,
  * compact icon rail and one-at-a-time hover callouts from ticket 57).
- * Links respect the caller's role exactly as the per-page headers did —
- * editors see Answers and Settings, while staff see operational pages,
- * owners see everything.
+ * Links respect the caller's role exactly as the per-page gates do —
+ * Admissions Advisors see Conversations, Visitor contacts, and Answers,
+ * while Admins see every area.
  */
-const ROLE_LABELS: Record<string, string> = {
-  owner: "Owner",
-  staff: "Staff",
-  editor: "Editor",
-};
 
 /**
  * Hand-authored marks on one 24-grid, stroke-only so every icon inherits
@@ -377,8 +382,11 @@ function SidebarChrome({
       </nav>
       <div className={styles.sideIdentity}>
         <span className={styles.whoText}>
-          {name} · {ROLE_LABELS[role] ?? role}
+          {name} · {staffRoleLabel(role)}
         </span>
+        {/* The self-service password change (ticket 102): Settings became an
+            Admin area, so both roles reach the change from the chrome. */}
+        <PasswordDialog />
         <span className={styles.sideSignOutWrap} {...calloutProps("Sign out")}>
           <SignOutButton icon={SIGN_OUT_MARK} />
         </span>

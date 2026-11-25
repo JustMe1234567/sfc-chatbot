@@ -9,7 +9,7 @@ interface RouteContext {
 }
 
 /**
- * Release (ticket 08): the claimer — or the owner role overriding — hands the
+ * Release (ticket 08): the claimer — or the admin role overriding — hands the
  * conversation back to the shared inbox, keeping all history for whoever
  * claims it next. The visitor's widget reflects the awaiting-staff state on
  * its next poll.
@@ -33,7 +33,7 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
   const isClaimer = conversation.claimedBy === staff.userId;
-  if (!isClaimer && staff.role !== "owner") {
+  if (!isClaimer && staff.role !== "admin") {
     return claimConflictResponse(claimerName);
   }
 

@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { requireStaff } from "@/api/staff";
-import { DASHBOARD_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
 import {
   getChatbotIconVersion,
@@ -13,12 +12,10 @@ import { chatheadForeground } from "@/domain/branding";
 import BrandingSettings from "./branding-settings";
 import EmbedAllowlistSettings from "./embed-allowlist-settings";
 import LoginRetentionForm from "./login-retention-form";
-import PasswordSettings from "./password-settings";
 import SupportHoursForm from "../notifications/support-hours-form";
 import RetentionForm from "../notifications/retention-form";
-import { getSupportHours, getLoginRetentionDays, getTranscriptRetentionDays, DEFAULT_RETENTION_DAYS } from "@/settings";
+import { getSupportHours, getLoginRetentionDays, getTranscriptRetentionDays } from "@/settings";
 import { latestRetentionRun } from "@/domain/retention";
-import { scheduleSummary } from "@/domain/hours";
 import styles from "../dashboard.module.css";
 import type { Metadata } from "next";
 
@@ -26,22 +23,21 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Settings" };
 
 /**
- * The settings page: every dashboard role configures the chatbot icon, the
- * dashboard favicon, and the chathead appearance (ticket 70) and its own
- * password (ticket 82). Owners additionally configure the support hours,
- * transcript retention, login-log retention, and embed allowlist; staff keep
- * the read-only support-hours and transcript-retention summary they held on
- * the notifications page (tickets 09/10, restored by ticket 88); editors
- * see neither. The page server-reads the effective values (versions
- * included) so the forms render what is live right now.
+ * The settings page: an Admin area (ticket 102). Admins configure the
+ * support hours, transcript retention, login-log retention, and embed
+ * allowlist, and — since ticket 70 — the chatbot icon, the dashboard favicon,
+ * and the chathead appearance. Admissions Advisors are refused and have no
+ * navigation link here; their self-service password change lives in the
+ * dashboard chrome, where both roles reach it. The page server-reads the
+ * effective values (versions included) so the forms render what is live now.
  */
 export default async function SettingsPage() {
   const staffHeaders = await headers();
-  const guard = await requireStaff(staffHeaders, { roles: DASHBOARD_ROLES });
+  const guard = await requireStaff(staffHeaders, { roles: ["admin"] });
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized staff session.</p>
+        <p className={styles.empty}>This page requires the admin role.</p>
       </main>
     );
   }
@@ -51,7 +47,7 @@ export default async function SettingsPage() {
   // pool without headroom (observed at PG_POOL_MAX=5) the authed render
   // starved — the leases never freed and the navigation timed out. Two
   // sequential groups of four keep the render at half the default pool's
-  // eight leases or below; the values, order, and role gating are unchanged.
+  // eight leases or below; the values and their order are unchanged.
   const [iconVersion, faviconVersion, chathead, supportHours] = await Promise.all([
     getChatbotIconVersion(db),
     getDashboardFaviconVersion(db),
@@ -74,45 +70,16 @@ export default async function SettingsPage() {
         role={guard.staff.role}
       />
       <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
-        <PasswordSettings />
-        {guard.staff.role === "owner" ? (
-          <>
-            <div className={styles.alertSettingsGrid}>
-              <SupportHoursForm initialHours={supportHours} />
-              <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
-              {/* Login retention (ticket 81): how long sign-in attempts
-                  live in the owner-only Logs tab. */}
-              <LoginRetentionForm initialDays={loginRetentionDays} />
-            </div>
-            {/* Security-sensitive owner configuration (ticket 76): which
-                websites may host the widget. Staff and editors never see
-                the card and their API requests are refused. */}
-            <EmbedAllowlistSettings initialOrigins={embedOrigins} />
-          </>
-        ) : null}
-        {guard.staff.role === "staff" ? (
-          // Ticket 88: staff keep the read-only summary tickets 09/10 gave
-          // them on the notifications page — the live values without any
-          // editing surface. The editing APIs stay owner-only.
-          <dl className={styles.alertSummaryGrid} aria-label="Current support hours and transcript retention">
-            <div>
-              <dt>Support hours</dt>
-              <dd>
-                {supportHours
-                  ? scheduleSummary(supportHours)
-                  : "Not configured; visitors receive the general follow-up message."}
-              </dd>
-            </div>
-            <div>
-              <dt>Transcript retention</dt>
-              <dd>
-                {retentionDays !== null
-                  ? `${retentionDays} days in History`
-                  : `${DEFAULT_RETENTION_DAYS} days in History (the default)`}
-              </dd>
-            </div>
-          </dl>
-        ) : null}
+        <div className={styles.alertSettingsGrid}>
+          <SupportHoursForm initialHours={supportHours} />
+          <RetentionForm initialDays={retentionDays} lastRun={lastRun} />
+          {/* Login retention (ticket 81): how long sign-in attempts live in
+              the admin-only Logs tab. */}
+          <LoginRetentionForm initialDays={loginRetentionDays} />
+        </div>
+        {/* Security-sensitive configuration (ticket 76): which websites may
+            host the widget. */}
+        <EmbedAllowlistSettings initialOrigins={embedOrigins} />
         <BrandingSettings
           initial={{
             chatbotIconUrl: `/api/branding/chatbot-icon?v=${encodeURIComponent(iconVersion)}`,

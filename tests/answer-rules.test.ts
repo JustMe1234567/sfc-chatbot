@@ -9,12 +9,12 @@ import {
   signInAs,
 } from "./auth-helpers";
 
-const OWNER_EMAIL = "owner@example.edu";
-const OWNER_PASSWORD = "owner-manage-pilot-91";
-const EDITOR_EMAIL = "editor@example.edu";
-const EDITOR_PASSWORD = "editor-study-puzzle-2z";
-const STAFF_EMAIL = "helper@example.edu";
-const STAFF_PASSWORD = "helper-plain-branch-8m";
+const ADMIN_EMAIL = "owner@example.edu";
+const ADMIN_PASSWORD = "owner-manage-pilot-91";
+const ADVISOR_EMAIL = "advisor@example.edu";
+const ADVISOR_PASSWORD = "editor-study-puzzle-2z";
+const OTHER_ADVISOR_EMAIL = "helper@example.edu";
+const OTHER_ADVISOR_PASSWORD = "helper-plain-branch-8m";
 
 interface RulePayload {
   topic: string;
@@ -128,15 +128,15 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   useTempDatabase();
   await warmChatbotService();
-    await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
+    await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "Olive", role: "admin" });
+  await provisionStaff({ email: ADVISOR_EMAIL, password: ADVISOR_PASSWORD, name: "Eddie" });
+  await provisionStaff({ email: OTHER_ADVISOR_EMAIL, password: OTHER_ADVISOR_PASSWORD, name: "Sam" });
 });
 
-describe("an editor maintains answer rules", () => {
+describe("an admissions advisor maintains answer rules", () => {
   it("creates a draft rule that never answers visitors", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("draft");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -151,7 +151,7 @@ describe("an editor maintains answer rules", () => {
 
   it("publishing makes the topic button and answer available without a redeploy", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("launch");
     const rule = await createRule(jar, content);
     const published = await publishRule(jar, rule.id);
@@ -173,7 +173,7 @@ describe("an editor maintains answer rules", () => {
 
   it("unpublishing removes the answer from visitors", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("retire");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -190,7 +190,7 @@ describe("an editor maintains answer rules", () => {
 
   it("creates and publishes a keywords-only rule whose button asks its topic", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("keywordsonly");
     const rule = await createRule(jar, {
       topic: content.topic,
@@ -212,7 +212,7 @@ describe("an editor maintains answer rules", () => {
 
   it("revising published content returns it to draft until it is re-published", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("revise");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -235,9 +235,9 @@ describe("an editor maintains answer rules", () => {
 });
 
 describe("who published a rule, and when it was reviewed", () => {
-  it("records the publishing editor on the rule and resolves their name for the dashboard", async () => {
+  it("records the publishing advisor on the rule and resolves their name for the dashboard", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const rule = await createRule(jar, uniqueRuleContent("record"));
     await publishRule(jar, rule.id);
 
@@ -254,7 +254,7 @@ describe("who published a rule, and when it was reviewed", () => {
 describe("the answer lifecycle (ticket 58)", () => {
   it("duplicates a rule as a separate draft prefilled with its content", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("dupe");
     const original = await createRule(jar, content);
     await publishRule(jar, original.id);
@@ -292,7 +292,7 @@ describe("the answer lifecycle (ticket 58)", () => {
 
   it("archiving retires the answer from visitors immediately but keeps it restorable", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("archive");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -317,7 +317,7 @@ describe("the answer lifecycle (ticket 58)", () => {
 
   it("Delete moves the answer to Trash with a purge stamp, and restoring cancels the expiry", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("trash");
     const question = content.phrases[0]!;
     const rule = await createRule(jar, content);
@@ -340,79 +340,83 @@ describe("the answer lifecycle (ticket 58)", () => {
     expect(restoredBody.trashedAt ?? null).toBeNull();
   });
 
-  it("permanently deletion works from Trash only, for owners and editors, and really removes", async () => {
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
+  it("permanently deletion works from Trash only, for admins and admissions advisors, and really removes", async () => {
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
     const content = uniqueRuleContent("purge");
-    const activeRule = await createRule(ownerJar, content);
-    await publishRule(ownerJar, activeRule.id);
+    const activeRule = await createRule(adminJar, content);
+    await publishRule(adminJar, activeRule.id);
 
     // Purging an answer that is not in Trash is refused.
     const premature = await ruleRequest(
-      ownerJar,
+      adminJar,
       "POST",
       `/api/staff/answer-rules/${activeRule.id}/purge`,
     );
     expect(premature.status).toBe(409);
 
     const trashedRule = await ruleRequest(
-      ownerJar,
+      adminJar,
       "POST",
       `/api/staff/answer-rules/${activeRule.id}/trash`,
     );
     expect(trashedRule.status).toBe(200);
 
     const purged = await ruleRequest(
-      ownerJar,
+      adminJar,
       "POST",
       `/api/staff/answer-rules/${activeRule.id}/purge`,
     );
     expect(purged.status).toBe(200);
 
     // The rule is gone for good: unknown to every rule listing.
-    const list = await ruleRequest(ownerJar, "GET", "/api/staff/answer-rules");
+    const list = await ruleRequest(adminJar, "GET", "/api/staff/answer-rules");
     expect(
       ((await list.json()) as { rules: RuleRecord[] }).rules.find((item) => item.id === activeRule.id),
     ).toBeUndefined();
 
-    // An editor holds the same power.
-    const editorJar = new CookieJar();
-    await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
-    const editorRule = await createRule(editorJar, uniqueRuleContent("purge-editor"));
-    await ruleRequest(editorJar, "POST", `/api/staff/answer-rules/${editorRule.id}/trash`);
-    const editorPurge = await ruleRequest(
-      editorJar,
+    // An admissions advisor holds the same power (ticket 102 merged the
+    // editor into the advisor role; there is no editor-only path left).
+    const advisorJar = new CookieJar();
+    await signInAs(advisorJar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
+    const advisorRule = await createRule(advisorJar, uniqueRuleContent("purge-advisor"));
+    await ruleRequest(advisorJar, "POST", `/api/staff/answer-rules/${advisorRule.id}/trash`);
+    const advisorPurge = await ruleRequest(
+      advisorJar,
       "POST",
-      `/api/staff/answer-rules/${editorRule.id}/purge`,
+      `/api/staff/answer-rules/${advisorRule.id}/purge`,
     );
-    expect(editorPurge.status).toBe(200);
+    expect(advisorPurge.status).toBe(200);
 
-    // Plain staff may not purge.
-    const staffJar = new CookieJar();
-    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
-    const ownerForStaff = new CookieJar();
-    await signInAs(ownerForStaff, OWNER_EMAIL, OWNER_PASSWORD);
-    const staffTarget = await createRule(ownerForStaff, uniqueRuleContent("purge-staff"));
-    await ruleRequest(ownerForStaff, "POST", `/api/staff/answer-rules/${staffTarget.id}/trash`);
-    const staffPurge = await ruleRequest(
-      staffJar,
+    // A second advisor works on a rule created by the admin — the shared
+    // answer library has no per-account ownership boundary.
+    const otherJar = new CookieJar();
+    await signInAs(otherJar, OTHER_ADVISOR_EMAIL, OTHER_ADVISOR_PASSWORD);
+    const adminForOther = new CookieJar();
+    await signInAs(adminForOther, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const otherTarget = await createRule(adminForOther, uniqueRuleContent("purge-other"));
+    await ruleRequest(otherJar, "POST", `/api/staff/answer-rules/${otherTarget.id}/trash`);
+    const otherPurge = await ruleRequest(
+      otherJar,
       "POST",
-      `/api/staff/answer-rules/${staffTarget.id}/purge`,
+      `/api/staff/answer-rules/${otherTarget.id}/purge`,
     );
-    expect(staffPurge.status).toBe(403);
+    expect(otherPurge.status).toBe(200);
   });
 });
 
 describe("authorization on answer rules", () => {
-  it("lets the owner publish, but refuses plain staff, anonymous, and visitor credentials", async () => {
-    const ownerContent = uniqueRuleContent("owner");
-    const ownerJar = new CookieJar();
-    await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-    const rule = await createRule(ownerJar, ownerContent);
-    expect((await publishRule(ownerJar, rule.id)).status).toBe("published");
+  it("lets both roles edit and publish, and refuses anonymous and visitor credentials", async () => {
+    // Ticket 102: advisors took over the editor's answer permissions — the
+    // old staff 403s become full access, and no dashboard role is refused.
+    const adminContent = uniqueRuleContent("owner");
+    const adminJar = new CookieJar();
+    await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const rule = await createRule(adminJar, adminContent);
+    expect((await publishRule(adminJar, rule.id)).status).toBe("published");
 
-    const staffJar = new CookieJar();
-    await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
+    const advisorJar = new CookieJar();
+    await signInAs(advisorJar, OTHER_ADVISOR_EMAIL, OTHER_ADVISOR_PASSWORD);
     for (const [method, path] of [
       ["GET", "/api/staff/answer-rules"],
       ["POST", "/api/staff/answer-rules"],
@@ -421,15 +425,15 @@ describe("authorization on answer rules", () => {
       ["PUT", `/api/staff/answer-rules/${rule.id}`],
     ] as const) {
       const response = await ruleRequest(
-        staffJar,
+        advisorJar,
         method,
         path,
-        method === "GET" ? undefined : ownerContent,
+        method === "GET" ? undefined : adminContent,
       );
-      expect(response.status).toBe(403);
+      expect(response.status, `${method} ${path}`).toBeLessThan(300);
     }
 
-    const anonymous = await ruleRequest(null, "POST", "/api/staff/answer-rules", ownerContent);
+    const anonymous = await ruleRequest(null, "POST", "/api/staff/answer-rules", adminContent);
     expect(anonymous.status).toBe(401);
 
     const visitor = await startConversation();
@@ -437,7 +441,7 @@ describe("authorization on answer rules", () => {
       null,
       "POST",
       "/api/staff/answer-rules",
-      ownerContent,
+      adminContent,
       TEST_ORIGIN,
       visitor.token,
     );
@@ -446,7 +450,7 @@ describe("authorization on answer rules", () => {
 
   it("blocks answer-rule mutations from an untrusted origin", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const rule = await createRule(jar, uniqueRuleContent("csrf"));
 
     const crossSite = await ruleRequest(
@@ -463,7 +467,7 @@ describe("authorization on answer rules", () => {
 describe("answer-rule input limits", () => {
   it("rejects incomplete or invalid rule content", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
     const content = uniqueRuleContent("invalid");
 
     const missingTopic = await ruleRequest(jar, "POST", "/api/staff/answer-rules", {
@@ -500,7 +504,7 @@ describe("answer-rule input limits", () => {
 
   it("answers 404 for unknown rules", async () => {
     const jar = new CookieJar();
-    await signInAs(jar, EDITOR_EMAIL, EDITOR_PASSWORD);
+    await signInAs(jar, ADVISOR_EMAIL, ADVISOR_PASSWORD);
 
     const publish = await ruleRequest(jar, "POST", "/api/staff/answer-rules/nope/publish");
     expect(publish.status).toBe(404);

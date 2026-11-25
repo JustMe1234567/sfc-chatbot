@@ -123,7 +123,7 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
+  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "admin" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
 });
 

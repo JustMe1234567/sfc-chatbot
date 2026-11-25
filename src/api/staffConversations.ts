@@ -59,7 +59,7 @@ export function claimConflictResponse(claimerName: string | null): NextResponse 
         code: "already_claimed",
         message: claimerName
           ? `${claimerName} is already helping in this conversation.`
-          : "Another staff member took over this chat.",
+          : "Another advisor took over this chat.",
       },
       claimedBy: claimerName,
     },

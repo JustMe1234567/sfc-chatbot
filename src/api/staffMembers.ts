@@ -1,5 +1,5 @@
 import type { AppDatabase } from "../db/appDatabase";
-import type { StaffRole } from "../auth/server";
+import { STAFF_ROLES, type StaffRole } from "../auth/server";
 
 export interface StaffMemberRow {
   id: string;
@@ -25,7 +25,7 @@ interface UserFlagRow {
   [column: string]: unknown;
 }
 
-/** The staff roster for transfer pickers and the owner's management page. */
+/** The roster for transfer pickers and the admin's Staff accounts page. */
 export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[]> {
   const rows = await db.all<UserFlagRow>(
     `SELECT "id", "name", "username", "role", "banned", "emailVerified"
@@ -42,10 +42,10 @@ export async function listStaffMembers(db: AppDatabase): Promise<StaffMemberRow[
 }
 
 /**
- * A staff account that can pass the dashboard's own checks today: active,
- * verified, and holding inbox permission (owner or staff role). The set of
- * accounts a conversation may be transferred to — since ticket 82 removed
- * the second factor, factor state no longer narrows it.
+ * An account that can take a conversation: active, verified, and holding
+ * inbox permission — which both roles do (ticket 102). The set of accounts a
+ * conversation may be transferred to; since ticket 82 removed the second
+ * factor, factor state no longer narrows it.
  */
 export async function activeInboxMember(
   db: AppDatabase,
@@ -64,8 +64,8 @@ export async function activeInboxMember(
   if (!row) {
     return null;
   }
-  const role: StaffRole = row.role as StaffRole;
+  const role = row.role as StaffRole;
   const eligible =
-    (role === "owner" || role === "staff") && !truthy(row.banned) && truthy(row.email_verified);
+    STAFF_ROLES.includes(role) && !truthy(row.banned) && truthy(row.email_verified);
   return eligible ? { id: row.id, name: row.name } : null;
 }

@@ -75,8 +75,8 @@ export async function renameStaffUsernameOnDatabase(
     if (isStaffBanned(source.banned)) {
       throw new Error(`The account "${source.username}" is disabled.`);
     }
-    if (source.role !== "owner") {
-      throw new Error(`The account "${source.username}" does not hold the owner role.`);
+    if (source.role !== "admin") {
+      throw new Error(`The account "${source.username}" does not hold the admin role.`);
     }
     if (!source.supabaseUserId) {
       throw new Error(`The account "${source.username}" has no linked Auth user.`);
@@ -90,13 +90,13 @@ export async function renameStaffUsernameOnDatabase(
         `An account already exists with the username "${to}" (usernames are case-insensitive).`,
       );
     }
-    const owners = await tx.all<{ banned: unknown }>(
-      `SELECT "banned" FROM staff_members WHERE "role" = 'owner'`,
+    const admins = await tx.all<{ banned: unknown }>(
+      `SELECT "banned" FROM staff_members WHERE "role" = 'admin'`,
     );
-    const activeOwners = owners.filter((owner) => !isStaffBanned(owner.banned));
-    if (activeOwners.length !== 1) {
+    const activeAdmins = admins.filter((admin) => !isStaffBanned(admin.banned));
+    if (activeAdmins.length !== 1) {
       throw new Error(
-        `Expected exactly one active owner account; found ${activeOwners.length}. Rename refused.`,
+        `Expected exactly one active admin account; found ${activeAdmins.length}. Rename refused.`,
       );
     }
     const updated = await tx.run(

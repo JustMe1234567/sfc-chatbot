@@ -10,7 +10,7 @@ interface RouteContext {
 export async function POST(request: Request, context: RouteContext) {
   const blocked = sameOriginGuard(request);
   if (blocked) return blocked;
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) return guard.response;
 
   const body = (await request.json().catch(() => null)) as { password?: unknown } | null;
@@ -37,13 +37,13 @@ export async function POST(request: Request, context: RouteContext) {
   );
   if (!target) {
     return NextResponse.json(
-      { error: { code: "not_found", message: "Staff account not found." } },
+      { error: { code: "not_found", message: "Account not found." } },
       { status: 404 },
     );
   }
-  if (target.role === "owner" || !target.supabaseUserId || isStaffBanned(target.banned)) {
+  if (target.role === "admin" || !target.supabaseUserId || isStaffBanned(target.banned)) {
     return NextResponse.json(
-      { error: { code: "invalid_target", message: "Only active staff and editor passwords can be reset here." } },
+      { error: { code: "invalid_target", message: "Only active Admissions Advisor passwords can be reset here." } },
       { status: 400 },
     );
   }

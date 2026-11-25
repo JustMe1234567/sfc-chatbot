@@ -29,7 +29,7 @@ export default async function AnswersPage() {
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized editor session.</p>
+        <p className={styles.empty}>This page requires an authorized session.</p>
       </main>
     );
   }

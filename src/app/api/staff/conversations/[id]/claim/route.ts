@@ -36,7 +36,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
   if (conversation.state !== "awaiting_staff") {
     return NextResponse.json(
-      { error: { code: "invalid_state", message: "This conversation is not waiting for staff." } },
+      { error: { code: "invalid_state", message: "This conversation is not waiting for an advisor." } },
       { status: 409 },
     );
   }

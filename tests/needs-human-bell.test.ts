@@ -23,12 +23,12 @@ import { repoRoot } from "../src/paths";
  * whose role has no Conversations row — request nothing at all.
  */
 
-const OWNER_EMAIL = "bell-owner@example.edu";
+const ADMIN_EMAIL = "bell-owner@example.edu";
 const STAFF_EMAIL = "bell-staff@example.edu";
-const EDITOR_EMAIL = "bell-editor@example.edu";
-const OWNER_PASSWORD = "bell-owner-harbor-5w";
+const ADVISOR_EMAIL = "bell-editor@example.edu";
+const ADMIN_PASSWORD = "bell-owner-harbor-5w";
 const STAFF_PASSWORD = "bell-staff-quiet-3m";
-const EDITOR_PASSWORD = "bell-editor-ridge-9k";
+const ADVISOR_PASSWORD = "bell-editor-ridge-9k";
 
 async function service(): Promise<Awaited<ReturnType<typeof import("../src/db/service").getChatbotService>>> {
   const { getChatbotService } = await import("../src/db/service");
@@ -63,9 +63,9 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
+  await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "Olive", role: "admin" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
+  await provisionStaff({ email: ADVISOR_EMAIL, password: ADVISOR_PASSWORD, name: "Eddie",  });
 });
 
 describe("the staff-only needs-human endpoint (ticket 79)", () => {
@@ -74,13 +74,14 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
     expect(response.status).toBe(401);
   });
 
-  it("refuses editors — their role has no Conversations row", async () => {
-    const editor = await staffJar(EDITOR_EMAIL, EDITOR_PASSWORD);
-    expect((await getNeedsHuman(editor)).status).toBe(403);
+  it("answers advisors too — their role holds the Conversations row (ticket 102)", async () => {
+    const advisor = await staffJar(ADVISOR_EMAIL, ADVISOR_PASSWORD);
+    expect((await getNeedsHuman(advisor)).status).toBe(200);
+    expect(await needsHuman(advisor)).toBe(false);
   });
 
   it("answers a plain boolean, false while nothing is waiting", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const owner = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const response = await getNeedsHuman(owner);
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
@@ -95,7 +96,7 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
   });
 
   it("is true exactly while a live desk conversation sits in awaiting_staff", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const owner = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const staff = await staffJar(STAFF_EMAIL, STAFF_PASSWORD);
     const { store } = await service();
 
@@ -117,7 +118,7 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
   });
 
   it("stays true while any conversation is still waiting, and clears on the last one", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const owner = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const { store } = await service();
 
     const first = await startConversation({ fullName: "Bee Apiarist" });
@@ -136,7 +137,7 @@ describe("the staff-only needs-human endpoint (ticket 79)", () => {
   });
 
   it("follows the desk read model exactly: an awaiting conversation the desk omits is not Needs human", async () => {
-    const owner = await staffJar(OWNER_EMAIL, OWNER_PASSWORD);
+    const owner = await staffJar(ADMIN_EMAIL, ADMIN_PASSWORD);
     const { store } = await service();
     // Ticket 73: conversations with no visitor-authored message never
     // reach the desk lists — a state flipped on one of them is invisible
@@ -325,11 +326,12 @@ describe("the sidebar wiring carries the bell (source contract)", () => {
     expect(mark).toContain('aria-hidden="true"');
   });
 
-  it("keeps the visible row label and the NAV table exactly as they were", async () => {
+  it("keeps the visible row label and the NAV table's shape (roles updated by ticket 102)", async () => {
     const header = await readHeader();
     // Only the Conversations row changes; the visible text stays the plain
-    // label and every other nav row is untouched.
-    expect(header).toContain('{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] }');
+    // label and every other nav row is untouched. Ticket 102 rewrote every
+    // row's role list; this pin follows it.
+    expect(header).toContain('{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["admin", "admissions_advisor"] }');
     expect(header).toContain('<span className={styles.sideLabel} aria-hidden="true">');
     expect(header).toContain("{item.label}");
   });

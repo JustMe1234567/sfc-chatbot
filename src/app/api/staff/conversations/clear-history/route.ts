@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }

@@ -1,5 +1,5 @@
-// Trusted first-owner creation.
-// Usage: npm run bootstrap:owner -- --username owner --password '…' [--name "College Owner"]
+// Trusted first-admin creation (the only way an Admin account exists).
+// Usage: npm run bootstrap:owner -- --username owner --password '…' [--name "College Admin"]
 import { bootstrapOwner } from "../src/auth/bootstrapOwner";
 import { appDatabaseUrl } from "../src/config";
 
@@ -13,7 +13,7 @@ function readFlag(name: string): string | undefined {
 
 const username = readFlag("username");
 const password = readFlag("password");
-const name = readFlag("name") ?? "College Owner";
+const name = readFlag("name") ?? "College Admin";
 const databaseUrl = appDatabaseUrl();
 
 if (!username || !password || password.length < 10 || !databaseUrl) {
@@ -23,7 +23,7 @@ if (!username || !password || password.length < 10 || !databaseUrl) {
   process.exit(1);
 }
 
-const owner = await bootstrapOwner({ username, password, name, databaseUrl });
-console.log(`Owner account created: ${owner.username} (${owner.userId})`);
-console.log(`Targeted store: ${owner.store}`);
-console.log("The owner signs in with that username and password.");
+const admin = await bootstrapOwner({ username, password, name, databaseUrl });
+console.log(`Admin account created: ${admin.username} (${admin.userId})`);
+console.log(`Targeted store: ${admin.store}`);
+console.log("The admin signs in with that username and password.");

@@ -49,9 +49,9 @@ beforeAll(async () => {
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   useTempDatabase();
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Log Owner", role: "owner" });
-  await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Log Desk", role: "staff" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Log Editor", role: "editor" });
+  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Log Owner", role: "admin" });
+  await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Log Desk",  });
+  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Log Editor",  });
   ownerJar = new CookieJar();
   await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
   staffJar = new CookieJar();

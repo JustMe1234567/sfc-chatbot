@@ -39,7 +39,7 @@ export default async function EditAnswerPage({ params }: PageProps) {
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized editor session.</p>
+        <p className={styles.empty}>This page requires an authorized session.</p>
       </main>
     );
   }
@@ -86,7 +86,7 @@ export default async function EditAnswerPage({ params }: PageProps) {
                   {new Date(entry.createdAt).toLocaleString("en-GB")}
                 </div>
                 <div className={styles.preview}>
-                  {entry.actorName ?? "a former staff member"}{" "}
+                  {entry.actorName ?? "a former advisor"}{" "}
                   {RULE_ACTION_LABELS[entry.action] ?? entry.action}
                 </div>
               </div>

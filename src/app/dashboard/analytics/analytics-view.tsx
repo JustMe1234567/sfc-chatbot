@@ -30,14 +30,14 @@ function dayLabel(day: string, today: string): string {
  * The analytics reading view (ticket 17): four counters, a reporting-period
  * switch, and the daily table — every number fetched from the server so the
  * browser only ever sees aggregates. The live-visitor card is a current
- * snapshot and is labelled as one, separate from the period totals.
+ * snapshot and is labelled as one, separate from the period totals. Admins
+ * alone reach this page (ticket 102), so the settings form renders whenever
+ * the page could load its values.
  */
 export default function AnalyticsView({
-  role,
   settings,
 }: {
-  role: string;
-  settings: { reportingTimeZone: string; retentionDays: number } | null;
+  settings: { reportingTimeZone: string; retentionDays: number };
 }) {
   const [report, setReport] = useState<AnalyticsReport | null>(null);
   const [period, setPeriod] = useState<AnalyticsPeriod>("7d");
@@ -127,7 +127,7 @@ export default function AnalyticsView({
 
   return (
     <>
-      {role === "owner" && settings ? (
+      {settings ? (
         <AnalyticsSettingsForm initial={settings} onSaved={() => void load(period)} />
       ) : null}
 
@@ -204,7 +204,7 @@ export default function AnalyticsView({
                 <span className={styles.statLabel}>Chats escalated</span>
                 <span className={styles.statValue}>{NUMBER_FORMAT.format(totals.escalations)}</span>
                 <span className={styles.statNote}>
-                  handed to staff
+                  handed to an advisor
                   {totals.chats > 0
                     ? ` · ${Math.round((totals.escalations / totals.chats) * 100)}% of chats`
                     : ""}
@@ -251,7 +251,7 @@ export default function AnalyticsView({
               <p className={styles.hint}>
                 Visitor analytics is kept for {report!.retentionDays} day
                 {report!.retentionDays === 1 ? "" : "s"} — days before{" "}
-                {dayLabel(report!.earliestDay, "")} are no longer available. Median first staff
+                {dayLabel(report!.earliestDay, "")} are no longer available. Median first advisor
                 reply time is not reported: transcript cleanup removes the very history it would be
                 measured from, so past figures could not stay accurate.
               </p>
@@ -260,11 +260,6 @@ export default function AnalyticsView({
                 storage on the chat system — never by IP address, email, or anything typed in a
                 chat. Review the analytics privacy note before production use.
               </p>
-              {role !== "owner" ? (
-                <p className={styles.hint}>
-                  Analytics settings (time zone and retention) are managed by the dashboard owner.
-                </p>
-              ) : null}
             </div>
           </>
         ) : null}

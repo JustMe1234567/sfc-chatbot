@@ -29,7 +29,7 @@ export default async function DeskConversationPage({ params }: PageProps) {
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized staff session.</p>
+        <p className={styles.empty}>This page requires an authorized session.</p>
       </main>
     );
   }

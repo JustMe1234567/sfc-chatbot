@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { StaffRole } from "../src/auth/server";
 import { countQuery, TEST_ORIGIN, useTempDatabase } from "./helpers";
 import { registerFakeStaff } from "./fake-auth-provider";
 
@@ -83,11 +84,15 @@ export async function staffApiRequest(
   return GET(request);
 }
 
+/**
+ * A staff_members row plus its Auth twin. Accounts default to the Admissions
+ * Advisor role, the operational role most flows exercise.
+ */
 export async function provisionStaff(input: {
   email: string;
   password: string;
   name: string;
-  role?: "owner" | "staff" | "editor";
+  role?: StaffRole;
 }): Promise<{ userId: string; email: string; role: string }> {
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
@@ -107,7 +112,7 @@ export async function provisionStaff(input: {
     true,
     now,
     now,
-    input.role ?? "staff",
+    input.role ?? "admissions_advisor",
     false,
     authUserId,
     "accepted",
@@ -118,7 +123,7 @@ export async function provisionStaff(input: {
     name: input.name,
     password: input.password,
   });
-  return { userId, email: input.email, role: input.role ?? "staff" };
+  return { userId, email: input.email, role: input.role ?? "admissions_advisor" };
 }
 
 /** Password-only sign-in, leaving the jar holding a dashboard session. */

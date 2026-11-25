@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { requireStaff } from "@/api/staff";
-import { STAFF_ROLES } from "@/auth/server";
 import DashboardHeader from "../header";
 import { getAnalyticsRetentionDays, getReportingTimeZone } from "@/settings";
 import { getChatbotService } from "@/db/service";
@@ -13,29 +12,27 @@ export const metadata: Metadata = { title: "Analytics" };
 
 
 /**
- * The staff analytics page (ticket 17): live visitors, period totals, and
- * the daily table, all served from aggregate queries. The owner configures
- * the reporting zone and retention here; staff see the numbers read-only.
+ * The analytics page (ticket 17): live visitors, period totals, and the
+ * daily table, all served from aggregate queries, with the reporting-zone
+ * and retention settings on the same page. Admin-only since ticket 102 —
+ * Admissions Advisors have no Analytics.
  */
 export default async function AnalyticsPage() {
   const staffHeaders = await headers();
-  const guard = await requireStaff(staffHeaders, { roles: STAFF_ROLES });
+  const guard = await requireStaff(staffHeaders, { roles: ["admin"] });
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires an authorized staff session.</p>
+        <p className={styles.empty}>This page requires the admin role.</p>
       </main>
     );
   }
 
   const { db } = await getChatbotService();
-  const settings =
-    guard.staff.role === "owner"
-      ? {
-          reportingTimeZone: await getReportingTimeZone(db),
-          retentionDays: await getAnalyticsRetentionDays(db),
-        }
-      : null;
+  const settings = {
+    reportingTimeZone: await getReportingTimeZone(db),
+    retentionDays: await getAnalyticsRetentionDays(db),
+  };
 
   return (
     <main className={styles.shell}>
@@ -46,7 +43,7 @@ export default async function AnalyticsPage() {
         role={guard.staff.role}
       />
       <div id="sfc-content" className={styles.contentArea} tabIndex={-1}>
-        <AnalyticsView role={guard.staff.role} settings={settings} />
+        <AnalyticsView settings={settings} />
       </div>
     </main>
   );

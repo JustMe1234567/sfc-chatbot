@@ -13,19 +13,19 @@ import {
  * its own retention setting independent of transcript retention.
  */
 
-const OWNER_EMAIL = "owner@example.edu";
-const OWNER_PASSWORD = "owner-analytics-lantern-64";
-const STAFF_EMAIL = "helper@example.edu";
-const STAFF_PASSWORD = "helper-analytics-anchor-2b";
-const EDITOR_EMAIL = "editor@example.edu";
-const EDITOR_PASSWORD = "editor-analytics-orbit-8d";
+const ADMIN_EMAIL = "owner@example.edu";
+const ADMIN_PASSWORD = "owner-analytics-lantern-64";
+const DESK_ADVISOR_EMAIL = "helper@example.edu";
+const DESK_ADVISOR_PASSWORD = "helper-analytics-anchor-2b";
+const SECOND_ADVISOR_EMAIL = "editor@example.edu";
+const SECOND_ADVISOR_PASSWORD = "editor-analytics-orbit-8d";
 
 /** UTC+2, no DST: local day boundaries sit at fixed UTC instants. */
 const REPORTING_ZONE = "Etc/GMT-2";
 
-const ownerJar = new CookieJar();
-const staffJar = new CookieJar();
-const editorJar = new CookieJar();
+const adminJar = new CookieJar();
+const deskJar = new CookieJar();
+const otherJar = new CookieJar();
 
 interface AnalyticsReport {
   period: string;
@@ -114,14 +114,14 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
-  await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
-  await provisionStaff({ email: EDITOR_EMAIL, password: EDITOR_PASSWORD, name: "Eddie", role: "editor" });
-  await signInAs(ownerJar, OWNER_EMAIL, OWNER_PASSWORD);
-  await signInAs(staffJar, STAFF_EMAIL, STAFF_PASSWORD);
-  await signInAs(editorJar, EDITOR_EMAIL, EDITOR_PASSWORD);
+  await provisionStaff({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD, name: "Olive", role: "admin" });
+  await provisionStaff({ email: DESK_ADVISOR_EMAIL, password: DESK_ADVISOR_PASSWORD, name: "Sam" });
+  await provisionStaff({ email: SECOND_ADVISOR_EMAIL, password: SECOND_ADVISOR_PASSWORD, name: "Eddie",  });
+  await signInAs(adminJar, ADMIN_EMAIL, ADMIN_PASSWORD);
+  await signInAs(deskJar, DESK_ADVISOR_EMAIL, DESK_ADVISOR_PASSWORD);
+  await signInAs(otherJar, SECOND_ADVISOR_EMAIL, SECOND_ADVISOR_PASSWORD);
   // Deterministic zone for day-boundary work (no DST at UTC+2).
-  const saved = await putAnalyticsSettings(ownerJar, {
+  const saved = await putAnalyticsSettings(adminJar, {
     reportingTimeZone: REPORTING_ZONE,
     retentionDays: 90,
   });
@@ -133,30 +133,31 @@ describe("analytics report access and validation", () => {
     expect((await getReport(null)).status).toBe(401);
   });
 
-  it("answers editors with 403 and staff and owners with 200", async () => {
-    expect((await getReport(editorJar)).status).toBe(403);
-    expect((await getReport(staffJar)).status).toBe(200);
-    expect((await getReport(ownerJar)).status).toBe(200);
+  it("is admin-only: both admissions advisors are refused, the admin is served", async () => {
+    // Ticket 102 moved Analytics out of the advisor's reach entirely.
+    expect((await getReport(otherJar)).status).toBe(403);
+    expect((await getReport(deskJar)).status).toBe(403);
+    expect((await getReport(adminJar)).status).toBe(200);
   });
 
   it("rejects unknown periods and defaults to 7 days", async () => {
-    expect((await getReport(ownerJar, "fortnight")).status).toBe(400);
+    expect((await getReport(adminJar, "fortnight")).status).toBe(400);
     // Inherited object keys must not sneak past the period check.
-    expect((await getReport(ownerJar, "constructor")).status).toBe(400);
-    const report = await readReport(ownerJar);
+    expect((await getReport(adminJar, "constructor")).status).toBe(400);
+    const report = await readReport(adminJar);
     expect(report.period).toBe("7d");
     expect(report.timeZone).toBe(REPORTING_ZONE);
     expect(report.days).toHaveLength(7);
   });
 
   it("answers today with exactly one day", async () => {
-    const report = await readReport(ownerJar, "today");
+    const report = await readReport(adminJar, "today");
     expect(report.period).toBe("today");
     expect(report.days).toHaveLength(1);
   });
 
   it("answers 30 days with thirty consecutive zero-filled days", async () => {
-    const report = await readReport(ownerJar, "30d");
+    const report = await readReport(adminJar, "30d");
     expect(report.days).toHaveLength(30);
     const { addCalendarDays } = await import("../src/domain/analytics");
     const days = report.days.map((row) => row.day);
@@ -200,11 +201,11 @@ describe("day bucketing in the reporting time zone", () => {
     await store.recordEscalationCount(await dayOffset(-2, new Date()));
     await store.recordChatCount(await dayOffset(0, new Date()));
 
-    const today = await readReport(ownerJar, "today");
+    const today = await readReport(adminJar, "today");
     expect(today.totals.chats).toBe(1);
     expect(today.totals.escalations).toBe(0);
 
-    const week = await readReport(ownerJar, "7d");
+    const week = await readReport(adminJar, "7d");
     expect(week.totals.chats).toBe(3);
     expect(week.totals.escalations).toBe(1);
     const seededDay = await dayOffset(-2, new Date());
@@ -224,25 +225,25 @@ describe("day bucketing in the reporting time zone", () => {
     );
     await postPresenceBeat(crypto.randomUUID());
 
-    const today = await readReport(ownerJar, "today");
+    const today = await readReport(adminJar, "today");
     expect(today.totals.visitors).toBe(1);
     expect(today.totals.liveVisitors).toBe(1);
 
-    const month = await readReport(ownerJar, "30d");
+    const month = await readReport(adminJar, "30d");
     expect(month.totals.visitors).toBe(2);
   });
 });
 
 describe("real flows drive the rollups", () => {
   it("counts a started chat and its escalation, and a cleared chat's successor", async () => {
-    const chatsBefore = (await readReport(ownerJar, "today")).totals.chats;
-    const escalationsBefore = (await readReport(ownerJar, "today")).totals.escalations;
+    const chatsBefore = (await readReport(adminJar, "today")).totals.chats;
+    const escalationsBefore = (await readReport(adminJar, "today")).totals.escalations;
 
     const conversation = await startConversation();
     await ask(conversation, "zzqx no rule matches this wonderwall; speak to a human");
     await confirmHandoffYes(conversation);
 
-    const afterEscalation = await readReport(ownerJar, "today");
+    const afterEscalation = await readReport(adminJar, "today");
     expect(afterEscalation.totals.chats).toBe(chatsBefore + 1);
     expect(afterEscalation.totals.escalations).toBe(escalationsBefore + 1);
 
@@ -257,17 +258,17 @@ describe("real flows drive the rollups", () => {
     );
     expect(clearResponse.status).toBe(200);
 
-    const afterClear = await readReport(ownerJar, "today");
+    const afterClear = await readReport(adminJar, "today");
     expect(afterClear.totals.chats).toBe(chatsBefore + 2);
   });
 
   it("answers a second visitor message in an escalated chat without another escalation", async () => {
-    const escalationsBefore = (await readReport(ownerJar, "today")).totals.escalations;
+    const escalationsBefore = (await readReport(adminJar, "today")).totals.escalations;
     const conversation = await startConversation();
     await ask(conversation, "zzqx no rule matches this wonderwall; speak to a human");
     await confirmHandoffYes(conversation);
     await ask(conversation, "still nothing matches this second try zzqx");
-    const after = await readReport(ownerJar, "today");
+    const after = await readReport(adminJar, "today");
     expect(after.totals.escalations).toBe(escalationsBefore + 1);
   });
 });
@@ -275,7 +276,7 @@ describe("real flows drive the rollups", () => {
 describe("purge and expiry keep reported history stable", () => {
   it("keeps chat totals when the transcript sweep purges their conversations", async () => {
     const { store, db } = await seedService().then((service) => service);
-    const chatsBefore = (await readReport(ownerJar, "today")).totals.chats;
+    const chatsBefore = (await readReport(adminJar, "today")).totals.chats;
 
     // A real chat start puts its creation into the daily rollup…
     const startResponse = await startConversationRaw(TEST_CONTACT);
@@ -288,23 +289,23 @@ describe("purge and expiry keep reported history stable", () => {
     const closedBefore = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     await db.run("UPDATE conversations SET closed_at = ? WHERE id = ?", closedBefore, id);
 
-    await putTranscriptRetention(ownerJar, 1);
+    await putTranscriptRetention(adminJar, 1);
     // The save above sweeps immediately; the transcript is gone…
     expect(await store.getConversation(id)).toBeNull();
     // …but the reported chat total did not move.
-    const after = await readReport(ownerJar, "today");
+    const after = await readReport(adminJar, "today");
     expect(after.totals.chats).toBe(chatsBefore + 1);
   });
 
   it("expires analytics data on its own retention setting when saved", async () => {
     const { store } = await seedService().then((service) => service);
     await store.recordChatCount(await dayOffset(-10, new Date()));
-    const saved = await putAnalyticsSettings(ownerJar, {
+    const saved = await putAnalyticsSettings(adminJar, {
       reportingTimeZone: REPORTING_ZONE,
       retentionDays: 7,
     });
     expect(saved.status).toBe(200);
-    const report = await readReport(ownerJar, "30d");
+    const report = await readReport(adminJar, "30d");
     expect(report.retentionDays).toBe(7);
     expect(report.earliestDay).toBe(await dayOffset(-6, new Date()));
     const expiredDay = await dayOffset(-10, new Date());
@@ -313,7 +314,7 @@ describe("purge and expiry keep reported history stable", () => {
   });
 
   it("expires analytics on staff traffic even while transcript retention is unconfigured", async () => {
-    await putTranscriptRetention(ownerJar, null);
+    await putTranscriptRetention(adminJar, null);
     const { store } = await seedService().then((service) => service);
     // Older than the seven-day analytics window from the previous test, and
     // created after the last sweep ran, so only a fresh sweep can remove it.
@@ -321,19 +322,19 @@ describe("purge and expiry keep reported history stable", () => {
 
     // The report reads what exists: the stale day is still there until staff
     // traffic sweeps it.
-    const before = await readReport(ownerJar, "30d");
+    const before = await readReport(adminJar, "30d");
     const staleDay = await dayOffset(-8, new Date());
     expect(before.days.find((row) => row.day === staleDay)?.chats ?? 0).toBe(1);
 
     const { GET } = await import("../src/app/api/staff/conversations/route");
     const deskResponse = await GET(
       new Request(`${TEST_ORIGIN}/api/staff/conversations`, {
-        headers: { cookie: ownerJar.header() },
+        headers: { cookie: adminJar.header() },
       }),
     );
     expect(deskResponse.status).toBe(200);
 
-    const after = await readReport(ownerJar, "30d");
+    const after = await readReport(adminJar, "30d");
     expect(after.days.find((row) => row.day === staleDay)?.chats ?? 0).toBe(0);
   });
 });
@@ -341,13 +342,13 @@ describe("purge and expiry keep reported history stable", () => {
 describe("analytics settings", () => {
   it("rejects invalid configurations and non-owners", async () => {
     expect(
-      (await putAnalyticsSettings(ownerJar, { reportingTimeZone: "Mars/Olympus", retentionDays: 7 })).status,
+      (await putAnalyticsSettings(adminJar, { reportingTimeZone: "Mars/Olympus", retentionDays: 7 })).status,
     ).toBe(400);
     expect(
-      (await putAnalyticsSettings(ownerJar, { reportingTimeZone: REPORTING_ZONE, retentionDays: 0 })).status,
+      (await putAnalyticsSettings(adminJar, { reportingTimeZone: REPORTING_ZONE, retentionDays: 0 })).status,
     ).toBe(400);
     expect(
-      (await putAnalyticsSettings(staffJar, { reportingTimeZone: REPORTING_ZONE, retentionDays: 90 })).status,
+      (await putAnalyticsSettings(deskJar, { reportingTimeZone: REPORTING_ZONE, retentionDays: 90 })).status,
     ).toBe(403);
     expect((await putAnalyticsSettings(null, { reportingTimeZone: REPORTING_ZONE, retentionDays: 90 })).status).toBe(
       401,
@@ -358,7 +359,7 @@ describe("analytics settings", () => {
     const { GET } = await import("../src/app/api/staff/settings/analytics/route");
     const response = await GET(
       new Request(`${TEST_ORIGIN}/api/staff/settings/analytics`, {
-        headers: { cookie: ownerJar.header() },
+        headers: { cookie: adminJar.header() },
       }),
     );
     expect(response.status).toBe(200);

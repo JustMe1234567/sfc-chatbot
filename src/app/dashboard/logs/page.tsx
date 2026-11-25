@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Logs" };
  */
 export default async function LogsPage() {
   const staffHeaders = await headers();
-  const guard = await requireStaff(staffHeaders, { roles: ["owner"] });
+  const guard = await requireStaff(staffHeaders, { roles: ["admin"] });
   if ("response" in guard) {
     return (
       <main className={styles.shell}>

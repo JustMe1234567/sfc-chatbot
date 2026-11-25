@@ -31,7 +31,7 @@ beforeAll(async () => {
   useTempDatabase();
   process.env.CHATBOT_BASE_URL = TEST_ORIGIN;
   await warmChatbotService();
-  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "owner" });
+  await provisionStaff({ email: OWNER_EMAIL, password: OWNER_PASSWORD, name: "Olive", role: "admin" });
   await provisionStaff({ email: STAFF_EMAIL, password: STAFF_PASSWORD, name: "Sam" });
   const { getChatbotService } = await import("../src/db/service");
   const { db } = await getChatbotService();
@@ -387,7 +387,7 @@ describe("the History controls and wording (ticket 62)", () => {
 
   it("counts all History rows for the owner's Clear history", async () => {
     const desk = await read("src/app/dashboard/inbox/conversation-desk.tsx");
-    expect(desk).toContain('guard.staff.role === "owner" && history.length > 0');
+    expect(desk).toContain('guard.staff.role === "admin" && history.length > 0');
     expect(desk).toContain("<ClearHistoryButton count={history.length}");
     expect(desk).not.toContain("closedHistoryCount");
   });

@@ -15,18 +15,18 @@ interface TargetRow {
 }
 
 /**
- * Disable (ticket 08): the owner bans a named account. Access ends
- * immediately: every session row is revoked (polling stops authing) and the
- * per-request ban check in requireStaff keeps even a stolen cookie out.
- * Owner accounts and the acting owner are not disable targets — owner
- * lifecycle stays with the server-side bootstrap procedure.
+ * Disable (ticket 08): an admin disables an Admissions Advisor account.
+ * Access ends immediately: every session row is revoked (polling stops
+ * authing) and the per-request ban check in requireStaff keeps even a stolen
+ * cookie out. Admin accounts and the acting admin are not disable targets —
+ * the Admin lifecycle stays with the server-side bootstrap procedure.
  */
 export async function POST(request: Request, context: RouteContext) {
   const blocked = sameOriginGuard(request);
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: ["owner"] });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }
@@ -43,13 +43,13 @@ export async function POST(request: Request, context: RouteContext) {
     .get<TargetRow>('SELECT "id", "username", "role", "supabaseUserId" FROM staff_members WHERE "id" = ?', id);
   if (!target) {
     return NextResponse.json(
-      { error: { code: "not_found", message: "Staff account not found." } },
+      { error: { code: "not_found", message: "Account not found." } },
       { status: 404 },
     );
   }
-  if (target.role === "owner") {
+  if (target.role === "admin") {
     return NextResponse.json(
-      { error: { code: "invalid_target", message: "Owner accounts are managed by the bootstrap procedure." } },
+      { error: { code: "invalid_target", message: "Admin accounts are managed by the bootstrap procedure." } },
       { status: 400 },
     );
   }
@@ -70,7 +70,7 @@ export async function POST(request: Request, context: RouteContext) {
   await audit(service.store, guard.staff.userId, "staff_disabled", {}, target.username);
 
   // Their claims cannot survive them: release each conversation back to the
-  // shared inbox so another staff member can pick it up, with the sweep
+  // shared inbox so another admissions advisor can pick it up, with the sweep
   // recorded on the trail.
   const claimed = await service.store.listConversationsByState("claimed");
   for (const conversation of claimed) {

@@ -18,19 +18,21 @@ async function readHeader(): Promise<string> {
 }
 
 describe("the sidebar keeps the navigation contract (ticket 52)", () => {
-  it("keeps the exact hrefs, labels, and role filtering of the existing areas", async () => {
+  it("keeps the exact hrefs, labels, and ticket-102 role filtering of the areas", async () => {
     const header = await readHeader();
-    // The NAV table is the single seam ticket 53 coordinates against: labels,
-    // hrefs, and role subsets must be byte-identical to the top bar's.
-    // Visitor contacts and Settings retain their existing role filters.
+    // The NAV table is the single seam tickets 53/79 coordinate against:
+    // labels, hrefs, and role subsets stay exact. Ticket 102 rewrote every
+    // row's role list — advisors share Conversations, Visitor contacts, and
+    // Answers; Analytics, Staff accounts, Logs, and Settings are admin-only —
+    // and relabeled the Staff row (decision 5).
     for (const row of [
-      '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] }',
-      '{ area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["owner", "staff"] }',
-      '{ area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["owner", "editor"] }',
-      '{ area: "staff", href: "/dashboard/staff", label: "Staff", roles: ["owner"] }',
-      '{ area: "logs", href: "/dashboard/logs", label: "Logs", roles: ["owner"] }',
-      '{ area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["owner", "staff"] }',
-      '{ area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["owner", "staff", "editor"] }',
+      '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["admin", "admissions_advisor"] }',
+      '{ area: "analytics", href: "/dashboard/analytics", label: "Analytics", roles: ["admin"] }',
+      '{ area: "answers", href: "/dashboard/answers", label: "Answers", roles: ["admin", "admissions_advisor"] }',
+      '{ area: "staff", href: "/dashboard/staff", label: "Staff accounts", roles: ["admin"] }',
+      '{ area: "logs", href: "/dashboard/logs", label: "Logs", roles: ["admin"] }',
+      '{ area: "contacts", href: "/dashboard/contacts", label: "Visitor contacts", roles: ["admin", "admissions_advisor"] }',
+      '{ area: "settings", href: "/dashboard/settings", label: "Settings", roles: ["admin"] }',
     ]) {
       expect(header, row).toContain(row);
     }

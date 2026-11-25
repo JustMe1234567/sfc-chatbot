@@ -14,7 +14,7 @@ interface RouteContext {
 
 /**
  * Staff reply inside the visitor's chat. The current claimer may speak, and
- * the owner role may override the assignment (ticket 08) — never the
+ * the admin role may override the assignment (ticket 08) — never the
  * conversation state. Unlike the public visitor route there is no rate
  * limit: callers are authenticated staff, and the audit trail covers abuse
  * accountability.
@@ -47,9 +47,9 @@ export async function POST(request: Request, context: RouteContext) {
   if (!isConversationActive(conversation)) {
     return conversationInactiveResponse();
   }
-  // The claimer speaks; the owner role may override the assignment (ticket
+  // The claimer speaks; the admin role may override the assignment (ticket
   // 08) but never the conversation state itself.
-  if (conversation.claimedBy !== staff.userId && staff.role !== "owner") {
+  if (conversation.claimedBy !== staff.userId && staff.role !== "admin") {
     return claimConflictResponse(claimerName);
   }
   const body = (await request.json().catch(() => null)) as { text?: unknown } | null;

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireStaff, sameOriginGuard } from "@/api/staff";
-import { DASHBOARD_ROLES } from "@/auth/server";
 import { parseBrandingImageDataUrl } from "@/domain/branding";
 import {
   getChatbotIconVersion,
@@ -11,7 +10,7 @@ import { getChatbotService } from "@/db/service";
 /**
  * The chatbot icon setting (ticket 70): a base64 data URL whose bytes were
  * validated by content (PNG/JPEG/WebP, ≤500 KB) or null to reset to the
- * bundled crest. Available to every dashboard role; applied to the launcher,
+ * bundled crest. Admin-only (ticket 102); applied to the launcher,
  * the widget identity surfaces, and the greeting avatar on newly loaded
  * pages via the versioned public asset route.
  */
@@ -20,7 +19,7 @@ export async function PUT(request: Request) {
   if (blocked) {
     return blocked;
   }
-  const guard = await requireStaff(request.headers, { roles: DASHBOARD_ROLES });
+  const guard = await requireStaff(request.headers, { roles: ["admin"] });
   if ("response" in guard) {
     return guard.response;
   }

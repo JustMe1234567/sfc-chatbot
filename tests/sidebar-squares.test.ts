@@ -87,9 +87,10 @@ describe("nothing else about the rail moves (ticket 60)", () => {
     expect(preference).toContain("return sessionCollapsed ?? true");
     expect(preference).toContain("COLLAPSED_KEY");
     expect(header).toContain("collapsed={false}");
-    // Role filtering is the NAV seam other tickets coordinate against.
+    // Role filtering is the NAV seam other tickets coordinate against
+    // (roles rewritten by ticket 102).
     expect(header).toContain(
-      '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["owner", "staff"] }',
+      '{ area: "inbox", href: "/dashboard/inbox", label: "Conversations", roles: ["admin", "admissions_advisor"] }',
     );
     expect(header).toMatch(/Record<HeaderArea/);
   });
