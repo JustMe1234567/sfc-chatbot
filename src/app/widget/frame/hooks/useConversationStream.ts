@@ -48,6 +48,10 @@ export function useConversationStream({
   error: string;
   sending: boolean;
   contactRequired: boolean;
+  /** The ended chat (ticket 104): the visitor's Email/Phone choice revoked
+      their session server-side; the transcript with the confirmation stays
+      as the one-time view while every API call is suppressed. */
+  sessionEnded: boolean;
   question: string;
   setQuestion: (text: string) => void;
   arrivingIds: Set<string>;
@@ -64,6 +68,9 @@ export function useConversationStream({
   bumpGeneration: () => void;
   showLockedFreshChat: () => void;
   setContactRequired: (required: boolean) => void;
+  /** Leaves the ended view for the contact gate (ticket 104): the action
+      button and a widget reopen both land here. */
+  startNewChat: () => void;
 } {
   const [messages, setMessages] = useState<DisplayedMessage[]>([]);
   const [handoff, setHandoff] = useState(false);
@@ -76,6 +83,13 @@ export function useConversationStream({
   // server has accepted the details. A stored session flips it off
   // optimistically on mount; the first authorized read confirms it.
   const [contactRequired, setContactRequired] = useState(true);
+  // The ended chat (ticket 104): set when the Email/Phone choice's response
+  // carries sessionEnded. The stored credential is dead server-side, but it
+  // stays in storage so a reopen rides the existing dead-credential
+  // handling (decision 5's mount read) — while the ended view shows, the
+  // ref below suppresses every poll and send.
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const sessionEndedRef = useRef(false);
   const sessionRef = useRef<StoredSession | null>(null);
   // Bumped whenever the visitor's conversation is replaced (ticket 14): any
   // in-flight request from an older generation must never repaint the chat.
@@ -173,7 +187,10 @@ export function useConversationStream({
   const refreshHistory = useCallback(
     async (animate = true, reportError = false) => {
       const session = sessionRef.current;
-      if (!session || sendingRef.current) {
+      // The ended chat polls for nothing (ticket 104): the transcript is
+      // final, and the revoked credential would only trip the
+      // dead-credential handling that the reopen path must own.
+      if (!session || sendingRef.current || sessionEndedRef.current) {
         return;
       }
       const generation = generationRef.current;
@@ -235,8 +252,15 @@ export function useConversationStream({
 
   // An open chat checks every second (ticket 61). The closed frame keeps
   // its original three-second cadence, and opening a saved chat checks
-  // immediately.
+  // immediately. Reopening a panel that was closed on the ended view lands
+  // on the contact gate (ticket 104, decision 5): the ended view is
+  // one-time, and the same leave-the-ended-view routine as the button
+  // drops the dead credential for a fresh chat.
   useEffect(() => {
+    if (panelOpen && sessionEndedRef.current) {
+      startNewChat();
+      return;
+    }
     if (panelOpen) {
       void refreshHistory();
     }
@@ -245,6 +269,7 @@ export function useConversationStream({
       panelOpen ? OPEN_POLL_MS : CLOSED_POLL_MS,
     );
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelOpen, refreshHistory]);
 
   function dropSession(): void {
@@ -274,6 +299,21 @@ export function useConversationStream({
     resetArrivals();
     applyConversationState("bot_active", false);
     setContactRequired(true);
+  }
+
+  /** Leaves the ended chat for the contact gate (ticket 104): the ended
+      view's "Start a new chat" action and a widget reopen both land here.
+      The credential was already revoked server-side, so dropping it locally
+      sends the next accepted gate submission to a separate conversation —
+      the old one stays on the desk until its request is handled. */
+  function startNewChat(): void {
+    sessionEndedRef.current = false;
+    setSessionEnded(false);
+    bumpGeneration();
+    dropSession();
+    showLockedFreshChat();
+    setQuestion("");
+    clearError();
   }
 
   /** Returns a dead conversation to the gate with the visitor's words kept
@@ -318,7 +358,8 @@ export function useConversationStream({
       text.length === 0 ||
       text.length > MAX_MESSAGE_LENGTH ||
       sendingRef.current ||
-      contactRequired
+      contactRequired ||
+      sessionEndedRef.current
     ) {
       return;
     }
@@ -403,6 +444,7 @@ export function useConversationStream({
       const body = (await response.json()) as {
         conversation: { state: string };
         reply: DisplayedMessage | null;
+        sessionEnded?: boolean;
       };
       // A clear can land inside the parse await; nothing from the old
       // conversation may repaint the fresh chat afterwards.
@@ -414,6 +456,15 @@ export function useConversationStream({
         const reply = body.reply as DisplayedMessage;
         applyArrivals([reply], true);
         setMessages((current) => [...current, reply]);
+      }
+      if (body.sessionEnded === true) {
+        // The chat ended with this choice (ticket 104): the confirmation
+        // above is the transcript's last row, and the composer area gives
+        // way to the single "Start a new chat" action. The stored
+        // credential stays so a reopen rides the existing mount-read
+        // handling (decision 5).
+        sessionEndedRef.current = true;
+        setSessionEnded(true);
       }
     } catch {
       dropOptimistic();
@@ -432,6 +483,7 @@ export function useConversationStream({
     error,
     sending,
     contactRequired,
+    sessionEnded,
     question,
     setQuestion,
     arrivingIds,
@@ -448,5 +500,6 @@ export function useConversationStream({
     bumpGeneration,
     showLockedFreshChat,
     setContactRequired,
+    startNewChat,
   };
 }

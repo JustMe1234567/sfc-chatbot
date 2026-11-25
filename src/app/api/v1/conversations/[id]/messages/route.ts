@@ -121,11 +121,16 @@ function contactMediumPromptMessage(conversationId: string): Message {
 }
 
 /**
- * Records a visitor's email-or-phone choice (ticket 69): one request with
- * that medium, the staff alert once, and the masked-destination
- * confirmation with support-hours-aware wording. The conversation stays
- * bot-active; the desk's persistent Contact Me status waits for staff to
- * mark it contacted.
+ * Records a visitor's email-or-phone choice (ticket 69) and ends their chat
+ * (ticket 104): one request with that medium, the masked-destination
+ * confirmation with support-hours-aware wording — and then the visitor's
+ * session is revoked while the conversation itself stays live server-side
+ * (decision 1: not closed, no closing notice, no retention-clock start).
+ * The confirmation is the transcript's last row of the ended chat; the
+ * desk's Active view, Contact Me status, and Mark contacted keep working
+ * until staff complete the request. The session-end applies only to
+ * requests created by this flow — pre-existing open requests (follow-up 5b)
+ * are untouched because nothing sweeps them.
  */
 async function recordMediumRequest(
   conversation: Conversation,
@@ -153,7 +158,8 @@ async function recordMediumRequest(
     contactRequestConfirmation(medium, destination ?? "", hours),
   );
   await store.appendMessage(reply);
-  return NextResponse.json({ conversation, reply });
+  await store.revokeVisitorSessions(conversation.id);
+  return NextResponse.json({ conversation, reply, sessionEnded: true });
 }
 
 /**

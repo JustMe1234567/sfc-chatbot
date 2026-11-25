@@ -532,6 +532,18 @@ export function createSqliteStore(db: DatabaseSync): Store {
       return row ? row.conversation_id : null;
     },
 
+    // Revocation drops the conversation's visitor session rows and burns
+    // its unused return links (ticket 104) — the Clear flow's revocation
+    // shape, minus the closure: the credential stops authorizing while the
+    // conversation stays live, and the sweep removes the rows with the
+    // conversation later.
+    async revokeVisitorSessions(conversationId) {
+      db.prepare("DELETE FROM visitor_sessions WHERE conversation_id = ?").run(conversationId);
+      db.prepare(
+        "DELETE FROM return_tokens WHERE conversation_id = ? AND used_at IS NULL",
+      ).run(conversationId);
+    },
+
     async createReturnToken(token) {
       db.prepare(
         "INSERT INTO return_tokens (token_hash, conversation_id, created_at, expires_at) VALUES (?, ?, ?, ?)",

@@ -1,6 +1,6 @@
 # 104: End the visitor's chat after an Email or Phone request
 
-**Status:** ready-for-agent
+**Status:** done
 **Category:** enhancement (visitor flow + desk semantics)
 **Priority:** P1
 **Source:** Boss feedback relayed by the owner, 2026-11-22 (feature area 3 of 3)
@@ -306,3 +306,95 @@ explicitly out of this ticket's scope per the feedback; ticket 102 owns who
 action. Numbered 104, third of the set (102/103 share the copy sweep; the
 docs-PR branch owns 101). Status `needs-info`: decisions 1–5 change the desk
 rules, the end screen, and the compatibility story — all owner calls.
+
+2026-11-26: IMPLEMENTED (branch
+`codex/ticket-104-end-chat-after-contact-request` from origin/main
+`daa33876a` — post-PR-#19 merge as directed — two commits: `c9e0b90f0`
+feat, `fef3bbb4f` review fixes). TDD: the new
+`tests/end-chat-contact-request.test.ts` failed red first (3 behavior
+assertions), then went green.
+
+- **The session end (decision 1):** new `Store.revokeVisitorSessions`
+  (interface + SQLite + Postgres) deletes the conversation's
+  `visitor_sessions` rows AND burns its unused `return_tokens` — the Clear
+  flow's revocation shape, minus the closure — called by
+  `recordMediumRequest` after the confirmation append. Further posts fail
+  authorization with the stable 404 `conversation_not_found`; the
+  conversation itself stays `bot_active`, no closing notice, no retention
+  start. The response carries `sessionEnded: true` as the widget's channel.
+- **Grandfathering (5b):** structural — revocation runs only in the new
+  flow and nothing sweeps existing rows, so pre-deployment open requests
+  keep the old behavior. The reworked `contact-requests.test.ts` tests
+  seed open requests at the store level as that posture and pin the
+  still-live refusal mechanics (guarded-insert 409, truthful reply, stale
+  prompt).
+- **The widget (decisions 4–5):** `useConversationStream` gains
+  `sessionEnded` (state + ref mirror): the flag suppresses the poller and
+  sends while the one-time view stands, the stored credential stays so a
+  reopen rides the existing dead-credential handling, the composer area
+  becomes a single "Start a new chat" button (existing `.form`/`.send`
+  styles, no new heading or copy), and the same leave-the-ended-view
+  routine (drop session, locked fresh chat, gate) serves both the button
+  and a panel reopen. Chips, choices, options strip, and the header menu
+  hide for the end state.
+- **Mechanism recorded (per the ticket's request):** "Start a new chat"
+  does NOT reuse `/clear` — dropping the dead credential and letting the
+  gate's next accepted submission create the conversation leaves no
+  successor linkage (`replaced_by` stays null on the ended conversation);
+  `/clear` would close it and start a retention clock, which decision 1
+  rejects.
+- **The desk pin (decision 3):** shared `isDeskActive` in
+  `src/domain/inbox.ts` (plain window OR open email/phone request) read by
+  both list summaries, the pane's `selectedActive` (Contact Me tier + Mark
+  contacted), and the conversation deep link's tab choice.
+  `isConversationActive` itself is untouched — the visitor refusal and the
+  retention sweep keep the plain window (AC 8 pinned by test). GLOSSARY's
+  Activity entry records the exception.
+- **Suites:** `end-chat-contact-request.test.ts` (new: email, phone,
+  refusal, separate conversation, pin-until-mark-contacted, Chat-path
+  regression guard, retention purge, return-link burn), the ticket-69
+  reworks (superseded outcomes), and single-line source-pin updates in
+  `near-live-updates` (poller guard) and `history-compact` (tab choice).
+
+Review (both axes from `daa33876a`): no hard standards violations; three
+in-scope findings fixed in `fef3bbb4f`; no missing or wrong AC
+implementations after the fixes. Dispositions:
+
+- **FIXED — return links could resurrect the ended chat (spec axis):**
+  `revokeVisitorSessions` burned sessions only; an unused return link
+  still redeemed at `/api/v1/return`, minting a fresh credential into the
+  ended conversation against AC 1/2/7. Latent only — no production code
+  mints links — but the Clear-flow shape makes the fix one line per
+  dialect, pinned by a new test on both.
+- **FIXED — deep-link tab gap (spec axis):** `inbox/[id]/page.tsx` picked
+  the tab via plain `isConversationActive`, so a 25h-quiet pinned
+  conversation deep-linked into the History tab its row can never appear
+  in. Now reads `isDeskActive`.
+- **FIXED — seeded-request literal ×4 (standards axis):** collapsed into
+  one `seedOpenRequest` helper.
+- **ACCEPTED — the ended view hides the header menu (both axes):** no AC
+  names it, but decision 4 makes the confirmation and the single action
+  the whole end state, and Clear on the dead credential could only land
+  on the same gate the button offers.
+- **ACCEPTED — the pin carries no closed-state filter (spec axis):** no
+  live flow can close a conversation that still holds an open email/phone
+  request (closing requires a claim, claiming requires awaiting_staff,
+  the email/phone path never escalates, and one-open-per-conversation
+  blocks holding a chat request alongside); if such a row ever existed,
+  decision 3's work-queue rationale says it stays visible with Mark
+  contacted.
+- **ACCEPTED — five `sessionEnded` guards in the frame page (standards
+  axis):** distinct UI slots, not one composite; `handoffActive` composes
+  two independent states while `sessionEnded` is already one flag.
+- **PARKED — unticked AC checkboxes:** the tracker's convention marks
+  completion via the `Status:` line (ticket 91/102/103 precedent), so the
+  boxes stay.
+
+Verification: full suites green on both dialects — SQLite 75 files /
+641 passed / 7 skipped with hygiene (807 files), typecheck, and the
+production build; Postgres via `CHATBOT_TEST_POSTGRES_URL` against the
+local 5433 cluster, 76 files / 645 passed / 3 skipped.
+`public/widget/v1.js` build churn restored (loader unchanged). The Chat
+handoff path is behaviorally untouched (regression-guarded by test).
+
+Reviewed through: fef3bbb4f
