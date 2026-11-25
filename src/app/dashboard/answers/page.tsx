@@ -54,8 +54,8 @@ export default async function AnswersPage() {
           <div className={styles.answersHead}>
             <p className={styles.answersIntro}>
               Draft, publish, and review the answers the chat gives visitors —
-              plus the phrases and clickable options that go straight to staff
-              and the fresh-chat greeting.
+              plus the phrases and clickable options that go straight to an
+              advisor and the fresh-chat greeting.
             </p>
             <Link className={`${styles.primaryButton} ${styles.answersNew}`} href="/dashboard/answers/new">
               <svg

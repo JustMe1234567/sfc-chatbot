@@ -665,6 +665,15 @@ describe("the Staff accounts page", () => {
     expect(["admin", "admissions_advisor"].map(staffRoleLabel)).toEqual(["Admin", "Admissions Advisor"]);
   });
 
+  it("carries the role label into the desk's transfer picker", async () => {
+    // The AC names the transfer picker as a role-label surface: the desk
+    // resolves each target's display label and the option renders it.
+    const desk = await read("src/app/dashboard/inbox/conversation-desk.tsx");
+    expect(desk).toContain("roleLabel: staffRoleLabel(member.role)");
+    const actions = await read("src/app/dashboard/conversations/[id]/conversation-actions.tsx");
+    expect(actions).toContain("{member.name} · {member.roleLabel}");
+  });
+
   it("creates an Admissions Advisor account with no role picker and no staff or invite wording", async () => {
     const form = await read("src/app/dashboard/staff/account-form.tsx");
     expect(form).toContain("Create an Admissions Advisor account");

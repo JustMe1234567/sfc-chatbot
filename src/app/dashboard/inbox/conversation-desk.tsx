@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import Image from "next/image";
 import { requireStaff } from "@/api/staff";
-import { STAFF_ROLES, type StaffRole } from "@/auth/server";
+import { STAFF_ROLES, staffRoleLabel, type StaffRole } from "@/auth/server";
 import {
   DESK_STATE_LABELS,
   DESK_STATUS_LABELS,
@@ -161,7 +161,7 @@ export default async function ConversationDesk({ selectedId, view }: { selectedI
             !member.banned &&
             member.emailVerified,
         )
-        .map((member) => ({ id: member.id, name: member.name }))
+        .map((member) => ({ id: member.id, name: member.name, roleLabel: staffRoleLabel(member.role) }))
     : [];
 
   return (

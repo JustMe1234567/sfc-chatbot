@@ -127,9 +127,7 @@ export default function AnalyticsView({
 
   return (
     <>
-      {settings ? (
-        <AnalyticsSettingsForm initial={settings} onSaved={() => void load(period)} />
-      ) : null}
+      <AnalyticsSettingsForm initial={settings} onSaved={() => void load(period)} />
 
       <div
         className={styles.periodTabs}

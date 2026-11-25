@@ -52,7 +52,7 @@ export default function HandoffOptionsForm({ initialOptions }: { initialOptions:
       <h2>Handoff options</h2>
       <p className={styles.hint}>
         One option per line, shown in this order. Each appears as a clickable
-        button in the chat; clicking one sends the visitor straight to staff
+        button in the chat; clicking one sends the visitor straight to an advisor
         and pauses automated answers. Typing the same wording still follows
         normal answer matching.
       </p>

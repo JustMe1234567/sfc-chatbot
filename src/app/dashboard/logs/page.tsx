@@ -9,10 +9,10 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Logs" };
 
 /**
- * The owner-only Logs tab (ticket 81): every dashboard sign-in attempt, the
- * suspicious subset, and the deletion controls. The owner gate is doubled —
- * the page refuses non-owners and every API request behind the workspace is
- * refused the same way — mirroring the ticket-76 owner surfaces.
+ * The admin-only Logs tab (ticket 81): every dashboard sign-in attempt, the
+ * suspicious subset, and the deletion controls. The admin gate is doubled —
+ * the page refuses non-admins and every API request behind the workspace is
+ * refused the same way — mirroring the other security-sensitive surfaces.
  */
 export default async function LogsPage() {
   const staffHeaders = await headers();
@@ -20,7 +20,7 @@ export default async function LogsPage() {
   if ("response" in guard) {
     return (
       <main className={styles.shell}>
-        <p className={styles.empty}>This page requires the owner role.</p>
+        <p className={styles.empty}>This page requires the admin role.</p>
       </main>
     );
   }

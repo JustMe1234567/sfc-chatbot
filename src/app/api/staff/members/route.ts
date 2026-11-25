@@ -39,15 +39,15 @@ export async function POST(request: Request) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
   const password = typeof body?.password === "string" ? body.password : "";
-  // The form sends no role; a request may name the advisor role explicitly.
-  const role = typeof body?.role === "string" ? body.role : "admissions_advisor";
   if (name.length === 0 || name.length > 80 || !/^[a-z0-9._-]{3,32}$/.test(username) || password.length < 10) {
     return NextResponse.json(
       { error: { code: "invalid_member", message: "Provide a name, a valid username, and a password of at least 10 characters." } },
       { status: 400 },
     );
   }
-  if (role !== "admissions_advisor") {
+  // The form sends no role; a request may name the advisor role explicitly.
+  // Any other value — including a non-string — is refused outright.
+  if (body?.role !== undefined && body.role !== "admissions_advisor") {
     return NextResponse.json(
       { error: { code: "invalid_role", message: "Only Admissions Advisor accounts can be created here." } },
       { status: 400 },
