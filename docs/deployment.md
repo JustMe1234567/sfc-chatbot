@@ -125,18 +125,23 @@ Deploy the same commit to the existing Vercel test project and repeat the browse
 
 ## 7. Transaction-pooler runtime retry (tickets 99/105) and rollback
 
-> **Status 2026-11-27 (ticket 105):** the owner approved a **controlled,
-> monitored retry** of the transaction pooler for Vercel runtime traffic.
-> History to keep in view: the ticket-99 cutover was executed and then
-> rolled back on 2026-11-22 — the shared transaction pooler's stall
-> weather proved chronic in production (`QUERY_TIMEOUT` floods during
-> normal owner use, tickets 100/101) — and the 2026-11-26 session-pooler
-> window then showed its own failure mode, 57 `EMAXCONNSESSION` client-cap
-> rejections under idle-socket squatting (ticket 105). The retry is
-> **approved, not proven**: it stands on the new protocol-safe client
-> shape (`max_pipeline: 1`, `max: 1`, `idle_timeout: 10`) and stays
-> subject to the verification below; the session-pooler URL (5432) remains
-> the rollback path at every step.
+> **Status 2026-11-27 (ticket 105):** the owner-approved **controlled,
+> monitored retry** was executed and verified in production the same day
+> it shipped (PR #21, deployment `sfc-chatbot-6fmbg0xkt`, commit
+> `6304d137a`): production `DATABASE_URL` moved to the transaction
+> pooler (6543) with `PG_POOL_MAX=1`, and the ~26-minute verification
+> window showed zero `EMAXCONNSESSION`, zero `QUERY_TIMEOUT`/
+> `QUEUE_TIMEOUT`, and correct visitor-chat, escalation, and
+> row-integrity behavior (ticket 105's completion record holds the
+> counts). History that keeps this honest: the ticket-99 cutover was
+> rolled back on 2026-11-22 when the shared transaction pooler's stall
+> weather proved chronic (`QUERY_TIMEOUT` floods, tickets 100/101), and
+> the 2026-11-26 session-pooler window showed its own failure mode, 57
+> `EMAXCONNSESSION` client-cap rejections under idle-socket squatting
+> (ticket 105). A chronic-weather return remains the known failure mode:
+> if `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` floods reappear, run the rollback
+> in step 5. The session-pooler URL (5432) remains the rollback path at
+> every step.
 
 The shared session pooler (5432) gives every client connection its own
 server session and rejects clients past the server-side pool size (15). A
