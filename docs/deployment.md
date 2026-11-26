@@ -13,10 +13,11 @@ Set these in `.env.local` and the Vercel test project:
 | `NEXT_PUBLIC_SUPABASE_URL` | Dedicated test-project URL. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe project key used only for Auth sessions. |
 | `SUPABASE_SECRET_KEY` | Server-only Auth administration key. Never expose or prefix with `NEXT_PUBLIC_`. |
-| `DATABASE_URL` | Session-pooler Postgres connection (port 5432) for the same project — the **standing mode for Vercel deployments and localhost** (ticket 101: the ticket-99 cutover to the transaction pooler was rolled back on 2026-11-22 after the shared pooler's stall weather proved chronic, and the owner declined re-attempting; section 7 keeps that runbook for reference). The connection shape is `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`; set the real value only in `.env.local`/Vercel, never in tracked files. Session mode gives every client connection a dedicated session — the ticket-99 ceiling (`PG_POOL_MAX` 4) plus disabled nav prefetch keep a serverless fan-out well clear of its client cap at staff scale. |
-| `PG_POOL_MAX` | Postgres connection pool ceiling **per instance** (default 4). Conservative by design (ticket 99): every warm Vercel instance contributes up to this many client connections to the pooler, and a burst across instances multiplies them. 4 matches the Settings page's read concurrency — an authed render holds at most four reads at once (ticket 89) — so that render never queues behind itself, and anything above it queues briefly behind ticket 90's bounded 10-second wait instead of needing headroom. Do not raise it to relieve pooler pressure — on the session pooler the client cap is what the ceiling guards (ticket 101); the fix for pooler pressure is fewer client connections, not more. |
-| `PG_QUERY_TIMEOUT` | Seconds before an in-flight query is canceled and rejected (default 10, postgres.js ≥ 4.1). The hosted pooler can silently stop answering individual queries; without this bound every affected connection holds its lease forever and the whole pool wedges (ticket 90). Well above this app's warm query times, far below the hosted statement timeout. |
-| `PG_QUEUE_TIMEOUT` | Seconds before a query still waiting for a pool connection rejects (default 10). Complements `PG_QUERY_TIMEOUT`: bounds queue pileups so a stall surfaces as an error instead of a hung render. |
+| `DATABASE_URL` | Postgres connection for the same project. **Two approved modes:** localhost, migrations, and operator scripts (bootstrap/recover/rename, config export/import, the load harness) use the **session pooler (port 5432)** — the standing `.env.local` shape `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres` — while the **Vercel runtime** uses the transaction pooler (**port 6543**) under the ticket-105 owner-approved, monitored retry (section 7). The session-mode URL is also the **rollback path** if the retry stalls. Set the real value only in `.env.local`/Vercel, never in tracked files. |
+| `PG_POOL_MAX` | Postgres connection pool ceiling **per instance** (default 1). The ticket-105 approved runtime shape: with pipelining disabled (`max_pipeline: 1`), a busy socket queues waits behind ticket 90's bounded timeouts instead of opening a second pipeline, so one socket per instance is enough — and every warm Vercel instance contributes this many client connections to the pooler, so the small ceiling keeps the fleet footprint tiny. The Vercel runtime on the transaction-pooler retry must run at 1: set `PG_POOL_MAX=1` (or delete the variable) at cutover. Do not raise it to relieve pooler pressure; the fix for pooler pressure is fewer client connections, not more. |
+| `PG_QUERY_TIMEOUT` | Seconds before an in-flight query is canceled and rejected (default 15, postgres.js ≥ 4.1; all postgres.js timeout values are seconds). The hosted pooler can silently stop answering individual queries; without this bound every affected connection holds its lease forever and the whole pool wedges (ticket 90). Well above this app's warm query times, far below the hosted statement timeout. |
+| `PG_QUEUE_TIMEOUT` | Seconds before a query still waiting for a pool connection rejects (default 10). Complements `PG_QUERY_TIMEOUT`: bounds queue pileups so a stall surfaces as an error instead of a hung render. With the ticket-105 single-socket shape (`max: 1`, `max_pipeline: 1`) this is what bounds serialized waits. |
+| `PG_IDLE_TIMEOUT` | Seconds an idle client connection closes after (default 10; 0 keeps sockets open until the instance dies, the pre-ticket-105 behavior). Released sockets reopen on demand, so a warm serverless instance stops squatting pooler client slots while quiet — the 2026-11-26 `EMAXCONNSESSION` outage mechanism (ticket 105). |
 | `CHATBOT_BASE_URL` | Exact app origin: localhost locally, Vercel test URL in Vercel. |
 | `CRON_SECRET` | Vercel maintenance-route bearer token. |
 
@@ -122,14 +123,20 @@ Before starting localhost, follow `LOCALHOST.md`: verify port 3000, avoid duplic
 
 Deploy the same commit to the existing Vercel test project and repeat the browser flows on desktop and narrow screens. During a synthetic conversation, redeploy/recycle the Vercel function and confirm the conversation continues from Supabase Postgres. Use disposable staff usernames and synthetic conversations; record the exact created Auth user IDs and application record IDs, and clean up only those IDs.
 
-## 7. Transaction-pooler cutover (ticket 99) and rollback
+## 7. Transaction-pooler runtime retry (tickets 99/105) and rollback
 
-> **Status 2026-11-22 (ticket 101):** this cutover was executed and then
-> rolled back — the shared transaction pooler's stall weather proved
-> chronic in production (`QUERY_TIMEOUT` floods during normal owner use),
-> and the owner declined re-attempting. **Production stays on the session
-> pooler (5432)**; this section remains as the record and as the runbook
-> to follow if the transaction pooler is ever re-attempted.
+> **Status 2026-11-27 (ticket 105):** the owner approved a **controlled,
+> monitored retry** of the transaction pooler for Vercel runtime traffic.
+> History to keep in view: the ticket-99 cutover was executed and then
+> rolled back on 2026-11-22 — the shared transaction pooler's stall
+> weather proved chronic in production (`QUERY_TIMEOUT` floods during
+> normal owner use, tickets 100/101) — and the 2026-11-26 session-pooler
+> window then showed its own failure mode, 57 `EMAXCONNSESSION` client-cap
+> rejections under idle-socket squatting (ticket 105). The retry is
+> **approved, not proven**: it stands on the new protocol-safe client
+> shape (`max_pipeline: 1`, `max: 1`, `idle_timeout: 10`) and stays
+> subject to the verification below; the session-pooler URL (5432) remains
+> the rollback path at every step.
 
 The shared session pooler (5432) gives every client connection its own
 server session and rejects clients past the server-side pool size (15). A
@@ -137,46 +144,63 @@ Vercel deployment fans out: opening the dashboard fires several
 database-backed renders across multiple function instances and regions,
 each instance holding up to `PG_POOL_MAX` clients — enough to exceed 15
 and answer 500s (`EMAXCONNSESSION: max clients reached in session mode`,
-digest `2703405841`, 2026-11-22 outage, ticket 99). Vercel deployments
-therefore run the transaction pooler on port 6543, where client
-connections multiplex over the shared server sessions instead of each
-holding one.
+digest `2703405841`, 2026-11-22 outage, ticket 99; recurred 2026-11-26,
+ticket 105). On the transaction pooler (port 6543) client connections
+multiplex over the shared server sessions instead of each holding one,
+so the runtime retry moves Vercel traffic there while localhost,
+migrations, and operator scripts stay on direct/session connections
+(their own environment's URL — locally `.env.local`'s 5432; no script
+URL source changes).
 
-Transaction-mode compatibility (the ticket 99 audit): the client runs
-`prepare: false` (required — the shared pooler rejects prepared
-statements) with ticket 90's 10 s `query_timeout`/`queue_timeout` bounds
-preserved unchanged. The application uses no session-level `SET` state,
-no `LISTEN`/`NOTIFY`, and no temporary table that outlives a transaction
-(migration 0014's temp table lives entirely inside one migration
-transaction); the one advisory lock (`pg_advisory_xact_lock` in
-`src/db/appDatabase.ts`) is transaction-scoped and taken inside
-`sql.begin`, which transaction mode supports. postgres.js pipelines
-queries by default, which the shared pooler does not support — ticket
-90's bounds are what keep that stall class bounded (a rejected query, then
-pool recovery), so cutover verification watches for
-`QUERY_TIMEOUT`/`QUEUE_TIMEOUT` log events.
+Transaction-mode compatibility (the ticket 99 audit, sharpened by
+ticket 105): the client runs `prepare: false` (required — the shared
+pooler rejects prepared statements) and `max_pipeline: 1` (required —
+the transaction pooler does not support query pipelining, and postgres.js
+pipelines up to 100 queries per socket by default; the documented combo
+can hang queries or return mismatched rows, so one in-flight query per
+socket is the protocol-safe shape). The runtime pool runs `max: 1`
+single-socket per instance — concurrent work queues behind
+`queue_timeout` (10 s) rather than opening a second pipeline — and
+`idle_timeout: 10` releases idle client sockets so warm instances stop
+squatting pooler slots. The application uses no session-level `SET`
+state, no `LISTEN`/`NOTIFY`, and no temporary table that outlives a
+transaction (migration 0014's temp table lives entirely inside one
+migration transaction); the one advisory lock
+(`pg_advisory_xact_lock` in `src/db/appDatabase.ts`) is
+transaction-scoped and taken inside `sql.begin`, which transaction mode
+supports. All postgres.js timeout values are seconds. Because the
+2026-11-22 chronic stall weather happened with protocol-unsafe pipelining
+and does not have a known client-side cure, cutover verification watches
+for `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` volume as the retry's known failure
+mode — bounds turn a stall into a bounded rejection, not a fix.
 
-Cutover (operator steps only; no code or tracked-file change):
+Cutover (owner steps only; no tracked-file change), executed only after
+the ticket-105 PR is merged and deployed:
 
 1. In the Supabase dashboard, copy the project's transaction-pooler
    connection string (Connect → Transaction pooler, port 6543). It has the
    shape `postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`. Never commit or paste it into tracked files.
 2. In Vercel, set `DATABASE_URL` to that value for the production and
-   preview environments. Leave `PG_POOL_MAX` unset (the code default 4)
-   or set it to 4; do not raise it.
+   preview environments, and set `PG_POOL_MAX=1` (or delete the
+   variable — the code default is 1). It must not remain at the older
+   value of 4: the approved runtime pool size is 1.
 3. Redeploy so the new environment reaches every function instance.
 4. Verify: `/api/healthz` answers 200; the login page loads; an authed
    sign-in reaches `/dashboard` and opens every nav route without 500s;
-   Vercel logs show no `EMAXCONNSESSION` and no unexpected
-   `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` volume.
-5. Rollback: revert `DATABASE_URL` in Vercel to the previous session-pooler
-   URL (5432) and redeploy. With prefetch disabled (ticket 99) and the
-   pool ceiling at 4, the session-mode fan-out risk is reduced but not
-   eliminated — a burst across enough instances can still exceed 15
-   clients. This is accepted and watched via the log volume: on
-   2026-11-22 the rollback became standing policy (ticket 101) after the
-   chronic-weather evidence, superseding this runbook's original
-   temporary framing.
+   the needs-human bell poll answers during a staff dashboard session;
+   Vercel logs show no `EMAXCONNSESSION` and no chronic
+   `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` weather (isolated bounded rejections
+   are the bounds working; a repeating flood is the 2026-11-22 failure
+   mode returning).
+5. Rollback: revert `DATABASE_URL` in Vercel to the previous
+   session-pooler URL (5432) and redeploy — keep the session-mode URL
+   available for exactly this. The rollback inherits the ticket-105
+   client shape, which shrinks the session-mode fan-out risk on its own:
+   `max: 1` caps a fleet at ~one socket per warm instance and
+   `idle_timeout: 10` releases idle sockets, so the 15-client cap is no
+   longer held indefinitely by quiet instances. A burst across enough
+   instances can still exceed 15 clients — accepted and watched via the
+   log volume, as recorded for the 2026-11-26 recurrence (ticket 105).
 
 ## 8. Production boundary and rollback
 
