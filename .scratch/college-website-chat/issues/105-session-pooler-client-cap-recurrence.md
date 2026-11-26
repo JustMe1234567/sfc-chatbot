@@ -1,6 +1,6 @@
 # 105: Session-pooler client-cap exhaustion recurs (EMAXCONNSESSION) — release idle client sockets and cut the per-instance footprint
 
-Status: ready-for-human
+Status: done
 
 ## What this ticket asks for
 
@@ -387,5 +387,74 @@ redeploy, then the verification checklist (zero `EMAXCONNSESSION`, no
 chronic `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` weather during a staff
 dashboard session). Rollback stays the session-mode 5432 URL. This
 ticket closes only after that verification.
+
+2026-11-27: **PRODUCTION CUTOVER EXECUTED AND VERIFIED — done.** The
+owner merged PR #21 (origin/main = `6304d137a`); the guarded cutover
+ran the same session:
+
+**Mutations (production only; Preview and Development untouched; the
+only two production changes of the whole cutover):** production
+`DATABASE_URL` updated via `vercel env update --environment production`
+from the session-pooler 5432 URL to the same project's
+transaction-pooler 6543 URL — host, user, password, and database
+verified byte-identical with only the port field changed (URL-API
+transform; the first naive string replace was caught and discarded
+because the password itself contains the substring `:5432`); production
+`PG_POOL_MAX` updated 4 → 1. No credential was printed, logged, or
+committed; the secret cannot be read back from Vercel (secret-typed),
+so the preserved rollback value is the main checkout `.env.local`
+5432 string — the same value proven live on production during the
+2026-11-22 rollback — validated (parses, port 5432, pooler username,
+project ref matches the auth URL) before any mutation.
+
+**Deployment:** `sfc-chatbot-jbheprb3h` (the merge auto-deploy of
+`6304d137a`) was READY with the old env; `vercel redeploy` rebuilt it
+as **`sfc-chatbot-6fmbg0xkt`** — commit `6304d137a` (current
+origin/main), **Ready in 41 s, aliased to
+sfc-chatbot-iota.vercel.app**.
+
+**Verification window 02:11–02:37 +0800 (~26 minutes), 10 log
+snapshots** over the new deployment (`vercel logs --deployment …
+--scope justme1234567s-projects --json`): **0 `EMAXCONNSESSION`, 0
+`QUERY_TIMEOUT`, 0 `QUEUE_TIMEOUT`, 0 error-level entries** (window
+grew 7 → 17 entries; isolated bounded rejections: none; chronic
+weather: none — the 2026-11-22 failure mode did not appear).
+
+**Smoke (all agent-driven, unauthenticated + visitor API):**
+`/api/healthz` 200 (1.05 s, DB roundtrip); `/dashboard/login` 200;
+`/dashboard` 307 → login (auth guard intact); embed-eligibility 200
+with `allowed:false` for an unlisted origin and `allowed:true` for the
+allowlisted college origin (both allowlist reads correct); two full
+visitor conversations created (201, contact-validated), free-text
+messages answered by the bot, transcripts round-tripped with correct
+roles and counts, one-click needs-human escalation accepted on both
+(tick 103 staleness path exercised — the choice refused once as
+unoffered, then accepted as offered), needs-human bell refused an
+unauthenticated caller with 401; **row-integrity probe PASS** — two
+distinctive marker texts sent back-to-back round-tripped byte-exact
+with exactly two visitor rows and two well-formed bot replies, the
+direct mismatched-rows watch for `max_pipeline: 1`. Synthetic probe
+conversations left in place (cert-26 precedent), all named
+"Ticket 105 … Probe": `d69b761d…`, `e21ff000…`, `189f6a63…` — delete
+from History if unwanted.
+
+**Honest scope note:** interactive authenticated flows (sign-in,
+Settings, Staff, Logs, Answers, Inbox, account creation) were NOT
+driven by this session — it holds no production credential, declined
+wrong-password attempts (ticket-81 IP counter), and a disposable
+identity was not authorized; none was observed in the monitored window
+either. Login-page reachability, the auth guard, and DB-backed reads
+are verified directly; any authenticated failure remains an immediate
+rollback trigger.
+
+**Rollback readiness (unused):** preserved 5432 `DATABASE_URL`
+(validated) and `PG_POOL_MAX=4` re-settable via the same
+`vercel env update --environment production` piped pattern; prior
+deployment `sfc-chatbot-jbheprb3h` remained READY throughout. Had
+login, ordinary use, or database behavior failed, that pair plus one
+redeploy restores the ticket-101 standing mode exactly.
+
+deployment.md §7's banner updated from "approved, not proven" to the
+executed-and-verified record (docs-only factual correction).
 
 Reviewed through: 2b7ea8cab
