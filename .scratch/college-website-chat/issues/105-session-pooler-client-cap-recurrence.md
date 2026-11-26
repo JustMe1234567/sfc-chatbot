@@ -1,6 +1,6 @@
 # 105: Session-pooler client-cap exhaustion recurs (EMAXCONNSESSION) — release idle client sockets and cut the per-instance footprint
 
-Status: needs-triage
+Status: ready-for-human
 
 ## What this ticket asks for
 
@@ -51,22 +51,37 @@ owner to pick:
    change first (`max_pipeline: 1` is now a documented protocol
    requirement, not just a stall mitigation).
 
-## Acceptance criteria (for the eventual fix ticket, Option B shape)
+## Acceptance criteria (owner-approved controlled transaction-pooler retry, 2026-11-27)
 
-- `openPostgres` releases idle client connections after
-  `PG_IDLE_TIMEOUT` seconds (default chosen and justified); burst
-  behavior unchanged (sockets reopen on demand; ticket 90's
-  `query_timeout`/`queue_timeout` and `prepare: false` untouched;
-  `PG_POOL_MAX` unchanged).
-- `tests/postgres-pool-config.test.ts` pins the new default and the env
-  override; both dialect suites green; `npm run check` green.
-- deployment.md §1 gains the `PG_IDLE_TIMEOUT` row (and §7 step 5's
-  accepted-risk note is reworded to name the new mechanism).
-- Code change rides a normal PR; the owner performs the only
-  production steps they choose (env or dashboard), with the ticket's
+- `openPostgres` ships the approved runtime shape: `max` defaults to 1
+  (`PG_POOL_MAX` override preserved), `max_pipeline: 1` (pipelining
+  disabled — fixed, no override), `prepare: false` stays the default
+  (`PG_PREPARE` override preserved), `idle_timeout` defaults to 10
+  seconds (new `PG_IDLE_TIMEOUT` override), `connect_timeout: 10`,
+  `query_timeout` defaults to 15 seconds (`PG_QUERY_TIMEOUT`),
+  `queue_timeout: 10` seconds (`PG_QUEUE_TIMEOUT`). All timeout values
+  are seconds, matching postgres.js's own units.
+- `tests/postgres-pool-config.test.ts` pins every default above plus
+  the supported env overrides and the fixed (non-overridable)
+  `max_pipeline`/`connect_timeout` pins; both dialect suites green;
+  typecheck, hygiene, and production build green.
+- deployment.md identifies transaction mode (port 6543) as the owner-
+  approved, monitored runtime retry; keeps migrations and operator
+  scripts on direct/session connections; states that postgres.js
+  timeout values are seconds; preserves the session-mode URL (5432) as
+  the rollback path; records the 2026-11-22 transaction-mode stall
+  history accurately and does not claim the retry is proven before
+  production verification.
+- No production mutation during implementation: no Vercel, Supabase,
+  or production-data changes from the implementing session. The
+  production cutover (Vercel `DATABASE_URL` → 6543, `PG_POOL_MAX` → 1
+  or removed, redeploy) remains an owner step, followed by the
   verification checklist: during a staff dashboard session, Vercel
-  runtime logs show zero `EMAXCONNSESSION` and the bell poll answers
+  runtime logs show zero `EMAXCONNSESSION` and no chronic
+  `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` weather, and the bell poll answers
   without 500s.
+- Supabase session pool size stays at its default and the plan stays
+  unchanged (owner constraint).
 
 ## Constraints honored in this diagnosis
 
@@ -265,3 +280,112 @@ a recent window, so capture during an active staff session). It went
 red on the user's exact symptom (needs-human + members failing at
 connect under `pool_size: 15`) and goes green on a clean window; the
 verification checklist in Acceptance criteria reuses it post-fix.
+
+2026-11-27: **OWNER DECISION — controlled transaction-pooler retry
+approved.** The owner chose the path this ticket had recorded as
+declined (ticket 101), superseding the diagnosis's ranked options: a
+monitored return of Vercel runtime traffic to the Supavisor
+**transaction pooler (port 6543)** after the implementing PR merges.
+The approved shape, to be implemented as the smallest compatible change
+to `openPostgres`:
+
+- Runtime pool size **must be 1** (`max: 1`, `PG_POOL_MAX` override
+  preserved).
+- postgres.js pipelining **must be disabled** (`max_pipeline: 1`) —
+  the protocol requirement Determination 4 recorded: the shared
+  transaction pooler does not support query pipelining, and postgres.js
+  pipelines up to 100 queries per socket by default.
+- `prepare: false` **remains required** (current default, `PG_PREPARE`
+  opt-in unchanged).
+- `idle_timeout: 10` seconds — new; releases idle client sockets so
+  warm serverless instances stop squatting pooler client slots (the
+  EMAXCONNSESSION mechanism this ticket diagnosed; folds this ticket's
+  Option B mechanism into the retry).
+- `connect_timeout: 10`, `query_timeout: 15`, `queue_timeout: 10` —
+  all postgres.js timeout values are **seconds**.
+- **Migrations and operator scripts remain on direct/session
+  connections** (their own environment's URL — locally the session
+  pooler 5432; no script URL sources change).
+- **Do not** raise Supabase's session pool size or upgrade the plan.
+- **Do not** mutate Vercel, Supabase, or production during
+  implementation — the cutover itself is the owner's post-merge step,
+  with rollback = the old session-mode URL (5432). The retry is
+  monitored, not proven: the 2026-11-22 chronic `QUERY_TIMEOUT` weather
+  (tickets 100/101) remains the known failure mode to watch for, and
+  the ticket stays open (ready-for-human) until production
+  verification passes.
+
+2026-11-27: **IMPLEMENTED + REVIEWED — production cutover pending, so
+the ticket moves to ready-for-human, not done.** Branch
+`codex/ticket-105-transaction-pooler-retry` (from origin/main
+`446088531`; the diagnosis commit `889b09ed` cherry-picked as
+`0ceb4ad04`, evidence byte-identical). Commits: `8487349b0` (feat — the
+retry shape), `2b7ea8cab` (fix — the review's in-scope finding).
+
+**Implementation** — `src/db/postgres.ts` `openPostgres` now ships:
+`max` default 1 (`PG_POOL_MAX` override), fixed `max_pipeline: 1`,
+`prepare` default false (`PG_PREPARE` opt-in), `idle_timeout` default 10
+(new `PG_IDLE_TIMEOUT` override), fixed `connect_timeout: 10`,
+`query_timeout` default 15 (`PG_QUERY_TIMEOUT`), `queue_timeout` default
+10 (`PG_QUEUE_TIMEOUT`). One shared opener for runtime and
+scripts/migrations — the scripts keep their own environment's
+direct/session URLs; no script URL source changed. The stale ticket-99
+docblock ("Production targets the transaction pooler") is rewritten as
+part of the change, as the diagnosis asked.
+
+**Option semantics verified against installed postgres.js 4.1.1**
+(not from memory): `types/index.d.ts` documents every timeout option in
+seconds (`idle_timeout` "Seconds before an idle connection closes;
+0, null or false to keep it @default null"; `max_pipeline` "Most queries
+pipelined on one connection @default 100"; `queue_timeout` "Seconds a
+query, transaction or reserve may wait for a connection";
+`query_timeout` "Seconds a query may wait and run";
+`connect_timeout` "Seconds to connect" @default 30; `prepare`
+@default true). `src/index.js` confirms the defaults and integer
+coercion; `src/pool.js` gates every pipeline/acquire path on
+`c.inflight < options.max_pipeline` (lines 287/340/648/651), so
+`max_pipeline: 1` means one in-flight query per socket (serialized,
+never pipelined) — leased `sql.begin` transactions bypass the gate
+safely — and arms the idle close timer as `idle_timeout * 1000` only
+when a connection has zero in-flight queries (lines 605-631), with a
+falsy value keeping sockets forever. An options-surface probe echoed
+all seven parsed values (`{max:1, max_pipeline:1, prepare:false,
+idle_timeout:10, connect_timeout:10, query_timeout:15,
+queue_timeout:10}`) off a real handle.
+
+**Tests** — `tests/postgres-pool-config.test.ts` pins all seven
+defaults, the five overrides (`PG_POOL_MAX`, `PG_PREPARE`,
+`PG_QUERY_TIMEOUT`, `PG_QUEUE_TIMEOUT`, `PG_IDLE_TIMEOUT`), the fixed
+`max_pipeline`/`connect_timeout` pins (no override by design), the
+`PG_IDLE_TIMEOUT=0` disable, and blank-means-unset parsing. Full
+matrix green on the final code: focused 4/4; SQLite 643 passed / 7
+skipped; PostgreSQL 647 passed / 3 skipped (local 5433 scratch
+cluster); `tsc --noEmit` clean; hygiene passed (808 files); production
+build exit 0.
+
+**Review** (both axes, from `446088531` over the pre-commit working
+tree; findings fixed in `2b7ea8cab`): Standards — two ticket-file
+convention fixes applied (decision comment moved to the bottom per the
+append convention; status set from ready-for-agent to ready-for-human
+here, matching the pending owner-only cutover); rationale duplicated
+across ticket/docs/docblock/test accepted as the repo's per-audience
+convention (the pin test carries the values). Spec — no missing or
+partial requirements; no material scope creep (`.env.example` default
+row updates and the new `PG_IDLE_TIMEOUT` row keep its every-variable
+claim true); one real finding fixed: a blank `PG_IDLE_TIMEOUT` (the
+copied-`.env.example` shape) parsed to `Number("") = 0`, silently
+disabling idle release — all four numeric overrides now parse through a
+blank-guarding helper with a pin test; one minor prose note accepted
+(the rollback-shape sentence in deployment.md §7 step 5 is accurate per
+Determination 3).
+
+**Constraints honored:** no Vercel/Supabase/production mutation, no
+production data accessed, no sign-in attempts driven; session pool size
+and plan untouched. **Remaining (owner-only):** the deployment.md §7
+cutover — Vercel `DATABASE_URL` → 6543, `PG_POOL_MAX` → 1 (or delete),
+redeploy, then the verification checklist (zero `EMAXCONNSESSION`, no
+chronic `QUERY_TIMEOUT`/`QUEUE_TIMEOUT` weather during a staff
+dashboard session). Rollback stays the session-mode 5432 URL. This
+ticket closes only after that verification.
+
+Reviewed through: 2b7ea8cab
