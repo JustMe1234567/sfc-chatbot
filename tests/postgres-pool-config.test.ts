@@ -113,4 +113,15 @@ describe("openPostgres pool configuration (ticket 105)", () => {
     );
     expect(sql.options.idle_timeout).toBe(0);
   });
+
+  it("a blank variable means unset, not Number('') = 0 (the copied-.env.example shape)", () => {
+    const sql = withPoolEnv(
+      { PG_POOL_MAX: "", PG_QUERY_TIMEOUT: "", PG_QUEUE_TIMEOUT: "", PG_IDLE_TIMEOUT: "" },
+      () => openPostgres("postgresql://introspection@127.0.0.1:1/probe"),
+    );
+    expect(sql.options.max).toBe(1);
+    expect(sql.options.idle_timeout).toBe(10);
+    expect(sql.options.query_timeout).toBe(15);
+    expect(sql.options.queue_timeout).toBe(10);
+  });
 });

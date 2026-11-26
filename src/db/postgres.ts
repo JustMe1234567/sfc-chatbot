@@ -52,15 +52,28 @@ const POSTGRES_MIGRATIONS_DIR = path.join(repoRoot(), "migrations", "postgres");
  * rollback steps, including the production `PG_POOL_MAX`, live in
  * deployment.md §7.
  */
+/**
+ * Reads one of the numeric `PG_*` overrides; an unset OR blank variable
+ * means the default. A bare `Number(raw ?? fallback)` would turn the blank
+ * value a copied-`.env.example` line (or an empty Vercel env entry) carries
+ * into `Number("") = 0` — for `PG_IDLE_TIMEOUT` that silently disables idle
+ * release again (the squatting behavior this configuration exists to end),
+ * and for `PG_POOL_MAX` it would mean a pool of zero connections.
+ */
+function envOverride(name: string, fallback: number): number {
+  const raw = process.env[name];
+  return raw === undefined || raw.trim() === "" ? fallback : Number(raw);
+}
+
 export function openPostgres(url: string): PostgresSql {
   return postgres(url, {
     prepare: process.env.PG_PREPARE === "true",
-    max: Number(process.env.PG_POOL_MAX ?? 1),
+    max: envOverride("PG_POOL_MAX", 1),
     max_pipeline: 1,
-    idle_timeout: Number(process.env.PG_IDLE_TIMEOUT ?? 10),
+    idle_timeout: envOverride("PG_IDLE_TIMEOUT", 10),
     connect_timeout: 10,
-    query_timeout: Number(process.env.PG_QUERY_TIMEOUT ?? 15),
-    queue_timeout: Number(process.env.PG_QUEUE_TIMEOUT ?? 10),
+    query_timeout: envOverride("PG_QUERY_TIMEOUT", 15),
+    queue_timeout: envOverride("PG_QUEUE_TIMEOUT", 10),
   });
 }
 
