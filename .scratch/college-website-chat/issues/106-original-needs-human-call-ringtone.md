@@ -1,6 +1,6 @@
 # 106: Replace the Needs-human buzzer with an original incoming-call ringtone
 
-Status: ready-for-agent
+Status: done
 
 ## What this ticket asks for
 
@@ -209,3 +209,84 @@ already-implemented duplicate; no `.out-of-scope/` record resembles it.
    headphones), recorded honestly in this ticket with devices, volume
    settings, and any browser where audio could not be exercised. No product
    audition control returns.
+
+2026-11-27: IMPLEMENTED — the alert is the pinned "Marimba greeting" and
+rings continuously. Branch `codex/ticket-106-original-call-ringtone` (from
+the triaged record at 36da21f11, whose range was verified to hold only this
+ticket's filing and triage records beyond origin/main).
+
+- **Implementation** (commit 285ea7b23): `src/domain/attentionCues.ts`
+  pins the motif as constants — `RING_NOTES` (triangle-wave C5 523.25 /
+  E5 659.25 / G5 783.99 Hz at onsets 0 / 0.15 / 0.30 / 0.90 / 1.05 /
+  1.20 s), `ALERT_NOTE_ATTACK_SECONDS = 0.006`,
+  `ALERT_NOTE_RING_SECONDS = 0.38`, `ALERT_SOUNDED_SECONDS = 1.58`,
+  `ALERT_BREATH_MS = 500`, and `nextRingAt()` (sounded end + breath);
+  `ALERT_GAIN = 0.5` / `CUE_GAIN = 0.16` unchanged. `BUZZ_*`,
+  `ALERT_REPEAT_MS`, `ALERT_MAX_MS`, and `nextAlertAt` are removed.
+  `attention-sounds.tsx` replaces `playBuzzer` with `playRingtone`
+  (triangle oscillators, 6 ms attack, 0.38 s exponential ring-out per
+  note, accurate sounded-end return) feeding the continuous
+  phrase-then-breath loop; mute/unmute, unmount, autoplay recovery,
+  burst coalescing, failure isolation, and 44's ordinary chime are
+  untouched. One stale "buzzer" word in the needs-human route comment
+  updated. GLOSSARY's notification-sound entry describes the continuous
+  marimba ring; tickets 44 and 77 carry minimal supersession notes.
+- **Post-triage audition round (owner retained B):** before the listening
+  pass the owner asked whether the alert could hew closer to a calling
+  app's sound; per this ticket's constraint the answer stayed
+  original-composition-only, and three further original candidates (D
+  bright call pair, E office triple chime, F lilting hook) were auditioned
+  through a throwaway harness outside the repository (triage precedent;
+  never committed, deleted after). The owner retained B: "okay let's just
+  retain the B". The pinned contract above was never changed.
+- **Deterministic tests** (`tests/alert-cycle.test.ts`, 20 tests, TDD —
+  the rewritten pins ran red before the implementation): the exact motif
+  literal and its +0.90 s phrase-repeat structure, both gains, the
+  envelope constants and the 1.58 s sounded length, 44's chime notes/ring/
+  gain pinned unchanged, continuous-ring rhythm over a manual clock
+  (start-to-start 2080 ms nominal), `nextRingAt` pins, quiet-air
+  non-overlap, state-clear stop, stop/double-stop, shared cycle,
+  failed-play rhythm, adopt semantics, desk-state wiring pins, mute gate
+  ("muted, the ring never sounds"), state-clear stop pin on the prop
+  effect (claim and other clear funnel through it), autoplay-unlock pin
+  (loop starts when Needs human is present, held events follow the
+  freshness rules), triangle/Marimba wiring pins with `playBuzzer`/`BUZZ_`
+  absence, and the no-test-button pins kept.
+- **Verification:** focused file 20/20; full suite 648 passed / 7
+  env-skipped; `npm run check` green end-to-end (hygiene 809 files,
+  typecheck, tests, production build). PostgreSQL verification not
+  applicable — the change is on the client-side audio path and touches no
+  store code. The known `public/widget/v1.js` CRLF-only build churn was
+  verified content-identical and restored before committing.
+- **Two-axis code review** against 36da21f11 (standards + spec, parallel).
+  Fixed in scope: ticket 77's supersession note moved to a true bottom
+  append (issue-tracker comment convention); two spec-axis gaps closed
+  with new pins (autoplay-unlock start path; prop-effect stop pin covering
+  claim/other-clear). Dispositions: `playRingtone`/`playChime` shape
+  similarity left unextracted (AGENTS.md smallest-change rule; a
+  `playNotes` helper is a refactor no ticket asks for); `ALERT_SOUNDED_
+  SECONDS` restating last-onset + ring-out accepted (the ticket pins the
+  sounded length and the test cross-checks both); `AlertCycle`/`alertCycle`
+  naming left for a separate ticket (out of scope); `chimeEndsAtRef` also
+  holding the ring's end time is pre-existing; the needs-human route
+  comment edit accepted as deliberate minimal supersession of an obsolete
+  buzzer reference; stale "buzzer" prose in `tests/needs-human-bell.test.ts`
+  comments parked (comments, not pins, in a file this ticket does not
+  touch — ticketable housekeeping).
+- **Human listening pass (2026-11-27):** shipped implementation served
+  locally (production runtime `next start`, port 3000, this branch's
+  build; store = the shared project — the owner explicitly chose the
+  transient-conversation posture over a scratch store for this pass). A
+  single clearly-marked visitor conversation ("Ticket 106 Listening
+  Probe", id `8a6a899d-03ea-4824-92eb-2c51bbfa295d`) was escalated to
+  Needs human through the real visitor API so the alert would ring. The
+  owner (Klowi) confirms by ear that they heard the shipped ringtone and
+  it is good ("I've heard it already. i said all good"). Recorded honestly
+  as incomplete detail: the owner did not report devices, browser, or
+  volume settings, so none are recorded; nothing was exercised in any
+  additional browser. Live stop-on-claim was not separately attested by
+  the owner in the exchange (the deterministic pins cover every stop
+  path); the probe conversation's Take-over and History deletion were
+  handed to the owner to complete the cleanup.
+
+Reviewed through: 285ea7b23
