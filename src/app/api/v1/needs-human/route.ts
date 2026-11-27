@@ -10,7 +10,7 @@ import { withJsonErrors } from "@/api/serverError";
  * one-bit signal the dashboard sidebar's Conversations bell polls, correct
  * from every dashboard page — the sidebar carries no desk data outside the
  * inbox, so even presence needs one lightweight request. The boolean comes
- * from the same desk read model the notification sound's buzzer alarms on
+ * from the same desk read model the notification sound's ring alarms on
  * (ticket 77's `desk.incoming`), so the bell and the alarm can never drift
  * apart. Staff-only like the other staff routes; editors have no
  * Conversations row and never call this.
