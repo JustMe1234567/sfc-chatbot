@@ -3,15 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ALERT_GAIN,
-  ALERT_MAX_MS,
-  BUZZ_COUNT,
-  BUZZ_FREQUENCY_HZ,
-  BUZZ_OFF_MS,
-  BUZZ_ON_MS,
+  ALERT_NOTE_ATTACK_SECONDS,
+  ALERT_NOTE_RING_SECONDS,
   CHIME_NOTES,
   CUE_FRESH_MS,
   CUE_GAIN,
   NOTE_RING_SECONDS,
+  RING_NOTES,
   createAlertCycle,
   createAttentionCues,
   type AlertCycle,
@@ -22,17 +20,18 @@ import type { AttentionEvent } from "@/domain/inbox";
 import styles from "../dashboard.module.css";
 
 /**
- * The desk's notification sound (tickets 44 and 77): when at least one
- * live desk conversation is in Needs human, a buzzer alert sounds —
- * one-second buzzes on and off across a six-second window — and the whole
- * alert repeats every 30 seconds, starting the moment the state appears or
- * audio unlocks, stopping the moment the last waiting conversation is
+ * The desk's notification sound (tickets 44, 77, and 106): when at least
+ * one live desk conversation is in Needs human, the owner-chosen
+ * "Marimba greeting" ringtone sounds — a triangle-wave arpeggio — and it
+ * rings continuously, the next play starting one 0.5-second breath after
+ * the previous play's sounded end, starting the moment the state appears
+ * or audio unlocks, stopping the moment the last waiting conversation is
  * taken over or otherwise leaves the state, and killed instantly by
  * muting. Ordinary new-message attention and contact requests keep 44's
- * one-cue behavior at the softer chime gain, even while the alarm runs.
- * The needs-human cycle is driven by the desk's state, not by events, so
- * every waiting conversation shares one cycle and no waiting count can
- * stack alerts; a cue whose batch contains an escalation is that alert.
+ * one-cue behavior at the softer chime gain, even while the ring runs.
+ * The needs-human loop is driven by the desk's state, not by events, so
+ * every waiting conversation shares one loop and no waiting count can
+ * stack plays; a cue whose batch contains an escalation is that play.
  * The event identities for the one-cue path still arrive from the server
  * on every poll (ticket 12's refresh cycle); this component diffs them
  * against the persisted seen-set, so polling, re-rendering, navigation,
@@ -158,30 +157,31 @@ export default function AttentionSounds({
     return Date.now() + Math.max(0, (endsAt - context.currentTime) * 1000);
   }
 
-  /** The needs-human alert (ticket 77, user review): a buzzer — one-second
-   *  buzzes separated by one-second silences, spanning the 6-second
-   *  window. It occupies the whole window: nothing else may start until
-   *  the on-off pattern is fully over. */
-  function playBuzzer(context: AudioContext): number {
+  /** The needs-human ringtone (ticket 106, the owner's 2026-11-27 triage
+   *  pick): the "Marimba greeting" — a triangle-wave C5/E5/G5 arpeggio
+   *  whose phrase repeats once, each note struck with a 6 ms attack and a
+   *  0.38-second exponential ring-out. The play sounds ≈ 1.6 seconds;
+   *  nothing else may start until the last note has fully rung out. */
+  function playRingtone(context: AudioContext): number {
     const start = context.currentTime + 0.01;
     const master = beginSound(context, ALERT_GAIN, true);
-    const buzzSeconds = BUZZ_ON_MS / 1000;
-    for (let i = 0; i < BUZZ_COUNT; i++) {
-      const buzzStart = start + (i * (BUZZ_ON_MS + BUZZ_OFF_MS)) / 1000;
+    let endsAt = start;
+    for (const [offset, frequency] of RING_NOTES) {
+      const onset = start + offset;
       const osc = context.createOscillator();
       const gainNode = context.createGain();
-      osc.type = "square";
-      osc.frequency.value = BUZZ_FREQUENCY_HZ;
-      gainNode.gain.setValueAtTime(0.0001, buzzStart);
-      gainNode.gain.exponentialRampToValueAtTime(1, buzzStart + 0.008);
-      gainNode.gain.setValueAtTime(1, buzzStart + buzzSeconds - 0.02);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, buzzStart + buzzSeconds);
+      osc.type = "triangle";
+      osc.frequency.value = frequency;
+      gainNode.gain.setValueAtTime(0.0001, onset);
+      gainNode.gain.exponentialRampToValueAtTime(1, onset + ALERT_NOTE_ATTACK_SECONDS);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, onset + ALERT_NOTE_RING_SECONDS);
       osc.connect(gainNode);
       gainNode.connect(master);
-      osc.start(buzzStart);
-      osc.stop(buzzStart + buzzSeconds);
+      osc.start(onset);
+      osc.stop(onset + ALERT_NOTE_RING_SECONDS);
+      endsAt = Math.max(endsAt, onset + ALERT_NOTE_RING_SECONDS);
     }
-    return Date.now() + ALERT_MAX_MS;
+    return Date.now() + Math.max(0, (endsAt - context.currentTime) * 1000);
   }
 
   function stopCurrentSound(): void {
@@ -196,9 +196,9 @@ export default function AttentionSounds({
     if (currentSoundRef.current?.isAlert) stopCurrentSound();
   }
 
-  /** The repeating needs-human alert (ticket 77): the domain cycle keeps
-   *  the 30-second rhythm; playback resolves the live context so a
-   *  recycled AudioContext cannot strand the cycle on a dead one. */
+  /** The continuous needs-human ring (ticket 106): the domain loop keeps
+   *  the phrase-then-breath rhythm; playback resolves the live context so
+   *  a recycled AudioContext cannot strand the loop on a dead one. */
   function alertCycle(): AlertCycle {
     if (!alertCycleRef.current) {
       alertCycleRef.current = createAlertCycle({
@@ -206,11 +206,11 @@ export default function AttentionSounds({
           const context = contextRef.current;
           if (!context) return null;
           try {
-            chimeEndsAtRef.current = playBuzzer(context);
+            chimeEndsAtRef.current = playRingtone(context);
             return chimeEndsAtRef.current;
           } catch {
             // Playback failure must never break polling or interaction;
-            // the cycle keeps its schedule and retries on the next beat.
+            // the loop keeps its schedule and retries on the next beat.
             return null;
           }
         },
@@ -245,18 +245,18 @@ export default function AttentionSounds({
     queuedRef.current.clear();
     if (mutedRef.current) return; // muted since scheduling: stay silent
     try {
-      // The batch decides the sound (ticket 77): a cue whose batch contains
-      // a Needs-human escalation is the buzzer alert; ordinary attention
-      // keeps 44's softer chime even mid-alarm.
+      // The batch decides the sound (tickets 77 and 106): a cue whose
+      // batch contains a Needs-human escalation is the ringtone; ordinary
+      // attention keeps 44's softer chime even mid-ring.
       chimeEndsAtRef.current = queuedNeedsHumanRef.current
-        ? playBuzzer(context)
+        ? playRingtone(context)
         : playChime(context);
     } catch {
       // Playback failure must never break polling or interaction.
     }
     if (queuedNeedsHumanRef.current) {
-      // This louder alert is the cycle's current beat: the next repeat
-      // begins 30 seconds after it started (ticket 77).
+      // This louder play is the loop's current beat: the next repeat
+      // begins one breath after its sounded end (ticket 106).
       alertCycle().adopt(chimeEndsAtRef.current);
     }
     queuedNeedsHumanRef.current = false;

@@ -1,12 +1,12 @@
 /**
- * The staff-side state behind the dashboard notification sound (tickets 44
- * and 77): which attention events this browser has already cued, whether
- * the staff member muted the sound, and — since ticket 77 — the repeating
- * needs-human alert cycle's timing. State lives in localStorage so the
+ * The staff-side state behind the dashboard notification sound (tickets
+ * 44, 77, and 106): which attention events this browser has already cued,
+ * whether the staff member muted the sound, and — since ticket 106 — the
+ * needs-human ring's timing and motif. State lives in localStorage so the
  * identity survives navigation, reloads, and a second dashboard view: an
  * ordinary attention event still sounds at most once per staff browser,
- * and polling can never re-queue it, while the louder needs-human alert
- * repeats on a timer for as long as a conversation needs a human.
+ * and polling can never re-queue it, while the louder needs-human ring
+ * loops on a timer for as long as a conversation needs a human.
  */
 
 export interface StorageLike {
@@ -34,43 +34,53 @@ export const CHIME_NOTES: [offsetSeconds: number, frequencyHz: number][] = [
 /** How long one note rings out after its onset, in seconds. */
 export const NOTE_RING_SECONDS = 0.36;
 
-/** The needs-human alert's louder master gain (ticket 77), up from the
- *  0.16 one-shot cue so the desk is heard across a room. */
+/** The needs-human ring's louder master gain (tickets 77 and 106), up
+ *  from the 0.16 one-shot cue so the desk is heard across a room. */
 export const ALERT_GAIN = 0.5;
 
 /** Ordinary new-message attention keeps 44's softer one-shot gain. */
 export const CUE_GAIN = 0.16;
 
-/** The repeating needs-human alert's spacing (ticket 77): 30 seconds from
- *  the start of one alert to the start of the next. */
-export const ALERT_REPEAT_MS = 30_000;
+/** The needs-human ring's motif (ticket 106, the owner's 2026-11-27 triage
+ *  pick): the "Marimba greeting" — a triangle-wave arpeggio of C5 523.25
+ *  Hz, E5 659.25 Hz, and G5 783.99 Hz whose three-note phrase repeats
+ *  once. Offsets are seconds from the play's start; the first three notes
+ *  sound at 0 / 0.15 / 0.30 and the phrase repeats at +0.60. */
+export const RING_NOTES: [offsetSeconds: number, frequencyHz: number][] = [
+  [0, 523.25],
+  [0.15, 659.25],
+  [0.3, 783.99],
+  [0.9, 523.25],
+  [1.05, 659.25],
+  [1.2, 783.99],
+];
 
-/** The longest an alert may sound (ticket 77): the buzzer pattern's full
- *  window, far below the 30-second spacing, so alerts can never overlap
- *  their successors. */
-export const ALERT_MAX_MS = 6_000;
+/** Each struck note ramps from silence to full over 6 ms. */
+export const ALERT_NOTE_ATTACK_SECONDS = 0.006;
 
-/** The needs-human alert is a buzzer (ticket 77, user review): each buzz
- *  sounds for a second, silences for a second, and sounds again — three
- *  one-second buzzes spanning the 6-second window. */
-export const BUZZ_ON_MS = 1_000;
-export const BUZZ_OFF_MS = 1_000;
-export const BUZZ_COUNT = 3;
+/** ...and decays exponentially back to silence over 0.38 seconds from its
+ *  onset — the struck-marimba ring-out. */
+export const ALERT_NOTE_RING_SECONDS = 0.38;
 
-/** The buzz's tone: a square wave's harsh buzz, audible on laptop
- *  speakers. */
-export const BUZZ_FREQUENCY_HZ = 350;
+/** The motif's sounded length: the last note ends 1.58 seconds after the
+ *  play starts (its 1.2-second onset plus the 0.38-second ring-out) —
+ *  ≈ 1.6 seconds of sound per play. */
+export const ALERT_SOUNDED_SECONDS = 1.58;
+
+/** The continuous ring's breath (the owner's 2026-11-27 override of
+ *  ticket 77's 30-second repeat): the next play starts exactly this long
+ *  after the previous play's sounded end — start-to-start ≈ 2.1 seconds,
+ *  a phrase-then-breath loop that reads as a phone ringing. */
+export const ALERT_BREATH_MS = 500;
 
 /**
- * When the next repeating alert may begin (ticket 77): 30 seconds after
- * the current alert started, measured start to start — and never before
- * the alert has stopped sounding, with that end capped at the 6-second
- * maximum so even an over-long sound cannot delay or overlap its
- * successor.
+ * When the next ring play begins (ticket 106): exactly one breath after
+ * the previous play's sounded end. A play therefore never overlaps or
+ * cuts short its successor, and the loop's rhythm follows the actual
+ * sounded end rather than the play's start.
  */
-export function nextAlertAt(alertStartedAt: number, soundedUntil: number): number {
-  const cappedEnd = Math.min(soundedUntil, alertStartedAt + ALERT_MAX_MS);
-  return Math.max(alertStartedAt + ALERT_REPEAT_MS, cappedEnd);
+export function nextRingAt(soundedUntil: number): number {
+  return soundedUntil + ALERT_BREATH_MS;
 }
 
 function readSeen(storage: StorageLike): Record<string, number> {
@@ -179,27 +189,27 @@ export function createAttentionCues(
   };
 }
 
-/** One beat's alert: the instant (Date.now ms) it stops sounding, or null
- *  when playback failed — a failed beat still keeps the cycle's schedule. */
+/** One beat's play: the instant (Date.now ms) it stops sounding, or null
+ *  when playback failed — a failed beat still keeps the loop's schedule. */
 export type AlertPlay = number | null;
 
 /**
- * One repeating needs-human alert cycle (ticket 77): an alert starts as
- * soon as the air is quiet, then another begins every 30 seconds —
- * measured from the start of one alert to the start of the next — for as
- * long as `shouldSound()` stays true. Every beat re-checks before
- * sounding, so a mute or a cleared needs-human state ends the cycle
- * without a stray alert, and no beat starts while another cue or alert is
+ * The continuous needs-human ring (ticket 106, superseding ticket 77's
+ * 30-second repeat): a play starts as soon as the air is quiet, and the
+ * next one begins exactly one breath after the previous play's sounded
+ * end — for as long as `shouldSound()` stays true. Every beat re-checks
+ * before sounding, so a mute or a cleared needs-human state ends the loop
+ * without a stray play, and no beat starts while another cue or alert is
  * still in flight. The timing here owns no audio: `play()` performs one
- * alert and stopping a sounding one is the caller's `stop()`, which only
+ * play and stopping a sounding one is the caller's `stop()`, which only
  * cancels the next scheduled beat. Timer plumbing is injectable so the
  * rhythm is testable without a real clock.
  */
 export interface AlertCycleOptions {
-  /** Play one alert now. Returns when it stops sounding, or null when
+  /** Play one beat now. Returns when it stops sounding, or null when
    *  playback failed. */
   play(): AlertPlay;
-  /** Whether an alert may sound right now: false ends the cycle. */
+  /** Whether a play may sound right now: false ends the loop. */
   shouldSound(): boolean;
   /** When any still-sounding cue or alert ends (Date.now ms) — in the
    *  past when the air is quiet. A beat never starts earlier. */
@@ -210,12 +220,12 @@ export interface AlertCycleOptions {
 }
 
 export interface AlertCycle {
-  /** Begin the cycle. Starting an already-beating cycle changes nothing. */
+  /** Begin the loop. Starting an already-beating loop changes nothing. */
   start(): void;
-  /** Adopt an alert that just started outside the cycle — a coalesced
-   *  burst cue that doubled as the first beat: the next beat begins 30
-   *  seconds after it started. Ignored while a beat is already pending,
-   *  so the cycle keeps its own rhythm. */
+  /** Adopt a play that just started outside the loop — a coalesced burst
+   *  cue that doubled as the first beat: the next beat begins one breath
+   *  after it stops sounding. Ignored while a beat is already pending,
+   *  so the loop keeps its own rhythm. */
   adopt(soundedUntil: number): void;
   /** Cancel the next scheduled beat. Stopping twice is harmless. */
   stop(): void;
@@ -237,14 +247,14 @@ export function createAlertCycle(options: AlertCycleOptions): AlertCycle {
     if (!shouldSound()) return;
     const quiet = quietAt();
     if (quiet > now()) {
-      // Something is still sounding — never overlap it; start the alert
+      // Something is still sounding — never overlap it; start the play
       // from a quiet moment instead.
       beat = schedule(runBeat, quiet - now());
       return;
     }
     const startedAt = now();
     const soundedUntil = play();
-    const nextAt = nextAlertAt(startedAt, soundedUntil ?? startedAt);
+    const nextAt = nextRingAt(soundedUntil ?? startedAt);
     beat = schedule(runBeat, Math.max(0, nextAt - now()));
   }
 
@@ -255,7 +265,7 @@ export function createAlertCycle(options: AlertCycleOptions): AlertCycle {
     },
     adopt(soundedUntil) {
       if (beat !== null) return;
-      const nextAt = nextAlertAt(now(), soundedUntil);
+      const nextAt = nextRingAt(soundedUntil);
       beat = schedule(runBeat, Math.max(0, nextAt - now()));
     },
     stop() {

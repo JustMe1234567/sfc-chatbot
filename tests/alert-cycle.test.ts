@@ -2,37 +2,39 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  ALERT_BREATH_MS,
   ALERT_GAIN,
-  ALERT_MAX_MS,
-  ALERT_REPEAT_MS,
-  BUZZ_COUNT,
-  BUZZ_FREQUENCY_HZ,
-  BUZZ_OFF_MS,
-  BUZZ_ON_MS,
+  ALERT_NOTE_ATTACK_SECONDS,
+  ALERT_NOTE_RING_SECONDS,
+  ALERT_SOUNDED_SECONDS,
   CHIME_NOTES,
   CUE_GAIN,
   NOTE_RING_SECONDS,
+  RING_NOTES,
   createAlertCycle,
-  nextAlertAt,
+  nextRingAt,
 } from "../src/domain/attentionCues";
 import { repoRoot } from "../src/paths";
 
 /**
- * Ticket 77: the desk's louder, repeating needs-human alert. The alert is
- * a buzzer — one-second buzzes on and off across a 6-second window — at a
- * 0.5 master gain (up from 44's 0.16), starting when a live desk
- * conversation enters Needs human, repeating every 30 seconds from the
- * start of one alert to the start of the next while the state remains,
- * never overlapping another sound, and stopping — current alert and future
- * repeats — the moment the state clears or sounds are muted. Unmuting with
- * a conversation still waiting starts a new cycle without waiting for
- * another event. Ordinary new-message attention keeps 44's one-cue
- * behavior at the softer chime gain. The ticket's original
- * test-notification control was removed at the user's 2026-11-19 review.
+ * Ticket 106: the desk's louder, repeating needs-human alert is the
+ * owner-chosen "Marimba greeting" (2026-11-27 triage) — a triangle-wave
+ * C5/E5/G5 arpeggio whose three-note phrase repeats once, each note with a
+ * 6 ms attack and a 0.38-second exponential ring-out, sounding ≈ 1.6
+ * seconds per alert at the 0.5 master gain. The alert rings continuously
+ * while a live desk conversation is in Needs human: the next play starts
+ * exactly 0.5 seconds after the previous play's sounded end (start-to-start
+ * ≈ 2.1 seconds nominal), never overlapping another sound, and stops —
+ * current play and future repeats — the moment the state clears or sounds
+ * are muted. Unmuting with a conversation still waiting restarts the loop
+ * without waiting for another event. Ordinary new-message attention keeps
+ * 44's one-cue behavior at the softer chime gain, unchanged. This
+ * supersedes ticket 77's square-wave buzzer, its 6-second window, and its
+ * 30-second repeat.
  */
 
 /** A manual clock: handlers fire in time order as the test advances, so
- *  the 30-second rhythm is observed without real waiting. */
+ *  the continuous ring's rhythm is observed without real waiting. */
 function manualClock() {
   let now = 0;
   let nextHandle = 1;
@@ -73,7 +75,7 @@ function alertHarness(options: { failPlay?: boolean } = {}) {
     play: () => {
       if (options.failPlay) return null;
       playedAt.push(clock.now());
-      // Each alert "sounds" for half a second.
+      // Each play "sounds" for half a second.
       return clock.now() + 500;
     },
     shouldSound: () => soundable,
@@ -95,54 +97,75 @@ function alertHarness(options: { failPlay?: boolean } = {}) {
   };
 }
 
-describe("the repeating needs-human alert (ticket 77)", () => {
+describe("the continuous needs-human ring (ticket 106)", () => {
   it("uses the louder 0.5 alert gain and keeps the ordinary cue at 0.16", () => {
     expect(ALERT_GAIN).toBe(0.5);
     expect(CUE_GAIN).toBe(0.16);
   });
 
-  it("repeats every 30 seconds from the start of one alert to the start of the next", () => {
-    expect(ALERT_REPEAT_MS).toBe(30_000);
+  it("pins the owner-approved Marimba greeting motif", () => {
+    // Triangle-wave C5, E5, and G5: the first three notes are the phrase,
+    // the phrase repeats once at +0.60 seconds (owner triage, 2026-11-27).
+    expect(RING_NOTES).toEqual([
+      [0, 523.25],
+      [0.15, 659.25],
+      [0.3, 783.99],
+      [0.9, 523.25],
+      [1.05, 659.25],
+      [1.2, 783.99],
+    ]);
+    const phrase = RING_NOTES.slice(0, 3);
+    const repeat = RING_NOTES.slice(3);
+    expect(
+      repeat.map(([offset, frequency]) => [
+        Math.round((offset - 0.9) * 100) / 100,
+        frequency,
+      ]),
+    ).toEqual(phrase);
+  });
+
+  it("shapes each note with a 6 ms attack and a 0.38-second ring-out", () => {
+    expect(ALERT_NOTE_ATTACK_SECONDS).toBe(0.006);
+    expect(ALERT_NOTE_RING_SECONDS).toBe(0.38);
+    // The motif's sounded length is the last note's onset plus its
+    // ring-out: ≈ 1.6 seconds, the last note ending ≈ 1.58 s after start.
+    const lastOnset = Math.max(...RING_NOTES.map(([offset]) => offset));
+    expect(lastOnset + ALERT_NOTE_RING_SECONDS).toBeCloseTo(1.58, 10);
+    expect(ALERT_SOUNDED_SECONDS).toBe(1.58);
+  });
+
+  it("keeps 44's ordinary two-note chime unchanged", () => {
+    expect(CHIME_NOTES).toEqual([
+      [0, 880],
+      [0.16, 1174.66],
+    ]);
+    expect(NOTE_RING_SECONDS).toBe(0.36);
+    expect(CUE_GAIN).toBe(0.16);
+  });
+
+  it("rings continuously: the next play starts one breath after the sounded end", () => {
+    // Owner override of ticket 77's 30-second repeat (2026-11-27 triage):
+    // phrase, then a 0.5-second quiet breath, then the phrase again.
+    expect(ALERT_BREATH_MS).toBe(500);
+    // Nominal start-to-start: 1.58 s sounded + 0.5 s breath ≈ 2.1 seconds.
+    expect(ALERT_SOUNDED_SECONDS * 1000 + ALERT_BREATH_MS).toBe(2080);
     const { cycle, clock, playedAt } = alertHarness();
     cycle.start();
     expect(playedAt).toEqual([0]);
-    clock.advance(ALERT_REPEAT_MS);
-    expect(playedAt).toEqual([0, 30_000]);
-    clock.advance(ALERT_REPEAT_MS);
-    expect(playedAt).toEqual([0, 30_000, 60_000]);
+    // The harness's half-second sound plus the 0.5-second breath.
+    clock.advance(1_000);
+    expect(playedAt).toEqual([0, 1_000]);
+    clock.advance(1_000);
+    expect(playedAt).toEqual([0, 1_000, 2_000]);
   });
 
-  it("ends each alert no later than 6 seconds after it starts", () => {
-    expect(ALERT_MAX_MS).toBe(6_000);
-    // The buzzer's pattern: one-second buzzes separated by one-second
-    // silences — the last buzz ends inside the 6-second window.
-    expect(BUZZ_ON_MS).toBe(1_000);
-    expect(BUZZ_OFF_MS).toBe(1_000);
-    expect(BUZZ_COUNT).toBe(3);
-    // Buzzes start at 0s, 2s, 4s; the last buzz ends at 5s and the
-    // trailing silence closes the pattern at the whole 6-second window.
-    expect(
-      (BUZZ_COUNT - 1) * (BUZZ_ON_MS + BUZZ_OFF_MS) + BUZZ_ON_MS + BUZZ_OFF_MS,
-    ).toBe(ALERT_MAX_MS);
-    // The ordinary cue is still the two-note chime, far inside the window.
-    const chimeSeconds = Math.max(
-      ...CHIME_NOTES.map(([offset]) => offset + NOTE_RING_SECONDS),
-    );
-    expect(chimeSeconds).toBeLessThanOrEqual(ALERT_MAX_MS / 1000);
+  it("schedules each next play with nextRingAt: sounded end plus the breath", () => {
+    expect(nextRingAt(0)).toBe(500);
+    expect(nextRingAt(1_580)).toBe(2_080);
+    expect(nextRingAt(10_000)).toBe(10_500);
   });
 
-  it("keeps the 30-second spacing while an alert still sounds, and caps over-long sounds", () => {
-    // nextAlertAt is the beat math: start-to-start 30 seconds, with the
-    // sounded end capped at the 6-second maximum so no sound — however
-    // long — can delay or overlap its successor.
-    expect(nextAlertAt(0, 500)).toBe(30_000);
-    expect(nextAlertAt(1_000, 1_000 + 2_000)).toBe(31_000);
-    expect(nextAlertAt(0, 60_000)).toBe(30_000);
-    expect(nextAlertAt(0, 5_999)).toBe(30_000);
-    expect(nextAlertAt(0, 6_000)).toBe(30_000);
-  });
-
-  it("never starts a beat while another cue or alert is still sounding", () => {
+  it("never starts a play while another cue or alert is still sounding", () => {
     const { cycle, clock, playedAt, setQuietAt } = alertHarness();
     setQuietAt(4_000); // an ordinary cue is in flight until t=4000
     cycle.start();
@@ -152,17 +175,17 @@ describe("the repeating needs-human alert (ticket 77)", () => {
     expect(playedAt).toEqual([]);
     clock.advance(1);
     expect(playedAt).toEqual([4_000]);
-    // The rhythm runs from the actual start of the first alert.
-    clock.advance(30_000);
-    expect(playedAt).toEqual([4_000, 34_000]);
+    // The rhythm runs from the actual start of the first play.
+    clock.advance(1_000);
+    expect(playedAt).toEqual([4_000, 5_000]);
   });
 
-  it("ends silently when the state clears between beats and stops re-arming", () => {
+  it("ends silently when the state clears between plays and stops re-arming", () => {
     const { cycle, clock, playedAt, setSoundable } = alertHarness();
     cycle.start();
     expect(playedAt).toEqual([0]);
     setSoundable(false); // the last waiting conversation left Needs human
-    clock.advance(30_000);
+    clock.advance(1_000);
     expect(playedAt).toEqual([0]);
     expect(clock.pending()).toBe(0);
     // With the state still cleared, restarting changes nothing...
@@ -171,13 +194,13 @@ describe("the repeating needs-human alert (ticket 77)", () => {
     // ...but the state returning (a new escalation) sounds again, right now.
     setSoundable(true);
     cycle.start();
-    expect(playedAt).toEqual([0, 30_000]);
+    expect(playedAt).toEqual([0, 1_000]);
   });
 
-  it("cancels the next repeat when stopped, and stopping twice is harmless", () => {
+  it("cancels the next play when stopped, and stopping twice is harmless", () => {
     const { cycle, clock, playedAt } = alertHarness();
     cycle.start();
-    clock.advance(10_000);
+    clock.advance(600);
     cycle.stop();
     expect(clock.pending()).toBe(0);
     cycle.stop();
@@ -187,42 +210,42 @@ describe("the repeating needs-human alert (ticket 77)", () => {
 
   it("runs one shared cycle however many times it is started", () => {
     // Multiple waiting conversations share one alert cycle: the component
-    // holds a single cycle, and a second start must never stack beats.
+    // holds a single cycle, and a second start must never stack plays.
     const { cycle, clock, playedAt } = alertHarness();
     cycle.start();
     cycle.start();
     cycle.start();
-    clock.advance(30_000);
-    expect(playedAt).toEqual([0, 30_000]);
+    clock.advance(1_000);
+    expect(playedAt).toEqual([0, 1_000]);
     expect(clock.pending()).toBe(1);
   });
 
-  it("keeps the rhythm when playback fails, so audio trouble cannot end the alarm", () => {
+  it("keeps the rhythm when playback fails, so audio trouble cannot end the ring", () => {
     const { cycle, clock, playedAt } = alertHarness({ failPlay: true });
     cycle.start();
-    clock.advance(30_000);
-    clock.advance(30_000);
+    clock.advance(500);
+    clock.advance(500);
     expect(playedAt).toEqual([]);
     expect(clock.pending()).toBe(1);
   });
 
-  it("adopts an out-of-cycle alert as a beat and ignores adoption while one is pending", () => {
+  it("adopts an out-of-cycle play as a beat and ignores adoption while one is pending", () => {
     // The coalesced burst cue doubles as the first beat: the next repeat
-    // begins 30 seconds after it started.
+    // begins one breath after its sounded end.
     const adopted = alertHarness();
     adopted.cycle.adopt(adopted.clock.now() + 500);
     expect(adopted.playedAt).toEqual([]);
-    adopted.clock.advance(30_000);
-    expect(adopted.playedAt).toEqual([30_000]);
+    adopted.clock.advance(1_000);
+    expect(adopted.playedAt).toEqual([1_000]);
     // Adopting again mid-cycle must not reset the rhythm.
-    adopted.clock.advance(10_000);
+    adopted.clock.advance(500);
     adopted.cycle.adopt(adopted.clock.now() + 500);
-    adopted.clock.advance(20_000);
-    expect(adopted.playedAt).toEqual([30_000, 60_000]);
+    adopted.clock.advance(500);
+    expect(adopted.playedAt).toEqual([1_000, 2_000]);
   });
 });
 
-describe("the repeating needs-human alert wiring (ticket 77)", () => {
+describe("the continuous needs-human ring wiring (ticket 106)", () => {
   const between = (source: string, startMarker: string, endMarker: string): string => {
     const start = source.indexOf(startMarker);
     expect(start, startMarker).toBeGreaterThanOrEqual(0);
@@ -247,31 +270,90 @@ describe("the repeating needs-human alert wiring (ticket 77)", () => {
     );
   });
 
-  it("sounds escalation batches as the buzzer alert and keeps ordinary cues as the soft chime", async () => {
+  it("sounds the alert as the triangle-wave Marimba greeting and keeps ordinary cues as the soft chime", async () => {
     const source = await readFile(
       path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
       "utf8",
     );
-    // The cycle's own beats play the buzzer.
-    expect(source).toContain("chimeEndsAtRef.current = playBuzzer(context)");
+    // The cycle's own plays sound the ringtone.
+    expect(source).toContain("chimeEndsAtRef.current = playRingtone(context)");
     // A burst cue follows its batch: a batch containing a Needs-human
-    // escalation is the buzzer alert, ordinary attention stays at 44's
-    // softer chime even mid-alarm.
-    expect(source).toContain("? playBuzzer(context)");
+    // escalation is the ringtone alert, ordinary attention stays at 44's
+    // softer chime even mid-ring.
+    expect(source).toContain("? playRingtone(context)");
     expect(source).toContain(": playChime(context)");
-    // The buzz is a square-wave tone — the buzzer character — at the
-    // domain's frequency, gated by the on/off pattern constants.
-    expect(source).toContain('osc.type = "square"');
-    expect(source).toContain("osc.frequency.value = BUZZ_FREQUENCY_HZ");
-    expect(source).toContain("BUZZ_ON_MS / 1000");
-    expect(source).toContain("(BUZZ_ON_MS + BUZZ_OFF_MS)) / 1000");
+    // The greeting is triangle-wave notes from the domain motif — no
+    // square-wave buzzer character remains.
+    expect(source).toContain('osc.type = "triangle"');
+    expect(source).not.toContain('"square"');
+    expect(source).toContain("RING_NOTES");
+    expect(source).not.toContain("BUZZ_");
+    expect(source).not.toContain("playBuzzer");
+    // The struck-note envelope: 6 ms attack and 0.38-second exponential
+    // ring-out per note, from the domain constants.
+    expect(source).toContain("onset + ALERT_NOTE_ATTACK_SECONDS");
+    expect(source).toContain("onset + ALERT_NOTE_RING_SECONDS");
+    // The alert keeps the louder master gain.
+    expect(source).toContain("beginSound(context, ALERT_GAIN, true)");
+    // The ordinary cue is still 44's sine two-note chime at the softer
+    // gain with its own ring-out.
+    expect(source).toContain('osc.type = "sine"');
+    expect(source).toContain("beginSound(context, CUE_GAIN, false)");
+    expect(source).toContain("NOTE_RING_SECONDS");
     // The burst re-checks for a still-sounding cue at fire time — a beat
     // that started since the burst was scheduled is never overlapped.
     expect(source).toContain("fireBurst");
     // The user's 2026-11-19 review amendment removed the test-sound
-    // control entirely (77's original test-button requirement is moot).
+    // control entirely (77's original test-button requirement is moot,
+    // and ticket 106 keeps it removed).
     expect(source).not.toContain("Test notification sound");
     expect(source).not.toContain("testSound");
+  });
+
+  it("gates the loop on the unmuted needs-human state — muted, the ring never sounds", async () => {
+    const source = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
+      "utf8",
+    );
+    // Every beat re-checks the gate before sounding, so a mute or a
+    // cleared needs-human state ends the loop without a stray play.
+    expect(source).toContain(
+      "shouldSound: () => !mutedRef.current && needsHumanRef.current",
+    );
+  });
+
+  it("stops the loop when the desk state clears — a claim or any other leave of Needs human — and restarts it when the state returns", async () => {
+    const source = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
+      "utf8",
+    );
+    // The loop follows the desk's state prop, not events: a claim and any
+    // other leave of the live awaiting_staff list both empty the prop, and
+    // this effect cancels the current play and the next beat for both.
+    const effect = between(source, "needsHumanRef.current = needsHuman;", "armFirstGesture(context);");
+    expect(effect).toContain("if (!needsHuman || mutedRef.current) {");
+    expect(effect).toContain("stopAlertCycle()");
+    // When the state is present again (or audio unlocks with it present),
+    // the loop starts from that same effect/unlock path.
+    expect(effect).toContain("startAlertCycle()");
+  });
+
+  it("starts the loop from the autoplay unlock when Needs human is already present, with held events following the freshness rules", async () => {
+    const source = await readFile(
+      path.join(repoRoot(), "src/app/dashboard/inbox/attention-sounds.tsx"),
+      "utf8",
+    );
+    const unlock = between(source, "const onGesture = () => {", ".catch(() => {");
+    // The unlock path starts the ring when the state is present and
+    // unmuted — stale or not: that play is also the late cue for anything
+    // held while audio was blocked.
+    expect(unlock).toContain("if (needsHumanRef.current && !mutedRef.current) {");
+    expect(unlock).toContain("startAlertCycle()");
+    // Without the state, held events follow 44's freshness rules — one
+    // late cue for fresh events, silent marking for a stale backlog.
+    expect(unlock).toContain("CUE_FRESH_MS");
+    expect(unlock).toContain("scheduleChime(context, held.map((event) => event.id), false)");
+    expect(unlock).toContain("tracker.markSeen(held.map((event) => event.id))");
   });
 
   it("stops alerts — never ordinary cues — on mute, and restarts on unmute while a conversation still needs a human", async () => {
